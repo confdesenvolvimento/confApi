@@ -18,9 +18,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @Service
-public class LimiteCreditoService {
+public class LimitesService {
 
-    private static final Logger LOG = Logger.getLogger(LimiteCreditoService.class.getName());
+    private static final Logger LOG = Logger.getLogger(LimitesService.class.getName());
 
     private final RestTemplate restTemplate;
 
@@ -30,7 +30,7 @@ public class LimiteCreditoService {
     // Mantém os mesmos trechos da sua classe original
     private static final String API_ACTION = "api/limite";
 
-    public LimiteCreditoService(RestTemplate restTemplate) {
+    public LimitesService(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
     }
 
@@ -41,7 +41,7 @@ public class LimiteCreditoService {
         try {
             // 1) Token
             SandBoxResp token = confAppService.token();
-
+    System.out.println("URL: "+UrlConfig.URL_CONFIANCA_HUB+" - "+API_ACTION);
             // 2) URL
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_HUB)

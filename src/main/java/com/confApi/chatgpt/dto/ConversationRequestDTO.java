@@ -7,7 +7,8 @@ import java.util.List;
 
 public record ConversationRequestDTO(
         @NotBlank String identificacao,
-        @NotBlank String unidade,// ex: "confia-voos", "confia-hoteis"
+        @NotBlank String unidade,
+        @NotBlank String idErp,// ex: "confia-voos", "confia-hoteis"
         @NotNull Long codgAgencia,
         @NotNull Long codgUsuario,
         @NotBlank String input,             // mensagem do usuário

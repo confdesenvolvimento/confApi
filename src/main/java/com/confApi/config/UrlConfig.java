@@ -10,7 +10,7 @@ public class UrlConfig {
     @Value("${confianca-manager}")
     private String confiancaManager;
     @Value("${confianca-hub}")
-    public static String hubConfianca ;
+    public  String hubConfianca ;
 
 
 

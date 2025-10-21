@@ -6,6 +6,9 @@ import com.confApi.chatgpt.service.ChatService;
 
 import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.chatMemoria.dto.ChatMemoria;
+import com.confApi.hub.limites.LimitesService;
+import com.confApi.hub.limites.dto.Disponibilidade;
+import com.confApi.hub.limites.dto.LimiteCreditoRQ;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -25,6 +28,7 @@ public class ConversationController {
     private final ProfilePromptRegistry profiles;
 
     private final ChatMemoriaService chatMemoriaService;
+    private final LimitesService limitesService;
 
 
 
@@ -84,6 +88,13 @@ public class ConversationController {
             System.out.println("Memoria: "+chtMemoria.getText());
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
         }
+
+          /*Consultar limites de credito*/
+        System.out.println("Limite Erp: "+req.idErp());
+         Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
+        messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
+
+
     }
 
 
