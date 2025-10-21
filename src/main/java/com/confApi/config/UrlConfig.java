@@ -9,17 +9,18 @@ import javax.annotation.PostConstruct;
 public class UrlConfig {
     @Value("${confianca-manager}")
     private String confiancaManager;
-
+    @Value("${confianca-hub}")
+    public static String hubConfianca ;
 
 
 
 
     public static String URL_CONFIANCA_MANAGER;
-
+    public static String URL_CONFIANCA_HUB;
 
     @PostConstruct
     public void init() {
         URL_CONFIANCA_MANAGER = confiancaManager;
-
+        URL_CONFIANCA_HUB = hubConfianca;
     }
 }

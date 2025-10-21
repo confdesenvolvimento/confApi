@@ -1,7 +1,8 @@
 package com.confApi.chatgpt.controller;
+import com.confApi.chatgpt.config.OpenAIProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import com.confApi.chatgpt.config.OpenAIProperties;
+
 import java.util.List;
 import java.util.Map;
 
