@@ -1,10 +1,13 @@
 package com.confApi.chatgpt.service;
 
 import com.confApi.chatgpt.config.OpenAIProperties;
-import com.confApi.chatgpt.dto.ChatRequestDTO;
-import com.confApi.chatgpt.dto.ChatResponseDTO;
-import com.confApi.chatgpt.dto.ToolCallDTO;
+import com.confApi.chatgpt.dto.*;
 import com.confApi.chatgpt.tools.ToolRouter;
+import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
+import com.confApi.db.confManager.chatMemoria.dto.ChatMemoria;
+import com.confApi.hub.limites.LimitesService;
+import com.confApi.hub.limites.dto.Disponibilidade;
+import com.confApi.hub.limites.dto.LimiteCreditoRQ;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,6 +27,9 @@ public class ChatService {
     private final OkHttpClient client;
     private final OpenAIProperties props;
     private final ToolRouter tools;
+
+    private final ChatMemoriaService chatMemoriaService;
+    private final LimitesService limitesService;
 
     public ChatResponseDTO chat(ChatRequestDTO req) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
@@ -71,7 +77,7 @@ public class ChatService {
                 }
             }
 
-            return new ChatResponseDTO(root.path("id").asText(), content, toolCalls);
+            return new ChatResponseDTO(root.path("id").asText(), content, toolCalls, null);
         }
     }
 
@@ -114,5 +120,19 @@ public class ChatService {
                 sink.error(ex);
             }
         });
+    }
+
+    public void actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req){
+
+        List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
+        for (ChatMemoria chtMemoria : chatMemorias){
+            System.out.println("Memoria: "+chtMemoria.getText());
+            messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
+        }
+
+        /*Consultar limites de credito*/
+        System.out.println("Limite Erp: "+req.idErp());
+        Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
+        messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
     }
 }

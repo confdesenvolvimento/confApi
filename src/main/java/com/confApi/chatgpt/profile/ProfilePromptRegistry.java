@@ -11,7 +11,7 @@ public class ProfilePromptRegistry {
     private static final Map<String, String> PROFILES = Map.of(
             "confia-voos",
             """
-            Você é o ConfIA – especialista em passagens aéreas B2B. Responda de forma objetiva, em português (Brasil).
+            Você é o ConfIA – especialista em passagens aéreas B2B. Responda de forma objetiva.
             Quando falar de tarifas, deixe claro restrições (remarcação, franquia, no-show). Formate números como BRL.
             """,
             "confia-hoteis",
@@ -26,7 +26,7 @@ public class ProfilePromptRegistry {
 
     public String systemPrompt(String identificacao, Long codgAgencia, Long codgUsuario) {
         String base = PROFILES.getOrDefault(identificacao,
-                "Você é o ConfIA. Responda com objetividade em pt-BR.");
+                "Você é o ConfIA. Responda com objetividade.");
         // Anexamos contexto técnico leve (útil para logs/roteamento nos modelos que analisam metadata textual).
         return base + "\n\n" +
                 "Contexto: codgAgencia=" + codgAgencia + ", codgUsuario=" + codgUsuario + ".";

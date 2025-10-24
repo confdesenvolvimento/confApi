@@ -27,11 +27,6 @@ public class ConversationController {
     private final ChatService chatService;
     private final ProfilePromptRegistry profiles;
 
-    private final ChatMemoriaService chatMemoriaService;
-    private final LimitesService limitesService;
-
-
-
     @PostMapping(value = "/chat", produces = MediaType.APPLICATION_JSON_VALUE)
     public ChatResponseDTO chat(@Valid @RequestBody ConversationRequestDTO req) throws IOException {
         // 1) Mensagem de sistema baseada na identificação (perfil)
@@ -49,7 +44,7 @@ public class ConversationController {
 
         // 2.2) (Opcional) Dados do sistema como no modelo antigo
         //     Caso você envie um header CSV "X-User-Data: chave1=valor1,chave2=valor2"
-        actionApis(messages, req);
+        chatService.actionApis(messages, req);
         /* if (userDataHeader != null && !userDataHeader.isBlank()) {
             for (String data : userDataHeader.split(",")) {
                 String trimmed = data.trim();
@@ -80,21 +75,6 @@ public class ConversationController {
 
         // 5) Chama o serviço e retorna a resposta
         return chatService.chat(chatReq);
-    }
-    public void actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req){
-
-        List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
-        for (ChatMemoria chtMemoria : chatMemorias){
-            System.out.println("Memoria: "+chtMemoria.getText());
-            messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
-        }
-
-          /*Consultar limites de credito*/
-        System.out.println("Limite Erp: "+req.idErp());
-         Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
-        messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
-
-
     }
 
 
