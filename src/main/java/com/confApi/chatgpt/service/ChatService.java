@@ -5,6 +5,12 @@ import com.confApi.chatgpt.dto.*;
 import com.confApi.chatgpt.tools.ToolRouter;
 import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.chatMemoria.dto.ChatMemoria;
+import com.confApi.db.confManager.db.wooba.checkin.CheckinService;
+import com.confApi.db.confManager.db.wooba.checkin.dto.Checkin;
+import com.confApi.db.confManager.db.wooba.checkin.dto.Checkin72Horas;
+import com.confApi.db.confManager.db.wooba.checkin.dto.CheckinRQ;
+import com.confApi.db.confManager.db.wooba.checkin.dto.ia.CheckinIAResponse;
+import com.confApi.db.confManager.db.wooba.checkin.dto.ia.ReservaCheckInIA;
 import com.confApi.db.confManager.faturas.FaturasService;
 import com.confApi.db.confManager.faturas.dto.FaturaIA;
 import com.confApi.db.confManager.faturas.dto.FaturaSicaRQ;
@@ -25,6 +31,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -42,7 +49,10 @@ public class ChatService {
     private final ChatMemoriaService chatMemoriaService;
     private final LimitesService limitesService;
     private final FaturasService faturasService;
-
+    private final CheckinService checkinService;
+    private final ObjectMapper mapper = new ObjectMapper()
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
     public ChatResponseDTO chat(ChatRequestDTO req) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
 
@@ -148,10 +158,52 @@ public class ChatService {
         messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
 
         /* Consultar Faturas*/
-        montarMensagemFaturas(req);
-            messages.add(new ChatMessageDTO("system", "Dado do sistema: " + montarMensagemFaturas(req)));
+       // montarMensagemFaturas(req);
+            messages.add(montarMensagemFaturas(req));
 
 
+        /* Consultar Boletos*/
+        messages.add(montarMensagemFaturasBoleto(req));
+       // montarMensagemFaturasBoleto(req);
+
+        /*Consultar Checkin proximos 72 horas*/
+        messages.add(buscarCheckinsProximos(req));
+
+    }
+
+    public ChatMessageDTO buscarCheckinsProximos(ConversationRequestDTO req) {
+        String resultadoJson;
+
+        // 1) Busca lista no serviço (null-safe)
+        List<Checkin72Horas> checkinList = Optional
+                .ofNullable(checkinService.findCheckin72Horas(new CheckinRQ(req.idErp(), 2)))
+                .orElseGet(java.util.Collections::emptyList);
+
+        try {
+            // 2) Converte List<Checkin72Horas> -> List<ReservaCheckInIA> sem serializar antes
+            List<ReservaCheckInIA> rcIA = mapper.convertValue(
+                    checkinList,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<ReservaCheckInIA>>() {}
+            );
+
+            // 3) Monta o wrapper de resposta
+            CheckinIAResponse fResponse = new CheckinIAResponse();
+            fResponse.setReservaCheckInIA(
+                    Optional.ofNullable(rcIA).orElseGet(java.util.ArrayList::new)
+            );
+
+            // 4) Serializa o OBJETO (não toString)
+            resultadoJson = mapper.writeValueAsString(fResponse);
+
+           System.out.println("[buscarCheckinsProximos] itens convertidos: " + fResponse.getReservaCheckInIA().size());
+
+        } catch (Exception e) {
+            System.out.println("[buscarCheckinsProximos] Erro ao montar resposta"+ e);
+            // fallback mínimo para não quebrar o fluxo
+            resultadoJson = "{\"reservaCheckInIA\":[]}";
+        }
+
+        return new ChatMessageDTO("system", "Dado do sistema: " + resultadoJson);
     }
 
     public ChatMessageDTO montarMensagemFaturas(ConversationRequestDTO req) {
@@ -219,5 +271,80 @@ public class ChatService {
 
         // 8) Retorna já no formato de mensagem de sistema
         return new ChatMessageDTO("system", "Dado do sistema: " + resultadoJson);
+    }
+
+    public ChatMessageDTO montarMensagemFaturasBoleto(ConversationRequestDTO req) {
+        // 1) Monta o request
+        FaturaSicaRQ rq = new FaturaSicaRQ();
+        rq.setInvoiceType("TODOS");
+        rq.setEmpfat(req.idErp());
+        rq.setTipoData("TODAS");
+        rq.setDataInicio(null);
+        rq.setDataFim(null);
+        rq.setPagamento("ABERTO");
+        rq.setDisabledAFaturar(false);
+
+        // 2) Consulta serviço com fallback seguro
+        List<FaturaSicaRS> faturas = Collections.emptyList();
+        try {
+            faturas = Optional.ofNullable(faturasService.faturaSica(rq))
+                    .orElse(Collections.emptyList());
+        }catch (Exception e) {
+            System.out.println("Erro ao consultar faturas (boletos) "+e);
+
+        }
+
+        // 3) Normaliza datas (dd/MM/yyyy)
+        SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy");
+        for (FaturaSicaRS f : faturas) {
+            try {
+                if (f.getDataFatura() != null && !f.getDataFatura().isBlank()) {
+                    f.setConvertDataFatura(formatter.parse(f.getDataFatura()));
+                }
+                if (f.getDataVen() != null && !f.getDataVen().isBlank()) {
+                    f.setConvertDataVen(formatter.parse(f.getDataVen()));
+                }
+            } catch (ParseException pe) {
+                System.out.println("Falha ao parsear datas:  "+pe);
+
+            }
+        }
+
+        // 4) Remove situações indesejadas
+        final Set<String> SITUACOES_REMOVER = Set.of(
+                "Faturada Crédito",
+                "À Faturar"
+        );
+        faturas.removeIf(f -> {
+            String s = Optional.ofNullable(f.getSituacao()).orElse("").trim();
+            // compara ignorando acentuação? Aqui, apenas case-insensitive:
+            return SITUACOES_REMOVER.stream().anyMatch(x -> x.equalsIgnoreCase(s));
+        });
+
+        // 5) Mapper único e resiliente
+        ObjectMapper mapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+        // 6) Converte para o modelo da IA
+        List<FaturaIA> faturasIA = mapper.convertValue(
+                faturas,
+                new TypeReference<List<FaturaIA>>() {}
+        );
+
+        // 7) Empacota na resposta
+        FaturaResponseIA resp = new FaturaResponseIA();
+        resp.setFaturas(Optional.ofNullable(faturasIA).orElseGet(ArrayList::new));
+
+        // 8) Serializa o objeto (não usar toString())
+        String json;
+        try {
+            json = mapper.writeValueAsString(resp);
+        } catch (JsonProcessingException e) {
+            System.out.println("Erro serializando FaturaResponseIA (boletos):  "+e);
+            json = "{\"faturas\":[]}";
+        }
+
+        // 9) Retorna a mensagem pronta para o chat
+        return new ChatMessageDTO("system", "Dado do sistema (boletos): " + json);
     }
 }
