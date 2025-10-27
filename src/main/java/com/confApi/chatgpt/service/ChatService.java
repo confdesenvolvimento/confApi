@@ -5,10 +5,17 @@ import com.confApi.chatgpt.dto.*;
 import com.confApi.chatgpt.tools.ToolRouter;
 import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.chatMemoria.dto.ChatMemoria;
+import com.confApi.db.confManager.faturas.FaturasService;
+import com.confApi.db.confManager.faturas.dto.FaturaIA;
+import com.confApi.db.confManager.faturas.dto.FaturaSicaRQ;
+import com.confApi.db.confManager.faturas.dto.FaturaSicaRS;
+import com.confApi.db.confManager.faturas.dto.model.FaturaResponseIA;
 import com.confApi.hub.limites.LimitesService;
 import com.confApi.hub.limites.dto.Disponibilidade;
 import com.confApi.hub.limites.dto.LimiteCreditoRQ;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +25,11 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 // ChatService.java
 @Service
@@ -30,6 +41,7 @@ public class ChatService {
 
     private final ChatMemoriaService chatMemoriaService;
     private final LimitesService limitesService;
+    private final FaturasService faturasService;
 
     public ChatResponseDTO chat(ChatRequestDTO req) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
@@ -134,5 +146,78 @@ public class ChatService {
         System.out.println("Limite Erp: "+req.idErp());
         Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
         messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
+
+        /* Consultar Faturas*/
+        montarMensagemFaturas(req);
+            messages.add(new ChatMessageDTO("system", "Dado do sistema: " + montarMensagemFaturas(req)));
+
+
+    }
+
+    public ChatMessageDTO montarMensagemFaturas(ConversationRequestDTO req) {
+        // 1) Monta o request
+        FaturaSicaRQ faturaSicaRQ = new FaturaSicaRQ();
+        faturaSicaRQ.setInvoiceType("TODOS");
+        faturaSicaRQ.setEmpfat(req.idErp());
+        faturaSicaRQ.setTipoData("TODAS");
+        faturaSicaRQ.setDataInicio(null);
+        faturaSicaRQ.setDataFim(null);
+        faturaSicaRQ.setPagamento("ABERTO");
+        faturaSicaRQ.setDisabledAFaturar(false);
+
+        // 2) Consulta o serviço
+        List<FaturaSicaRS> faturas = Collections.emptyList();
+        try {
+            faturas = Optional.ofNullable(faturasService.faturaSica(faturaSicaRQ))
+                    .orElse(Collections.emptyList());
+        } catch (Exception e) {
+            System.out.println("Erro ao consultar faturas no faturasService "+e);
+        }
+
+        // 3) Converte/normaliza datas (dd/MM/yyyy) com null-safety
+        SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy");
+        for (FaturaSicaRS f : faturas) {
+            try {
+                if (f.getDataFatura() != null && !f.getDataFatura().isBlank()) {
+                    f.setConvertDataFatura(formatter.parse(f.getDataFatura()));
+                }
+                if (f.getDataVen() != null && !f.getDataVen().isBlank()) {
+                    f.setConvertDataVen(formatter.parse(f.getDataVen()));
+                }
+            } catch (ParseException pe) {
+                System.out.println("Falha ao parsear datas da fatura: "+pe);
+
+            }
+        }
+
+        // 4) Prepara ObjectMapper (um só), tolerante a campos extras
+        ObjectMapper mapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+        // 5) Mapeia diretamente a lista de FaturaSicaRS -> List<FaturaIA> sem serializar antes
+        List<FaturaIA> faturasIA = mapper.convertValue(
+                faturas,
+                new TypeReference<List<FaturaIA>>() {}
+        );
+
+        // 6) Monta o wrapper de resposta
+        FaturaResponseIA fResponse = new FaturaResponseIA();
+        fResponse.setFaturas(
+                Optional.ofNullable(faturasIA).orElseGet(ArrayList::new)
+        );
+
+        // 7) Serializa o objeto (não use toString())
+        String resultadoJson;
+        try {
+            resultadoJson = mapper.writeValueAsString(fResponse);
+        } catch (JsonProcessingException e) {
+          System.out.println("Erro serializando FaturaResponseIA "+e);
+
+            // fallback mínimo para não quebrar o fluxo
+            resultadoJson = "{\"faturas\":[]}";
+        }
+
+        // 8) Retorna já no formato de mensagem de sistema
+        return new ChatMessageDTO("system", "Dado do sistema: " + resultadoJson);
     }
 }
