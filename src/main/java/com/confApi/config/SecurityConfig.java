@@ -34,13 +34,13 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
         //System.out.println("SecurityConfig.Configure3");
         return new JwtAuthFilter();
     }
-
+/*
     @Override
     protected void configure(AuthenticationManagerBuilder auth) throws Exception {
         // TODO Auto-generated method stub
         //System.out.println("SecurityConfig.Configure1");
         auth.userDetailsService(usuarioService).passwordEncoder(passwordEncoder());
-    }
+    }*/
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {

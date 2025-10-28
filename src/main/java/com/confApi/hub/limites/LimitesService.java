@@ -1,5 +1,6 @@
 package com.confApi.hub.limites;
 
+import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.confApp.dto.SandBoxResp;
 import com.confApi.config.UrlConfig;
@@ -40,7 +41,7 @@ public class LimitesService {
     public Disponibilidade consultaLimiteApi(LimiteCreditoRQ limiteCreditoRQ) {
         try {
             // 1) Token
-            SandBoxResp token = confAppService.token();
+            ConfAppResp token = confAppService.token();
     System.out.println("URL: "+UrlConfig.URL_CONFIANCA_HUB+" - "+API_ACTION);
             // 2) URL
             String url = UriComponentsBuilder
@@ -88,7 +89,7 @@ public class LimitesService {
     public StatusResponse checkLimiteApi(LimiteCreditoRQ limiteCreditoRQ) {
         try {
             // 1) Token
-            SandBoxResp token = confAppService.token();
+            ConfAppResp token = confAppService.token();
 
             // 2) URL com path variable
             String url = UriComponentsBuilder

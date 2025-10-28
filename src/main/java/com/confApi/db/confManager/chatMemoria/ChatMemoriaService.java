@@ -1,5 +1,6 @@
 package com.confApi.db.confManager.chatMemoria;
 
+import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.confApp.dto.SandBoxResp;
 import com.confApi.config.UrlConfig;
@@ -31,7 +32,7 @@ public class ChatMemoriaService {
     public List<ChatMemoria> findByBase(String base) {
         try {
             // Obtém token (ajuste se usar outro service de autenticação)
-            SandBoxResp token = confAppService.token();
+            ConfAppResp token = confAppService.token();
 
             // Monta URL
             String urlBase = UrlConfig.URL_CONFIANCA_MANAGER;

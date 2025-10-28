@@ -1,5 +1,8 @@
 package com.confApi.autenticador;
 
+import com.confApi.confApp.ConfAppDto;
+import com.confApi.confApp.ConfAppResp;
+import com.confApi.confApp.ConfAppService;
 import com.confApi.dto.CredenciaisDTO;
 import com.confApi.dto.TokenDTO;
 import com.confApi.entity.Usuario;
@@ -45,9 +48,11 @@ public class UsuarioRest {
     }
 
     @PostMapping("/auth2")
-    public TokenDTO autenticar2(@RequestBody CredenciaisDTO credencial) {
-        System.out.println("teste login : "+usuarioRepo.findByLogin(credencial.getLogin()));
-        return autenticar(credencial);
+    public ConfAppResp autenticar2(@RequestBody CredenciaisDTO credencial) {
+        System.out.println(credencial.getLogin());
+        ConfAppResp tokenResp = new ConfAppService().token();
+        System.out.println(tokenResp);
+        return tokenResp;
     }
 
 
