@@ -11,6 +11,11 @@ import com.confApi.db.confManager.db.wooba.checkin.dto.Checkin72Horas;
 import com.confApi.db.confManager.db.wooba.checkin.dto.CheckinRQ;
 import com.confApi.db.confManager.db.wooba.checkin.dto.ia.CheckinIAResponse;
 import com.confApi.db.confManager.db.wooba.checkin.dto.ia.ReservaCheckInIA;
+import com.confApi.db.confManager.db.wooba.vendas.TurVendasService;
+import com.confApi.db.confManager.db.wooba.vendas.dto.RQConsultaVendasDto;
+import com.confApi.db.confManager.db.wooba.vendas.dto.VendaAereaExibicaoResponse;
+import com.confApi.db.confManager.db.wooba.vendas.dto.VendasAereasExibicao;
+import com.confApi.db.confManager.db.wooba.vendas.dto.VendasAereasExibicaoIA;
 import com.confApi.db.confManager.faturas.FaturasService;
 import com.confApi.db.confManager.faturas.dto.FaturaIA;
 import com.confApi.db.confManager.faturas.dto.FaturaSicaRQ;
@@ -50,14 +55,17 @@ public class ChatService {
     private final LimitesService limitesService;
     private final FaturasService faturasService;
     private final CheckinService checkinService;
+    private final TurVendasService turVendasService;
+
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
+
     public ChatResponseDTO chat(ChatRequestDTO req) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
 
         // monta body para /v1/chat/completions
-        Map<String,Object> body = new HashMap<>();
+        Map<String, Object> body = new HashMap<>();
         body.put("model", model);
         body.put("messages", req.messages().stream()
                 .map(m -> Map.of("role", m.role(), "content", m.content()))
@@ -93,8 +101,9 @@ public class ChatService {
                 for (JsonNode n : tc) {
                     String name = n.path("function").path("name").asText();
                     String argsStr = n.path("function").path("arguments").asText("{}");
-                    Map<String,Object> args = new ObjectMapper().readValue(argsStr, new TypeReference<>(){});
-                    Map<String,Object> result = tools.execute(name, args);
+                    Map<String, Object> args = new ObjectMapper().readValue(argsStr, new TypeReference<>() {
+                    });
+                    Map<String, Object> result = tools.execute(name, args);
                     toolCalls.add(new ToolCallDTO(name, result));
                 }
             }
@@ -107,7 +116,7 @@ public class ChatService {
         // faz chamada SSE (stream=true) e emite os deltas como texto
         return Flux.create(sink -> {
             try {
-                Map<String,Object> body = new HashMap<>();
+                Map<String, Object> body = new HashMap<>();
                 body.put("model", Optional.ofNullable(req.model()).orElse(props.getChatModel()));
                 body.put("stream", true);
                 body.put("messages", req.messages().stream()
@@ -122,8 +131,13 @@ public class ChatService {
                         .build();
 
                 client.newCall(request).enqueue(new Callback() {
-                    @Override public void onFailure(Call call, IOException e) { sink.error(e); }
-                    @Override public void onResponse(Call call, Response response) throws IOException {
+                    @Override
+                    public void onFailure(Call call, IOException e) {
+                        sink.error(e);
+                    }
+
+                    @Override
+                    public void onResponse(Call call, Response response) throws IOException {
                         try (ResponseBody rb = response.body()) {
                             BufferedSource src = rb.source();
                             while (!src.exhausted()) {
@@ -144,32 +158,78 @@ public class ChatService {
         });
     }
 
-    public void actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req){
+    public void actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req) {
 
         List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
-        for (ChatMemoria chtMemoria : chatMemorias){
-            System.out.println("Memoria: "+chtMemoria.getText());
+        for (ChatMemoria chtMemoria : chatMemorias) {
+            System.out.println("Memoria: " + chtMemoria.getText());
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
         }
 
         /*Consultar limites de credito*/
-        System.out.println("Limite Erp: "+req.idErp());
+        System.out.println("Limite Erp: " + req.idErp());
         Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
         messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
 
         /* Consultar Faturas*/
-       // montarMensagemFaturas(req);
-            messages.add(montarMensagemFaturas(req));
+        // montarMensagemFaturas(req);
+        messages.add(montarMensagemFaturas(req));
 
 
         /* Consultar Boletos*/
         messages.add(montarMensagemFaturasBoleto(req));
-       // montarMensagemFaturasBoleto(req);
+        // montarMensagemFaturasBoleto(req);
 
         /*Consultar Checkin proximos 72 horas*/
         messages.add(buscarCheckinsProximos(req));
 
+        /*Consultar Ultimas Vendas*/
+        messages.add(listarUltimasVendas(req));
     }
+
+    public ChatMessageDTO listarUltimasVendas(ConversationRequestDTO req) {
+        try {
+            // Monta filtro
+            RQConsultaVendasDto filtro = new RQConsultaVendasDto();
+            filtro.setUsuario(req.codgUsuario().intValue());
+
+           // filtro.setUsuario(58467);
+            filtro.setIsUltimasVendas(true);
+
+            // Chama serviço e protege contra null
+            List<VendasAereasExibicao> vendas = turVendasService.findVendasWoobaByParam(filtro);
+            if (vendas == null) {
+                vendas = java.util.Collections.emptyList();
+            }
+
+            // Normaliza sigla da LATAM (JJ -> LA)
+            for (VendasAereasExibicao v : vendas) {
+                String sigla = v.getSiglaCia();
+                if (sigla != null && sigla.equalsIgnoreCase("JJ")) {
+                    v.setSiglaCia("LA");
+                }
+            }
+            VendaAereaExibicaoResponse fResponse = new VendaAereaExibicaoResponse();
+            // Converte para IA sem serializar para String
+            List<VendasAereasExibicaoIA> vendasIA = mapper.convertValue(
+                    vendas,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<VendasAereasExibicaoIA>>() {}
+            );
+
+            // Garante lista em fResponse e adiciona resultados
+            if (fResponse.getVendas() == null) {
+                fResponse.setVendas(new java.util.ArrayList<>());
+            }
+            fResponse.getVendas().addAll(vendasIA);
+
+            // Retorna o objeto preenchido
+            return new ChatMessageDTO("system", "Dado do sistema: " + fResponse.toString());
+
+        } catch (Exception e) {
+            return new ChatMessageDTO("system", "Dado do sistema: " + "Não foi possivel listar as vendas.");
+        }
+    }
+
 
     public ChatMessageDTO buscarCheckinsProximos(ConversationRequestDTO req) {
         String resultadoJson;
@@ -183,7 +243,8 @@ public class ChatService {
             // 2) Converte List<Checkin72Horas> -> List<ReservaCheckInIA> sem serializar antes
             List<ReservaCheckInIA> rcIA = mapper.convertValue(
                     checkinList,
-                    new com.fasterxml.jackson.core.type.TypeReference<List<ReservaCheckInIA>>() {}
+                    new com.fasterxml.jackson.core.type.TypeReference<List<ReservaCheckInIA>>() {
+                    }
             );
 
             // 3) Monta o wrapper de resposta
@@ -195,10 +256,10 @@ public class ChatService {
             // 4) Serializa o OBJETO (não toString)
             resultadoJson = mapper.writeValueAsString(fResponse);
 
-           System.out.println("[buscarCheckinsProximos] itens convertidos: " + fResponse.getReservaCheckInIA().size());
+            System.out.println("[buscarCheckinsProximos] itens convertidos: " + fResponse.getReservaCheckInIA().size());
 
         } catch (Exception e) {
-            System.out.println("[buscarCheckinsProximos] Erro ao montar resposta"+ e);
+            System.out.println("[buscarCheckinsProximos] Erro ao montar resposta" + e);
             // fallback mínimo para não quebrar o fluxo
             resultadoJson = "{\"reservaCheckInIA\":[]}";
         }
@@ -223,7 +284,7 @@ public class ChatService {
             faturas = Optional.ofNullable(faturasService.faturaSica(faturaSicaRQ))
                     .orElse(Collections.emptyList());
         } catch (Exception e) {
-            System.out.println("Erro ao consultar faturas no faturasService "+e);
+            System.out.println("Erro ao consultar faturas no faturasService " + e);
         }
 
         // 3) Converte/normaliza datas (dd/MM/yyyy) com null-safety
@@ -237,7 +298,7 @@ public class ChatService {
                     f.setConvertDataVen(formatter.parse(f.getDataVen()));
                 }
             } catch (ParseException pe) {
-                System.out.println("Falha ao parsear datas da fatura: "+pe);
+                System.out.println("Falha ao parsear datas da fatura: " + pe);
 
             }
         }
@@ -249,7 +310,8 @@ public class ChatService {
         // 5) Mapeia diretamente a lista de FaturaSicaRS -> List<FaturaIA> sem serializar antes
         List<FaturaIA> faturasIA = mapper.convertValue(
                 faturas,
-                new TypeReference<List<FaturaIA>>() {}
+                new TypeReference<List<FaturaIA>>() {
+                }
         );
 
         // 6) Monta o wrapper de resposta
@@ -263,7 +325,7 @@ public class ChatService {
         try {
             resultadoJson = mapper.writeValueAsString(fResponse);
         } catch (JsonProcessingException e) {
-          System.out.println("Erro serializando FaturaResponseIA "+e);
+            System.out.println("Erro serializando FaturaResponseIA " + e);
 
             // fallback mínimo para não quebrar o fluxo
             resultadoJson = "{\"faturas\":[]}";
@@ -289,8 +351,8 @@ public class ChatService {
         try {
             faturas = Optional.ofNullable(faturasService.faturaSica(rq))
                     .orElse(Collections.emptyList());
-        }catch (Exception e) {
-            System.out.println("Erro ao consultar faturas (boletos) "+e);
+        } catch (Exception e) {
+            System.out.println("Erro ao consultar faturas (boletos) " + e);
 
         }
 
@@ -305,7 +367,7 @@ public class ChatService {
                     f.setConvertDataVen(formatter.parse(f.getDataVen()));
                 }
             } catch (ParseException pe) {
-                System.out.println("Falha ao parsear datas:  "+pe);
+                System.out.println("Falha ao parsear datas:  " + pe);
 
             }
         }
@@ -328,7 +390,8 @@ public class ChatService {
         // 6) Converte para o modelo da IA
         List<FaturaIA> faturasIA = mapper.convertValue(
                 faturas,
-                new TypeReference<List<FaturaIA>>() {}
+                new TypeReference<List<FaturaIA>>() {
+                }
         );
 
         // 7) Empacota na resposta
@@ -340,7 +403,7 @@ public class ChatService {
         try {
             json = mapper.writeValueAsString(resp);
         } catch (JsonProcessingException e) {
-            System.out.println("Erro serializando FaturaResponseIA (boletos):  "+e);
+            System.out.println("Erro serializando FaturaResponseIA (boletos):  " + e);
             json = "{\"faturas\":[]}";
         }
 
