@@ -2,6 +2,7 @@ package com.confApi.confApp;
 
 import com.confApi.confApp.dto.SandBoxDto;
 import com.confApi.confApp.dto.SandBoxResp;
+import com.confApi.config.UrlConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.*;
@@ -15,20 +16,20 @@ import java.util.Arrays;
 
 @Service
 public class ConfAppService {
-    private final String urlSandBox = "http://192.168.171.45/SandBox/user/auth";
+    private final String urlConfApp = UrlConfig.URL_CONFIANCA_CONFAPP + "user/auth";
 
-    public SandBoxResp token() {
+    public ConfAppResp token() {
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
         headers.setContentType(MediaType.APPLICATION_JSON);
-        SandBoxDto sandBoxDto = new SandBoxDto();
-        sandBoxDto.setLogin("api.limits");
-        sandBoxDto.setSenha("@Limits2023");
-        HttpEntity<SandBoxDto> requestEntity = new HttpEntity<SandBoxDto>(sandBoxDto, headers);
-        ResponseEntity<SandBoxResp> responseEntity = null;
+        ConfAppDto confAppDto = new ConfAppDto();
+        confAppDto.setLogin("api.confApi");
+        confAppDto.setSenha("#C#nf@28");
+        HttpEntity<ConfAppDto> requestEntity = new HttpEntity<ConfAppDto>(confAppDto, headers);
+        ResponseEntity<ConfAppResp> responseEntity = null;
         try {
             // Faz a solicitação HTTP usando RestTemplate
-            responseEntity = new RestTemplate().exchange(urlSandBox, HttpMethod.POST, requestEntity, SandBoxResp.class);
+            responseEntity = new RestTemplate().exchange(urlConfApp, HttpMethod.POST, requestEntity, ConfAppResp.class);
         } catch (HttpClientErrorException.BadRequest ex) {
             // Captura a exceção e lança uma exceção personalizada com a mensagem de erro
             String responseBody = ex.getResponseBodyAsString();
