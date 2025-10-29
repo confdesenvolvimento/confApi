@@ -1,0 +1,80 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <title>Demystifying Email Design</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>
+        *{ font-family: 'Quicksand', sans-serif;}
+
+        .content-table{
+            border-collapse: collapse;
+            margin: 25px 0;
+            font-size: 0.9em;
+            min-width: 400px;
+            border-radius: 5px 5px 0 0;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.15)
+        }
+
+        .content-table thead tr{
+            background-color: #98d2e9;
+            color: white;
+            text-align: left;
+            font-weight: bold;
+        }
+        .content-table th, .content-table td{
+            padding: 12px 15px;
+        }
+        .content-table tbody tr{
+            border-bottom: 1px solid #dddddd;
+        }
+        .content-table tbody tr:nth-of-type(even){
+            background-color: #f3f3f3;
+        }
+        .content-table tbody tr:last-of-type{
+            border-bottom: 2px solid #009879;
+        }
+
+    </style>
+</head>
+<body style="margin: 0; padding: 0;">
+
+
+
+<div style="border: 1px solid #ccc; padding: 5px; margin-bottom: 20px;">
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="width: 20%; text-align: center; vertical-align: middle; padding: 5px; border-right: 1px solid #e0e0e0;">
+                <img src="{{URL_LOGO_AGENCIA}}"
+                     alt="Logo da Agência"
+                     style="max-width: 150px; max-height: 40px;" />
+            </td>
+
+            <td style="width: 60%; text-align: center; vertical-align: middle; padding: 5px;">
+
+                <h1 style="margin: 0; font-size: 14px; font-weight: bold; color: #333333;">
+                    Reserva Aérea - Plano de Viagem
+                </h1>
+
+                <div style="margin-top: 8px; font-size: 10px; color: #555;">
+                    <p style="margin: 3px 0; font-style: italic;">
+                        Usuário: <span>{{USUARIO_NOME}}</span>
+                    </p>
+                    <p style="margin: 3px 0; font-style: italic;">
+                        E-mail: <span>{{USUARIO_EMAIL}}</span>
+                        <br/> Telefone: <span>{{USUARIO_TELEFONE}}</span>
+                    </p>
+                </div>
+            </td>
+
+            <td style="width: 20%; text-align: center; vertical-align: middle; padding: 5px; border-left: 1px solid #e0e0e0;">
+                <img src="{{URL_LOGO_CIA}}"
+                     alt="Logo da Cia Aérea"
+                     style="max-width: 60px; max-height: 40px;" />
+            </td>
+        </tr>
+    </table>
+</div>
+</body>
+</html>
