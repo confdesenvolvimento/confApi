@@ -1,21 +1,24 @@
 package com.confApi.chatgpt.service;
 
+import com.confApi.chatgpt.agentia.AgentIA;
 import com.confApi.chatgpt.config.OpenAIProperties;
 import com.confApi.chatgpt.dto.*;
 import com.confApi.chatgpt.tools.ToolRouter;
 import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.chatMemoria.dto.ChatMemoria;
-import com.confApi.db.confManager.db.wooba.checkin.CheckinService;
-import com.confApi.db.confManager.db.wooba.checkin.dto.Checkin;
-import com.confApi.db.confManager.db.wooba.checkin.dto.Checkin72Horas;
-import com.confApi.db.confManager.db.wooba.checkin.dto.CheckinRQ;
-import com.confApi.db.confManager.db.wooba.checkin.dto.ia.CheckinIAResponse;
-import com.confApi.db.confManager.db.wooba.checkin.dto.ia.ReservaCheckInIA;
-import com.confApi.db.confManager.db.wooba.vendas.TurVendasService;
-import com.confApi.db.confManager.db.wooba.vendas.dto.RQConsultaVendasDto;
-import com.confApi.db.confManager.db.wooba.vendas.dto.VendaAereaExibicaoResponse;
-import com.confApi.db.confManager.db.wooba.vendas.dto.VendasAereasExibicao;
-import com.confApi.db.confManager.db.wooba.vendas.dto.VendasAereasExibicaoIA;
+import com.confApi.db.confManager.familia.FamiliaService;
+import com.confApi.db.confManager.familia.dto.FamiliaCompanhia;
+import com.confApi.db.confManager.familia.dto.ia.FamiliaIAResponse;
+import com.confApi.db.wooba.checkin.CheckinService;
+import com.confApi.db.wooba.checkin.dto.Checkin72Horas;
+import com.confApi.db.wooba.checkin.dto.CheckinRQ;
+import com.confApi.db.wooba.checkin.dto.ia.CheckinIAResponse;
+import com.confApi.db.wooba.checkin.dto.ia.ReservaCheckInIA;
+import com.confApi.db.wooba.vendas.TurVendasService;
+import com.confApi.db.wooba.vendas.dto.RQConsultaVendasDto;
+import com.confApi.db.wooba.vendas.dto.VendaAereaExibicaoResponse;
+import com.confApi.db.wooba.vendas.dto.VendasAereasExibicao;
+import com.confApi.db.wooba.vendas.dto.VendasAereasExibicaoIA;
 import com.confApi.db.confManager.faturas.FaturasService;
 import com.confApi.db.confManager.faturas.dto.FaturaIA;
 import com.confApi.db.confManager.faturas.dto.FaturaSicaRQ;
@@ -36,12 +39,9 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 // ChatService.java
 @Service
@@ -56,6 +56,8 @@ public class ChatService {
     private final FaturasService faturasService;
     private final CheckinService checkinService;
     private final TurVendasService turVendasService;
+    private final FamiliaService familiaService;
+    private final AgentIA agentIA;
 
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
@@ -159,32 +161,68 @@ public class ChatService {
     }
 
     public void actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req) {
+        String keyword = "desconhecido";
+        try {
+            keyword = conversationAgentIA(req.input());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println("KEYWORD AGENTIA: "+keyword);
+/*
+*   - "limites"
+            - "faturas"
+            - "boletos"
+            - "checkin"
+            - "ultimas_vendas"
+            - "familias"
+* */
+        if (keyword.equals("desconhecido")) {
+            List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
+            for (ChatMemoria chtMemoria : chatMemorias) {
+                System.out.println("Memoria: " + chtMemoria.getText());
+                messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
+            }
+        }
+        if (keyword.equals("limites")) {
+            /*Consultar limites de credito*/
+            System.out.println("Limite Erp: " + req.idErp());
+            Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
+            messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
 
-        List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
-        for (ChatMemoria chtMemoria : chatMemorias) {
-            System.out.println("Memoria: " + chtMemoria.getText());
-            messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
+        }
+        if (keyword.equals("faturas")) {
+            /* Consultar Faturas*/
+            // montarMensagemFaturas(req);
+            messages.add(montarMensagemFaturas(req));
         }
 
-        /*Consultar limites de credito*/
-        System.out.println("Limite Erp: " + req.idErp());
-        Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
-        messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
+        if (keyword.equals("boletos")) {
+            /* Consultar Boletos*/
+            messages.add(montarMensagemFaturasBoleto(req));
+            // montarMensagemFaturasBoleto(req);
+        }
+        if (keyword.equals("checkin")) {
 
-        /* Consultar Faturas*/
-        // montarMensagemFaturas(req);
-        messages.add(montarMensagemFaturas(req));
+            /*Consultar Checkin proximos 72 horas*/
+            messages.add(buscarCheckinsProximos(req));
+        }
+        if (keyword.equals("ultimas_vendas")) {
 
+            /*Consultar Ultimas Vendas*/
+            messages.add(listarUltimasVendas(req));
+        }
+        if (keyword.contains("familias")) {
+            /*Consultar Familias*/
+            String[]  cia = keyword.split(";");
+            messages.add(listarFamilias(req, cia[1]));
+        }
+    }
 
-        /* Consultar Boletos*/
-        messages.add(montarMensagemFaturasBoleto(req));
-        // montarMensagemFaturasBoleto(req);
-
-        /*Consultar Checkin proximos 72 horas*/
-        messages.add(buscarCheckinsProximos(req));
-
-        /*Consultar Ultimas Vendas*/
-        messages.add(listarUltimasVendas(req));
+    public ChatMessageDTO listarFamilias(ConversationRequestDTO req, String cia) {
+        List<FamiliaCompanhia> familiaCompanhiaList = familiaService.findByNomeOuIataCia(cia);
+        FamiliaIAResponse familiaIAResponse = new FamiliaIAResponse();
+        familiaIAResponse.setFamiliaCompanhias(familiaCompanhiaList);
+        return new ChatMessageDTO("system", "Dado do sistema: " + familiaIAResponse.toString());
     }
 
     public ChatMessageDTO listarUltimasVendas(ConversationRequestDTO req) {
@@ -193,7 +231,7 @@ public class ChatService {
             RQConsultaVendasDto filtro = new RQConsultaVendasDto();
             filtro.setUsuario(req.codgUsuario().intValue());
 
-           // filtro.setUsuario(58467);
+            // filtro.setUsuario(58467);
             filtro.setIsUltimasVendas(true);
 
             // Chama serviço e protege contra null
@@ -213,7 +251,8 @@ public class ChatService {
             // Converte para IA sem serializar para String
             List<VendasAereasExibicaoIA> vendasIA = mapper.convertValue(
                     vendas,
-                    new com.fasterxml.jackson.core.type.TypeReference<List<VendasAereasExibicaoIA>>() {}
+                    new com.fasterxml.jackson.core.type.TypeReference<List<VendasAereasExibicaoIA>>() {
+                    }
             );
 
             // Garante lista em fResponse e adiciona resultados
@@ -409,5 +448,70 @@ public class ChatService {
 
         // 9) Retorna a mensagem pronta para o chat
         return new ChatMessageDTO("system", "Dado do sistema (boletos): " + json);
+    }
+
+    public String conversationAgentIA(String input) throws IOException {
+        // 1) Mensagem de sistema com o perfil do AgentIA
+        ChatMessageDTO system = new ChatMessageDTO("system", profileAgentIA());
+
+        // 2) Cria o histórico (somente system + user)
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        messages.add(system);
+        messages.add(new ChatMessageDTO("user", input));
+
+        // 3) Metadados básicos (opcional, mas mantém estrutura uniforme)
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("agent", "AgentIA");
+        metadata.put("timestamp", new Date());
+
+        // 4) Monta o ChatRequestDTO (sem precisar de req externo)
+        ChatRequestDTO chatReq = new ChatRequestDTO(
+                messages,
+                null,        // usa modelo padrão do ChatService (ex.: GPT-4o-mini)
+                false,       // streaming desligado
+                List.of(),   // sem ferramentas
+                metadata
+        );
+
+        // 5) Faz a chamada ao ChatService e captura a resposta
+        ChatResponseDTO response = chat(chatReq);
+
+        // 6) Retorna apenas o conteúdo textual (keyword)
+        if (response != null && response.content() != null && !response.content().isEmpty()) {
+            return response.content();
+        }
+
+        return "desconhecido";
+    }
+
+    private String profileAgentIA() {
+        return """
+            Você é o **AgentIA**, um agente auxiliar da Confiança Consolidadora.
+            Sua função é analisar a frase do usuário, entender sua intenção e retornar apenas
+            a *keyword* correspondente ao método que deve ser executado pela IA principal.
+
+            O sistema possui dados sobre:
+            - Agências de viagens e seus usuários;
+            - Companhias aéreas e famílias tarifárias;
+            - Formas de pagamento e limites de crédito;
+            - Faturas e boletos;
+            - Check-ins e embarques próximos (72h);
+            - Vendas e reservas recentes.
+
+            Responda **somente com a keyword da intenção**, sem explicações.
+            Palavras-chave possíveis:
+            - "limites"
+            - "faturas"
+            - "boletos"
+            - "checkin"
+            - "ultimas_vendas"
+            - "familias"
+
+            Exemplos:
+            - Pergunta: "Quais são meus limites de crédito?" → Resposta: "limites"
+            - Pergunta: "Me mostre as últimas vendas" → Resposta: "ultimas_vendas"
+            - Pergunta: "Quero ver as famílias da GOL" → Resposta: "familias;GOL"
+            - Pergunta fora do contexto → Resposta: "desconhecido"
+            """;
     }
 }
