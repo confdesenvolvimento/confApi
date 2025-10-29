@@ -1,6 +1,6 @@
 package com.confApi.chatgpt.service;
 
-import com.confApi.chatgpt.agentia.AgentIA;
+
 import com.confApi.chatgpt.config.OpenAIProperties;
 import com.confApi.chatgpt.dto.*;
 import com.confApi.chatgpt.tools.ToolRouter;
@@ -57,7 +57,7 @@ public class ChatService {
     private final CheckinService checkinService;
     private final TurVendasService turVendasService;
     private final FamiliaService familiaService;
-    private final AgentIA agentIA;
+
 
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
