@@ -1,6 +1,7 @@
 package com.confApi.db.confManager.db.wooba.hoteis;
 
 
+import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.confApp.dto.SandBoxResp;
 import com.confApi.config.UrlConfig;
@@ -119,7 +120,7 @@ public class TurHoteisService {
         headers.setAccept(List.of(MediaType.APPLICATION_JSON));
 
         try {
-            SandBoxResp token = confAppService.token();
+            ConfAppResp token = confAppService.token();
             if (token != null && token.getToken() != null && !token.getToken().isBlank()) {
                 headers.setBearerAuth(token.getToken());
                 LOG.info("[TurHoteisService] Token Bearer adicionado com sucesso.");

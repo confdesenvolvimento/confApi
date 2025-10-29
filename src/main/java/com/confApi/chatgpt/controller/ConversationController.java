@@ -30,7 +30,8 @@ public class ConversationController {
     @PostMapping(value = "/chat", produces = MediaType.APPLICATION_JSON_VALUE)
     public ChatResponseDTO chat(@Valid @RequestBody ConversationRequestDTO req) throws IOException {
         // 1) Mensagem de sistema baseada na identificação (perfil)
-        String sys = profiles.systemPrompt(req.identificacao(), req.codgAgencia(), req.codgUsuario());
+        //req.identificacao()  nao estou usando por enquanto
+        String sys = profiles.systemPrompt("confia", req.codgAgencia(), req.codgUsuario());
         ChatMessageDTO system = new ChatMessageDTO("system", sys);
 
         // 2) Histórico (se vier) + dados adicionais do sistema + input atual

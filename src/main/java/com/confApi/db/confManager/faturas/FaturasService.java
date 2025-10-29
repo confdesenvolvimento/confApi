@@ -1,6 +1,7 @@
 package com.confApi.db.confManager.faturas;
 
 
+import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.confApp.dto.SandBoxResp;
 import com.confApi.config.UrlConfig;
@@ -53,7 +54,7 @@ public class FaturasService  {
     private HttpHeaders defaultHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        SandBoxResp token = confAppService.token();
+        ConfAppResp token = confAppService.token();
         headers.setBearerAuth(token.getToken());
         return headers;
     }
