@@ -16,7 +16,7 @@ import java.util.Arrays;
 
 @Service
 public class ConfAppService {
-    private final String urlConfApp = UrlConfig.URL_CONFIANCA_CONFAPP + "user/auth";
+    private final String urlConfApp = "user/auth";
 
     public ConfAppResp token() {
         HttpHeaders headers = new HttpHeaders();
@@ -29,7 +29,7 @@ public class ConfAppService {
         ResponseEntity<ConfAppResp> responseEntity = null;
         try {
             // Faz a solicitação HTTP usando RestTemplate
-            responseEntity = new RestTemplate().exchange(urlConfApp, HttpMethod.POST, requestEntity, ConfAppResp.class);
+            responseEntity = new RestTemplate().exchange(UrlConfig.URL_CONFIANCA_CONFAPP+urlConfApp, HttpMethod.POST, requestEntity, ConfAppResp.class);
         } catch (HttpClientErrorException.BadRequest ex) {
             // Captura a exceção e lança uma exceção personalizada com a mensagem de erro
             String responseBody = ex.getResponseBodyAsString();
