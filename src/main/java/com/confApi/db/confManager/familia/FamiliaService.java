@@ -47,8 +47,8 @@ public class FamiliaService implements Serializable {
 
     public List<FamiliaCompanhia> findByNomeOuIataCia(String valor) {
         List<FamiliaCompanhia> familiaCompanhias = new ArrayList<>();
-        String url = UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME+"/"+API_ACTION_NAME_CIA+"/"+valor;
-
+        String url = UrlConfig.URL_CONFIANCA_MANAGER + "familiaCompanhia"+"/"+"findByCia"+"/"+valor;
+    System.out.println("URL FAMILIAS: "+url);
         try {
             ResponseEntity<String> response = restTemplate.exchange(
                     url,

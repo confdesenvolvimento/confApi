@@ -31,12 +31,14 @@ public class ConversationController {
     public ChatResponseDTO chat(@Valid @RequestBody ConversationRequestDTO req) throws IOException {
         // 1) Mensagem de sistema baseada na identificação (perfil)
         //req.identificacao()  nao estou usando por enquanto
-        String sys = profiles.systemPrompt("confia", req.codgAgencia(), req.codgUsuario());
-        ChatMessageDTO system = new ChatMessageDTO("system", sys);
-
-        // 2) Histórico (se vier) + dados adicionais do sistema + input atual
         List<ChatMessageDTO> messages = new ArrayList<>();
-        messages.add(system);
+        if (req.history().isEmpty()) {
+            String sys = profiles.systemPrompt("confia", req.codgAgencia(), req.codgUsuario());
+            ChatMessageDTO system = new ChatMessageDTO("system", sys);
+
+            // 2) Histórico (se vier) + dados adicionais do sistema + input atual
+            messages.add(system);
+        }
 
         // 2.1) Histórico já tokenizado vindo do front
         if (req.history() != null && !req.history().isEmpty()) {
