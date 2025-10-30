@@ -75,7 +75,18 @@ public class ConversationController {
         );
 
         // 5) Chama o serviço e retorna a resposta
-        return chatService.chat(chatReq);
+        ChatResponseDTO charResp = chatService.chat(chatReq, req.keywords(), messages);
+
+
+        if (req.keywords() != null && !req.keywords().isEmpty()) {
+            req.keywords().removeIf(Objects::isNull);
+            for (String kw : req.keywords()) {
+                if (!charResp.keywords().contains(kw)) {
+                    charResp.keywords().add(kw);
+                }
+            }
+        }
+        return charResp;
     }
 
 

@@ -6,5 +6,7 @@ public record ChatResponseDTO(
         String id,
         String content,
         List<ToolCallDTO> toolCalls,
-        ChatAudioDTO audio){
+        ChatAudioDTO audio,
+        List<String> keywords,
+        List<ChatMessageDTO> history) {
 }

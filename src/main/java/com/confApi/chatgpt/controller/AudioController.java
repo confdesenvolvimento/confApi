@@ -100,7 +100,7 @@ public class AudioController {
                 metadata
         );
 
-        ChatResponseDTO chat = chatService.chat(chatReq);
+        ChatResponseDTO chat = chatService.chat(chatReq, request.keywords(), request.history());
 
         byte[] bytes = null;
         ChatAudioDTO audio = null;
@@ -111,8 +111,8 @@ public class AudioController {
             String b64 = java.util.Base64.getEncoder().encodeToString(bytes);
             audio = new ChatAudioDTO("mp3", "audio/mpeg", b64, bytes.length);
         }
-
-        ChatResponseDTO body = new ChatResponseDTO(chat.id(), chat.content(), chat.toolCalls(), audio);
+/*NETAO AJUSTARMOS AQUI*/
+        ChatResponseDTO body = new ChatResponseDTO(chat.id(), chat.content(), chat.toolCalls(), audio, null, null);
 
         HttpHeaders headers = new HttpHeaders();
         headers.add("X-Transcript", transcript);

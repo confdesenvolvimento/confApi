@@ -4,6 +4,9 @@ package com.confApi.chatgpt.service;
 import com.confApi.chatgpt.config.OpenAIProperties;
 import com.confApi.chatgpt.dto.*;
 import com.confApi.chatgpt.tools.ToolRouter;
+import com.confApi.db.confManager.alertaTarifa.AlertaTarifaService;
+import com.confApi.db.confManager.alertaTarifa.dto.AlertaTarifaDTO;
+import com.confApi.db.confManager.alertaTarifa.dto.ia.AlertaTarifaIAResponse;
 import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.chatMemoria.dto.ChatMemoria;
 import com.confApi.db.confManager.familia.FamiliaService;
@@ -57,13 +60,14 @@ public class ChatService {
     private final CheckinService checkinService;
     private final TurVendasService turVendasService;
     private final FamiliaService familiaService;
+    private final AlertaTarifaService alertaTarifaService;
 
 
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
 
-    public ChatResponseDTO chat(ChatRequestDTO req) throws IOException {
+    public ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords,  List<ChatMessageDTO> history) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
 
         // monta body para /v1/chat/completions
@@ -110,7 +114,7 @@ public class ChatService {
                 }
             }
 
-            return new ChatResponseDTO(root.path("id").asText(), content, toolCalls, null);
+            return new ChatResponseDTO(root.path("id").asText(), content, toolCalls, null, keywords, history);
         }
     }
 
@@ -167,7 +171,8 @@ public class ChatService {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        System.out.println("KEYWORD AGENTIA: "+keyword);
+
+        System.out.println("KEYWORD AGENTIA: " + keyword);
 /*
 *   - "limites"
             - "faturas"
@@ -176,45 +181,59 @@ public class ChatService {
             - "ultimas_vendas"
             - "familias"
 * */
-        if (keyword.equals("desconhecido")) {
+
+
+        if (keyword.equals("alertas") && !req.keywords().contains(keyword)) {
+            List<AlertaTarifaDTO> alertaTarifaDTOList = alertaTarifaService.listarPorUsuario(req.codgUsuario().intValue());
+            AlertaTarifaIAResponse alertaTarifaIAResponse = new AlertaTarifaIAResponse();
+            alertaTarifaIAResponse.getTarifas().addAll(alertaTarifaDTOList);
+            System.out.println("AlertaTarifaDTO: " + alertaTarifaIAResponse.toString());
+            messages.add(new ChatMessageDTO("system", "Dado do sistema: " + alertaTarifaIAResponse.toString()));
+        }
+
+        if (keyword.equals("desconhecido") && !req.keywords().contains(keyword)) {
             List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
             for (ChatMemoria chtMemoria : chatMemorias) {
                 System.out.println("Memoria: " + chtMemoria.getText());
                 messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
             }
         }
-        if (keyword.equals("limites")) {
+        if (keyword.equals("limites") && !req.keywords().contains(keyword)) {
             /*Consultar limites de credito*/
             System.out.println("Limite Erp: " + req.idErp());
             Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
 
         }
-        if (keyword.equals("faturas")) {
+        if (keyword.equals("faturas") && !req.keywords().contains(keyword)) {
             /* Consultar Faturas*/
             // montarMensagemFaturas(req);
             messages.add(montarMensagemFaturas(req));
         }
 
-        if (keyword.equals("boletos")) {
+        if (keyword.equals("boletos") && !req.keywords().contains(keyword)) {
             /* Consultar Boletos*/
             messages.add(montarMensagemFaturasBoleto(req));
             // montarMensagemFaturasBoleto(req);
         }
-        if (keyword.equals("checkin")) {
+        if (keyword.equals("checkin") && !req.keywords().contains(keyword)) {
 
             /*Consultar Checkin proximos 72 horas*/
             messages.add(buscarCheckinsProximos(req));
         }
-        if (keyword.equals("ultimas_vendas")) {
+        if (keyword.equals("ultimas_vendas") && !req.keywords().contains(keyword)) {
 
             /*Consultar Ultimas Vendas*/
             messages.add(listarUltimasVendas(req));
         }
-        if (keyword.contains("familias")) {
+        if (keyword.contains("familias") && !req.keywords().contains(keyword)) {
             /*Consultar Familias*/
-            String[]  cia = keyword.split(";");
+            String[] cia = keyword.split(";");
             messages.add(listarFamilias(req, cia[1]));
+        }
+        req.keywords().removeIf(Objects::isNull);
+        if (!req.keywords().contains(keyword)) {
+            req.keywords().add(keyword);
         }
     }
 
@@ -474,7 +493,7 @@ public class ChatService {
         );
 
         // 5) Faz a chamada ao ChatService e captura a resposta
-        ChatResponseDTO response = chat(chatReq);
+        ChatResponseDTO response = chat(chatReq, null, null);
 
         // 6) Retorna apenas o conteúdo textual (keyword)
         if (response != null && response.content() != null && !response.content().isEmpty()) {
@@ -486,32 +505,33 @@ public class ChatService {
 
     private String profileAgentIA() {
         return """
-            Você é o **AgentIA**, um agente auxiliar da Confiança Consolidadora.
-            Sua função é analisar a frase do usuário, entender sua intenção e retornar apenas
-            a *keyword* correspondente ao método que deve ser executado pela IA principal.
+                Você é o **AgentIA**, um agente auxiliar da Confiança Consolidadora.
+                Sua função é analisar a frase do usuário, entender sua intenção e retornar apenas
+                a *keyword* correspondente ao método que deve ser executado pela IA principal.
 
-            O sistema possui dados sobre:
-            - Agências de viagens e seus usuários;
-            - Companhias aéreas e famílias tarifárias;
-            - Formas de pagamento e limites de crédito;
-            - Faturas e boletos;
-            - Check-ins e embarques próximos (72h);
-            - Vendas e reservas recentes.
+                O sistema possui dados sobre:
+                - Agências de viagens e seus usuários;
+                - Companhias aéreas e famílias tarifárias;
+                - Formas de pagamento e limites de crédito;
+                - Faturas e boletos;
+                - Check-ins e embarques próximos (72h);
+                - Vendas e reservas recentes.
 
-            Responda **somente com a keyword da intenção**, sem explicações.
-            Palavras-chave possíveis:
-            - "limites"
-            - "faturas"
-            - "boletos"
-            - "checkin"
-            - "ultimas_vendas"
-            - "familias"
+                Responda **somente com a keyword da intenção**, sem explicações.
+                Palavras-chave possíveis:
+                - "limites"
+                - "faturas"
+                - "boletos"
+                - "checkin"
+                - "ultimas_vendas"
+                - "familias"
+                 - "alertas"
 
-            Exemplos:
-            - Pergunta: "Quais são meus limites de crédito?" → Resposta: "limites"
-            - Pergunta: "Me mostre as últimas vendas" → Resposta: "ultimas_vendas"
-            - Pergunta: "Quero ver as famílias da GOL" → Resposta: "familias;GOL"
-            - Pergunta fora do contexto → Resposta: "desconhecido"
-            """;
+                Exemplos:
+                - Pergunta: "Quais são meus limites de crédito?" → Resposta: "limites"
+                - Pergunta: "Me mostre as últimas vendas" → Resposta: "ultimas_vendas"
+                - Pergunta: "Quero ver as famílias da GOL" → Resposta: "familias;GOL"
+                - Pergunta fora do contexto → Resposta: "desconhecido"
+                """;
     }
 }

@@ -14,5 +14,7 @@ public record ConversationRequestDTO(
         @NotBlank String input,             // mensagem do usuário
         List<ChatMessageDTO> history,       // opcional: histórico já tokenizado (role/content)
         String model,                       // opcional: sobrepor modelo
-        Boolean stream                      // opcional: sobrepor streaming no endpoint /stream
+        Boolean stream,
+        List<String> keywords
+
 ) {}

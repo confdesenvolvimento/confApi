@@ -23,7 +23,7 @@ public class ChatController {
 
     @PostMapping("/chat")
     public ChatResponseDTO chat(@Valid @RequestBody ChatRequestDTO req) throws IOException {
-        return service.chat(req);
+        return service.chat(req, null, null);
     }
 
     @PostMapping(value="/chat/stream", produces= MediaType.TEXT_EVENT_STREAM_VALUE)
