@@ -1,4 +1,4 @@
-package com.confApi.geradorPdf;
+package com.confApi.geradorPdf.geradorAereoPDF;
 
 import com.confApi.db.confManager.assentoAereo.Assento;
 import com.confApi.db.confManager.geradorPdf.ReservaAereoModelPDF;

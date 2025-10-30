@@ -1,8 +1,9 @@
-package com.confApi.geradorPdf;
+package com.confApi.geradorPdf.geradorAereoPDF;
 
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.AbstractTransactionServiceApi;
+import com.confApi.geradorPdf.EnvioReservaAereoPDF.EnvioPlanoViagemReservaAereoPDF;
 import com.confApi.geradorPdf.EnvioReservaAereoPDF.EnvioReservaAereoPDF;
 import org.springframework.http.*;
 import org.springframework.web.client.HttpClientErrorException;
@@ -12,12 +13,12 @@ public class EnvioPdfService extends AbstractTransactionServiceApi {
 
     private final String urlAPI = UrlConfig.URL_CONFIANCA_EMAIL +"/mail";
 
-    public void envioPDF(EnvioReservaAereoPDF envioReservaAereoPDF) {
+    public void envioPDF(EnvioPlanoViagemReservaAereoPDF envioReservaAereoPDF) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("Authorization", "Bearer " + new ConfAppService().token());
 
-        HttpEntity<EnvioReservaAereoPDF> requestEntity = new HttpEntity<>(envioReservaAereoPDF, headers);
+        HttpEntity<EnvioPlanoViagemReservaAereoPDF> requestEntity = new HttpEntity<>(envioReservaAereoPDF, headers);
 
         ResponseEntity<String> responseEntity = null;
         try {
