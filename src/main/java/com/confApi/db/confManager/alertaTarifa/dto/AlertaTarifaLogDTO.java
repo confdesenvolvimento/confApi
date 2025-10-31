@@ -3,6 +3,7 @@ package com.confApi.db.confManager.alertaTarifa.dto;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Objects;
 
@@ -30,7 +31,16 @@ public class AlertaTarifaLogDTO implements Serializable {
         this.status = status;
         this.mensagem = mensagem;
     }
-
+    @Override
+    public String toString() {
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm");
+        return "\n🔹 [Alerta de Tarifa - Dia Desconto]" +
+                "\n📅 Data da Tarifa: " + (dataTarifa != null ? sdf.format(dataTarifa) : "N/I") +
+                "\n💰 Valor Encontrado: R$ " + String.format("%.2f", valorEncontrado) +
+                "\n🕓 Encontrado em: " + (dataProcessamento != null ? sdf.format(dataProcessamento) : "N/I") +
+                "\n💬 Mensagem: " + (mensagem != null ? mensagem : "-") +
+                "\n📉 Desconto Detectado: " + String.format("%.2f", percentualDesconto) + "%";
+    }
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

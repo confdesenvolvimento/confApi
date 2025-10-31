@@ -27,6 +27,7 @@ public class AlertaTarifaIAResponse {
         for (AlertaTarifaDTO alerta : tarifas) {
             sb.append("🧾 [Alerta #").append(contador).append("]\n");
             sb.append(alerta.toString()).append("\n");
+
             sb.append("-----------------------------------------------------\n");
             contador++;
         }

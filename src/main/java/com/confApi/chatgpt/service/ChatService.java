@@ -1,6 +1,7 @@
 package com.confApi.chatgpt.service;
 
 
+import com.confApi.chatgpt.config.ChatHistoryUtil;
 import com.confApi.chatgpt.config.OpenAIProperties;
 import com.confApi.chatgpt.dto.*;
 import com.confApi.chatgpt.tools.ToolRouter;
@@ -67,56 +68,121 @@ public class ChatService {
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
 
-    public ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords,  List<ChatMessageDTO> history) throws IOException {
+    public ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords, List<ChatMessageDTO> history) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
+        ObjectMapper om = new ObjectMapper();
 
-        // monta body para /v1/chat/completions
-        Map<String, Object> body = new HashMap<>();
-        body.put("model", model);
-        body.put("messages", req.messages().stream()
-                .map(m -> Map.of("role", m.role(), "content", m.content()))
-                .toList());
+        // 0) Normaliza e aplica trim no histórico
+        List<ChatMessageDTO> baseHistory = (history != null) ? history : new ArrayList<>();
+        baseHistory = ChatHistoryUtil.trimHistory(baseHistory);
+
+        // 1) Constrói mensagens a enviar: history + mensagens do turno (req.messages)
+        List<Map<String, Object>> workingMessages = new ArrayList<>();
+
+        // 1.1) Adiciona o histórico (na ordem)
+        for (ChatMessageDTO m : baseHistory) {
+            workingMessages.add(Map.of("role", m.role(), "content", m.content()));
+        }
+
+        // 1.2) Adiciona as mensagens deste turno
+        if (req.messages() != null && !req.messages().isEmpty()) {
+            for (ChatMessageDTO m : req.messages()) {
+                workingMessages.add(Map.of("role", m.role(), "content", m.content()));
+            }
+        }
+
+        // 1.3) Tools (se houver)
+        List<Map<String, Object>> toolsSpec = null;
         if (req.tools() != null && !req.tools().isEmpty()) {
-            body.put("tools", req.tools().stream().map(td -> Map.of(
+            toolsSpec = req.tools().stream().map(td -> Map.of(
                     "type", "function",
                     "function", Map.of(
                             "name", td.name(),
                             "description", td.description(),
                             "parameters", td.jsonSchema()
-                    ))).toList());
+                    ))).toList();
         }
 
-        Request request = new Request.Builder()
-                .url(props.getBaseUrl() + "/v1/chat/completions")
-                .post(RequestBody.create(
-                        MediaType.parse("application/json"),
-                        new ObjectMapper().writeValueAsBytes(body)))
-                .build();
+        // 2) Loop de execução até não haver mais tool_calls
+        List<ToolCallDTO> collectedToolCalls = new ArrayList<>();
+        String assistantContentFinal = null;
+        String completionId = null;
 
-        try (Response r = client.newCall(request).execute()) {
-            String json = Objects.requireNonNull(r.body()).string();
-            // parse simplificado
-            JsonNode root = new ObjectMapper().readTree(json);
-            JsonNode choice = root.path("choices").get(0);
-            String content = choice.path("message").path("content").asText();
+        while (true) {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("model", model);
+            payload.put("messages", workingMessages);
+            if (toolsSpec != null) payload.put("tools", toolsSpec);
 
-            // verifica se houve chamadas de ferramenta
-            List<ToolCallDTO> toolCalls = new ArrayList<>();
-            JsonNode tc = choice.path("message").path("tool_calls");
-            if (tc.isArray()) {
-                for (JsonNode n : tc) {
-                    String name = n.path("function").path("name").asText();
-                    String argsStr = n.path("function").path("arguments").asText("{}");
-                    Map<String, Object> args = new ObjectMapper().readValue(argsStr, new TypeReference<>() {
-                    });
-                    Map<String, Object> result = tools.execute(name, args);
-                    toolCalls.add(new ToolCallDTO(name, result));
+            Request request = new Request.Builder()
+                    .url(props.getBaseUrl() + "/v1/chat/completions")
+                    .post(RequestBody.create(
+                            MediaType.parse("application/json"),
+                            om.writeValueAsBytes(payload)))
+                    .build();
+
+            try (Response r = client.newCall(request).execute()) {
+                String json = Objects.requireNonNull(r.body()).string();
+                JsonNode root = om.readTree(json);
+                completionId = root.path("id").asText();
+
+                JsonNode choice = root.path("choices").get(0);
+                JsonNode msgNode = choice.path("message");
+                String assistantContent = msgNode.path("content").asText(null);
+
+                // Verifica tool_calls
+                JsonNode tc = msgNode.path("tool_calls");
+                boolean hasToolCalls = tc.isArray() && tc.size() > 0;
+
+                if (hasToolCalls) {
+                    // Para cada tool_call: executa e devolve role:"tool"
+                    for (JsonNode n : tc) {
+                        String name = n.path("function").path("name").asText();
+                        String argsStr = n.path("function").path("arguments").asText("{}");
+                        String toolCallId = n.path("id").asText(); // alguns providers retornam
+
+                        Map<String, Object> args = om.readValue(argsStr, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+                        Map<String, Object> result = tools.execute(name, args);
+                        collectedToolCalls.add(new ToolCallDTO(name, result));
+
+                        String toolContent = om.writeValueAsString(result);
+                        Map<String, Object> toolMsg = new HashMap<>();
+                        toolMsg.put("role", "tool");
+                        toolMsg.put("name", name);
+                        toolMsg.put("content", toolContent);
+                        if (toolCallId != null && !toolCallId.isEmpty()) {
+                            toolMsg.put("tool_call_id", toolCallId);
+                        }
+                        workingMessages.add(toolMsg);
+                    }
+
+                    // Continua o loop: o modelo responderá agora já “vendo” os resultados das tools
+                    continue;
                 }
-            }
 
-            return new ChatResponseDTO(root.path("id").asText(), content, toolCalls, null, keywords, history);
+                // Sem tool_calls → resposta final
+                assistantContentFinal = (assistantContent != null) ? assistantContent : "";
+                break;
+            }
         }
+
+        // 3) Constrói histórico atualizado para retornar
+        List<ChatMessageDTO> updatedHistory = new ArrayList<>(baseHistory);
+        if (req.messages() != null && !req.messages().isEmpty()) {
+            updatedHistory.addAll(req.messages());
+        }
+        updatedHistory.add(new ChatMessageDTO("assistant", assistantContentFinal));
+
+        return new ChatResponseDTO(
+                completionId,
+                assistantContentFinal,
+                collectedToolCalls,
+                null,
+                keywords,
+                updatedHistory
+        );
     }
+
 
     public Flux<String> stream(ChatRequestDTO req) {
         // faz chamada SSE (stream=true) e emite os deltas como texto
@@ -231,6 +297,7 @@ public class ChatService {
             String[] cia = keyword.split(";");
             messages.add(listarFamilias(req, cia[1]));
         }
+
         req.keywords().removeIf(Objects::isNull);
         if (!req.keywords().contains(keyword)) {
             req.keywords().add(keyword);

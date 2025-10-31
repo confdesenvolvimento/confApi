@@ -73,7 +73,7 @@ public class AlertaTarifaDTO implements Serializable {
         sb.append("📆 Validade do alerta: ").append(formatarData(validade)).append("\n");
 
         if (valorMaximo != null) {
-            sb.append("💰 Valor máximo desejado: R$ ").append(String.format("%.2f", valorMaximo)).append("\n");
+            sb.append("💰 Menor valor encontrado: R$ ").append(String.format("%.2f", valorMaximo)).append("\n");
         }
         if (menorValorEncontrado != null || maiorValorEncontrado != null) {
             sb.append("📊 Faixa de valores encontrados: ");
@@ -93,15 +93,17 @@ public class AlertaTarifaDTO implements Serializable {
         }
 
         // Exibe os logs detalhados
-        if (logs != null && !logs.isEmpty()) {
-            sb.append("\n📚 Histórico de Detecções:\n");
-            for (AlertaTarifaLogDTO log : logs) {
-                sb.append(log.toString()).append("\n");
-            }
-        } else {
-            sb.append("\n📚 Nenhum registro de detecção disponível.\n");
-        }
 
+            if (logs != null && !logs.isEmpty()) {
+                sb.append("   📚 Tarifas Encontradas:\n");
+                for (AlertaTarifaLogDTO log : logs) {
+                    sb.append("      ").append(log.toString().replace("\n", "\n      ")).append("\n");
+                    sb.append("\n");
+                }
+            } else {
+                sb.append("   ⚠️ Nenhuma Tarifa encontrada até o momento.\n");
+            }
+            sb.append("-----------------------------------------------------\n");
         return sb.toString();
     }
 
