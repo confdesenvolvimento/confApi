@@ -24,6 +24,8 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ConversationController {
 
+
+    
     private final ChatService chatService;
     private final ProfilePromptRegistry profiles;
 
