@@ -25,7 +25,7 @@ public class GeradorPDFApi extends AbstractTransactionServiceApi implements Seri
         ResponseEntity<String> responseEntity = null;
         try {
             responseEntity = new RestTemplate().exchange(
-                    UrlConfig.URL_CONFIANCA_EMAIL + urlAPI + "/sendEmailPdf2",
+                    UrlConfig.URL_CONFIANCA_EMAIL + urlAPI + "/sendEmailPdf",
                     HttpMethod.POST,
                     requestEntity,
                     String.class
