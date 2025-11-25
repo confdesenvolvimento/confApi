@@ -1,5 +1,6 @@
 package com.confApi.db.confManager.bandeira;
 
+import com.confApi.config.UrlConfig;
 import com.confApi.db.AbstractTransactionServiceApi;
 import com.confApi.hub.aereo.BandeiraModel;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -16,13 +17,13 @@ import java.util.logging.Logger;
 @Service
 public class BandeiraService extends AbstractTransactionServiceApi implements Serializable {
 
-    private final String urlAPI = "http://localhost:8082/bandeira";
+    private final String urlAPI = "bandeira";
 
     public List<BandeiraModel> findByAll() {
         List<BandeiraModel> bandeirasModel = new ArrayList<>();
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            String responseBody = sendHttpApiGet(urlAPI);
+            String responseBody = sendHttpApiGet( UrlConfig.URL_CONFIANCA_MANAGER+urlAPI);
             List<Bandeira> bandeiras = objectMapper.readValue(responseBody, new TypeReference<List<Bandeira>>() {
             });
 

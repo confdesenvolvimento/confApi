@@ -1,4 +1,4 @@
-package com.confApi.db.confManager.unidade;
+package com.confApi.db.confManager.unidade.dto;
 
 import com.confApi.db.wooba.unidade.TurUnidadesOperacionais;
 

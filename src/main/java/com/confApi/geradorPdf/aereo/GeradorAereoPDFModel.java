@@ -1,4 +1,4 @@
-package com.confApi.geradorPdf.geradorAereoPDF;
+package com.confApi.geradorPdf.aereo;
 
 import com.confApi.db.confManager.usuario.UsuarioConfDto;
 import com.confApi.hub.aereo.ReservaAereoModel;
@@ -9,4 +9,6 @@ public class GeradorAereoPDFModel {
     private ReservaAereoModel reservaAereoModel;
     private UsuarioConfDto usuarioConfDto;
     private PlanoViagemReservaAereoPDF planoViagemReservaAereoPDF;
+
+
 }

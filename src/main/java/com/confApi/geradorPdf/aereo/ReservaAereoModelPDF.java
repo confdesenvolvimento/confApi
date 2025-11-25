@@ -1,8 +1,8 @@
-package com.confApi.db.confManager.geradorPdf;
+package com.confApi.geradorPdf.aereo;
 
-import com.confApi.db.confManager.agencia.Agencia;
+import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.companhiaAerea.CompanhiaAerea;
-import com.confApi.db.confManager.historicoReserva.HistoricoReserva;
+import com.confApi.db.confManager.historicoReserva.dto.HistoricoReserva;
 import com.confApi.db.confManager.reservaPacote.ReservaPacote;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.hub.aereo.*;

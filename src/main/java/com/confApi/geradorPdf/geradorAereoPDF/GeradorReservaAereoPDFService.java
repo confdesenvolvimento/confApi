@@ -1,7 +1,7 @@
 package com.confApi.geradorPdf.geradorAereoPDF;
 
 import com.confApi.db.confManager.assentoAereo.Assento;
-import com.confApi.db.confManager.geradorPdf.ReservaAereoModelPDF;
+import com.confApi.geradorPdf.aereo.ReservaAereoModelPDF;
 import com.confApi.hub.aereo.BilheteModel;
 import com.confApi.hub.aereo.PassageiroModel;
 import com.confApi.hub.aereo.RecebimentoModel;
@@ -341,11 +341,11 @@ public class GeradorReservaAereoPDFService {
                                 Calendar cal = Calendar.getInstance();
 
                                 cal.setTime(voo.getDataPartida());
-                                cal.add(Calendar.HOUR_OF_DAY, 3);
+                                cal.add(Calendar.HOUR_OF_DAY, 0);
                                 String partidaAjustada = sdf.format(cal.getTime());
 
                                 cal.setTime(voo.getDataChegada());
-                                cal.add(Calendar.HOUR_OF_DAY, 3);
+                                cal.add(Calendar.HOUR_OF_DAY, 0);
                                 String chegadaAjustada = sdf.format(cal.getTime());
 
                                 table.addCell(getCell(voo.getCiaMandatoria().getDescricao(), smallFont));
@@ -409,11 +409,11 @@ public class GeradorReservaAereoPDFService {
                 Calendar cal = Calendar.getInstance();
 
                 cal.setTime(v.getDataPartida());
-                cal.add(Calendar.HOUR_OF_DAY, 3);
+                cal.add(Calendar.HOUR_OF_DAY, 0);
                 String partidaAjustada = sdf.format(cal.getTime());
 
                 cal.setTime(v.getDataChegada());
-                cal.add(Calendar.HOUR_OF_DAY, 3);
+                cal.add(Calendar.HOUR_OF_DAY, 0);
                 String chegadaAjustada = sdf.format(cal.getTime());
 
                 tableVoo.addCell(getCell(v.getCiaMandatoria().getDescricao(), smallFont));

@@ -1,4 +1,4 @@
-package com.confApi.db.confManager.agencia;
+package com.confApi.db.confManager.agencia.dto;
 
 import lombok.Data;
 

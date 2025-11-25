@@ -1,9 +1,7 @@
 package com.confApi.geradorPdf;
 
-import com.confApi.db.confManager.geradorPdf.ReservaAereoModelPDF;
-import com.confApi.geradorPdf.EnvioReservaAereoPDF.EnvioReservaAereoPDF;
+import com.confApi.geradorPdf.aereo.ReservaAereoModelPDF;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
-import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.util.FileCopyUtils;
 
@@ -22,7 +20,7 @@ public class GeradorService {
     // public SeuServicoDePDF(TemplateEngine htmlTemplateEngine) { ... }
 
     // Método principal
-    public byte[] gerarReservaAereoPDFBytes(ReservaAereoModelPDF aereoPDF)
+   /* public byte[] gerarReservaAereoPDFBytes(ReservaAereoModelPDF aereoPDF)
             throws IOException {
 
         // 1. LER O CONTEÚDO BRUTO DO ARQUIVO HTML
@@ -35,7 +33,7 @@ public class GeradorService {
         byte[] pdfBytes = convertHtmlToPdfBytes(htmlContent);
 
         return pdfBytes;
-    }
+    }*/
 
 
     /**

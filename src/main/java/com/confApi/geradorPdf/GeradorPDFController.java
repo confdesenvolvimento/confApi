@@ -1,12 +1,12 @@
 package com.confApi.geradorPdf;
 
-import com.confApi.db.confManager.geradorPdf.ReservaAereoModelPDF;
+import com.confApi.geradorPdf.aereo.ReservaAereoModelPDF;
 import com.confApi.geradorPdf.EnvioReservaAereoPDF.EnvioPlanoViagemReservaAereoPDF;
-import com.confApi.geradorPdf.EnvioReservaAereoPDF.EnvioReservaAereoPDF;
 import com.confApi.geradorPdf.geradorAereoPDF.EnvioPdfService;
-import com.confApi.geradorPdf.geradorAereoPDF.GeradorAereoPDFModel;
+import com.confApi.geradorPdf.aereo.EnvioReservaAereoPDF;
+import com.confApi.geradorPdf.aereo.GeradorAereoPDFModel;
 import com.confApi.geradorPdf.geradorAereoPDF.GeradorReservaAereoPDFService;
-import com.confApi.hub.aereo.ReservaAereoModel;
+import com.confApi.geradorPdf.hotel.GeradorHotelPDFModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,5 +30,28 @@ public class GeradorPDFController {
        byte[] pdfBytes = aereoPDFService.gerarPdfReserva(new ReservaAereoModelPDF(geradorAereoPDFModel.getReservaAereoModel()));
 
         new EnvioPdfService().envioPDF(new EnvioPlanoViagemReservaAereoPDF(geradorAereoPDFModel,pdfBytes));
+    }
+
+    @PostMapping("/reservaAereo2")
+    public void geradorPdf2(@RequestBody GeradorAereoPDFModel geradorAereoPDFModel) throws IOException {
+        System.out.println("getUsuarioConfDto :  "+geradorAereoPDFModel.getUsuarioConfDto());
+        System.out.println("plano viagem :  "+geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
+        System.out.println("reserva :  "+geradorAereoPDFModel.getReservaAereoModel().getUsuarioCriacao2().getCodigoWooba());
+
+       // byte[] pdfBytes = aereoPDFService.gerarPdfReserva(new ReservaAereoModelPDF(geradorAereoPDFModel.getReservaAereoModel()));
+
+       // new EnvioPdfService().envioPDF(new EnvioPlanoViagemReservaAereoPDF(geradorAereoPDFModel));
+        EnvioReservaAereoPDF envio = new EnvioReservaAereoPDF(geradorAereoPDFModel);
+        System.out.println("reserva : "+envio.getReservaAereoModelPDF().getLocalizador());
+        System.out.println("reserva : "+envio.getReservaAereoModelPDF().getUsuarioCriacao().getLoginUsuario());
+        System.out.println("reserva : "+envio.getReservaAereoModelPDF().getUsuarioCriacao().getNomeCompleto());
+        new EnvioPdfService().envioPDF2(new EnvioReservaAereoPDF(geradorAereoPDFModel));
+    }
+
+    @PostMapping("/reservaHotel")
+    public void geradorHotelPdf(@RequestBody GeradorHotelPDFModel geradorHotelPDFModel)  {
+        System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getUsuarioConfDto());
+        System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getReservaHotelModel().getCodgAgencia());
+        new GeradorPDFService().popularHotelPDF(geradorHotelPDFModel);
     }
 }

@@ -1,13 +1,12 @@
 package com.confApi.db.confManager.alertaTarifa.dto;
 
-import com.confApi.db.confManager.agencia.Agencia;
+import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.hub.aereo.dto.Aeroporto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.time.ZoneId;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;

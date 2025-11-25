@@ -1,4 +1,4 @@
-package com.confApi.db.confManager.historicoReserva;
+package com.confApi.db.confManager.historicoReserva.dto;
 
 import com.confApi.db.confManager.usuario.Usuario;
 

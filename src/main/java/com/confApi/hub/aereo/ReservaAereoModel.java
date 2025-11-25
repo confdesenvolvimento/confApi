@@ -1,9 +1,9 @@
 package com.confApi.hub.aereo;
 
-import com.confApi.db.confManager.agencia.Agencia;
+import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.bandeira.BandeiraService;
 import com.confApi.db.confManager.companhiaAerea.CompanhiaAerea;
-import com.confApi.db.confManager.historicoReserva.HistoricoReserva;
+import com.confApi.db.confManager.historicoReserva.dto.HistoricoReserva;
 import com.confApi.db.confManager.reservaPacote.ReservaPacote;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.hub.aereo.dto.TrechoReserva;

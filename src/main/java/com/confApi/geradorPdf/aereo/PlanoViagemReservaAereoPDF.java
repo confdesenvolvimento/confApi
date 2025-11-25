@@ -1,4 +1,4 @@
-package com.confApi.geradorPdf.geradorAereoPDF;
+package com.confApi.geradorPdf.aereo;
 
 import lombok.Data;
 

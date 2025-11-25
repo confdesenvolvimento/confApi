@@ -1,6 +1,6 @@
 package com.confApi.db.confManager.reservaPacote;
 
-import com.confApi.db.confManager.agencia.Agencia;
+import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.recebimento.Recebimento;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
