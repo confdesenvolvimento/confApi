@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.endPoints.parcelaCartao.ParcelaCartaoResponse;
+
 import java.io.Serializable;
 import java.util.Objects;
 
@@ -11,6 +13,14 @@ public class ParcelaCartaoModel implements Serializable {
     private Double valorDemaisParcelas = 0.0;
     private Double valorJuros =0.0;
     private String descricaoParcela;
+
+    public ParcelaCartaoModel(ParcelaCartaoResponse parcelaCartaoResponse) {
+        this.numeroDaParcela = parcelaCartaoResponse.getNumeroDaParcela();
+        this.valorPrimeiraParcela = parcelaCartaoResponse.getValorPrimeiraParcela();
+        this.valorDemaisParcelas = parcelaCartaoResponse.getValorDemaisParcelas();
+        this.valorJuros = parcelaCartaoResponse.getValorJuros();
+        this.descricaoParcela = parcelaCartaoResponse.getDescricaoParcela();
+    }
 
     @Override
     public int hashCode() {

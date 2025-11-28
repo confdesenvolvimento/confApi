@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.endPoints.bilhete.BilheteResponse;
+
 import java.io.Serializable;
 import java.util.Date;
 
@@ -11,6 +13,13 @@ public class BilheteModel implements Serializable {
     private Date dataCancelamento;
     private Boolean isCancelar = false;
 
+    public BilheteModel(BilheteResponse bilheteResponse) {
+        this.status = bilheteResponse.getStatus();
+        this.numeroBilhete = bilheteResponse.getNumeroBilhete();
+        this.dataEmissao = bilheteResponse.getDataEmissao();
+        this.dataCancelamento = bilheteResponse.getDataCancelamento();
+        this.isCancelar = bilheteResponse.getIsCancelar();
+    }
 
     public BilheteModel() {
     }

@@ -31,6 +31,14 @@ public class Unidade implements Serializable {
         this.idWoobaUnidade = turUnidade.getId();
     }
 
+    public Unidade(com.confApi.endPoints.unidade.Unidade unidade) {
+        this.codgUnidade = unidade.getCodgUnidade();
+        this.nomeUnidade = unidade.getNomeUnidade();
+        this.codgSistemaBackOffice = unidade.getCodgSistemaBackOffice();
+        this.status = unidade.getStatus();
+        this.idWoobaUnidade = unidade.getIdWoobaUnidade();
+    }
+
     /**
      * @return the codgUnidade
      */
@@ -93,5 +101,16 @@ public class Unidade implements Serializable {
 
     public void setIdWoobaUnidade(Integer idWoobaUnidade) {
         this.idWoobaUnidade = idWoobaUnidade;
+    }
+
+    @Override
+    public String toString() {
+        return "Unidade{" +
+                "codgUnidade=" + codgUnidade +
+                ", nomeUnidade='" + nomeUnidade + '\'' +
+                ", codgSistemaBackOffice='" + codgSistemaBackOffice + '\'' +
+                ", status=" + status +
+                ", idWoobaUnidade=" + idWoobaUnidade +
+                '}';
     }
 }

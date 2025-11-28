@@ -2,6 +2,7 @@ package com.confApi.hub.aereo;
 
 
 import com.confApi.db.confManager.bandeira.Bandeira;
+import com.confApi.endPoints.bandeira.BandeiraResponse;
 
 public class BandeiraModel extends Bandeira {
 
@@ -9,7 +10,11 @@ public class BandeiraModel extends Bandeira {
         super(codgBandeira, nomeBandeira, siglaBandeira);
     }
 
-    public BandeiraModel() {
+    public BandeiraModel(Integer codgBandeira) {
+        super(codgBandeira);
     }
 
+    public BandeiraModel(BandeiraResponse bandeiraResponse) {
+        super(bandeiraResponse.getCodgBandeira(), bandeiraResponse.getNomeBandeira(), bandeiraResponse.getSiglaBandeira());
+    }
 }

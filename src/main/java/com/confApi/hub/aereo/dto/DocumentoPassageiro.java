@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo.dto;
 
+import com.confApi.endPoints.documentoPassageiro.DocumentoPassageiroResponse;
+
 import java.util.Date;
 
 public class DocumentoPassageiro {
@@ -29,6 +31,14 @@ public class DocumentoPassageiro {
         } else {
             return null;
         }
+    }
+
+    public DocumentoPassageiro(DocumentoPassageiroResponse documentoPassageiroResponse) {
+        this.nacionalidade = documentoPassageiroResponse.getNacionalidade();
+        this.numero = documentoPassageiroResponse.getNumero();
+        this.paisEmissor = documentoPassageiroResponse.getPaisEmissor();
+        this.tipo = documentoPassageiroResponse.getTipo();
+        this.validade = documentoPassageiroResponse.getValidade();
     }
 
     public DocumentoPassageiro() {

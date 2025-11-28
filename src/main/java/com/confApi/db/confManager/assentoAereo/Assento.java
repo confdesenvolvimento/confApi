@@ -1,5 +1,7 @@
 package com.confApi.db.confManager.assentoAereo;
 
+import com.confApi.endPoints.assento.AssentoResponse;
+
 import java.io.Serializable;
 import java.util.Objects;
 
@@ -13,6 +15,17 @@ public class Assento implements Serializable {
     private String passageiro;
     private Double valor;
     private String trecho;
+
+    public Assento(AssentoResponse assentoResponse) {
+        this.assentoColuna = assentoResponse.getAssentoColuna();
+        this.assentoLinha = assentoResponse.getAssentoLinha();
+        this.paxID = assentoResponse.getPaxID();
+        this.trechoID = assentoResponse.getTrechoID();
+        this.voo = assentoResponse.getVoo();
+        this.passageiro = assentoResponse.getPassageiro();
+        this.valor = assentoResponse.getValor();
+        this.trecho = assentoResponse.toString();
+    }
 
     public Assento() {
     }

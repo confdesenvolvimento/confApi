@@ -103,6 +103,29 @@ public class Agencia implements Serializable {
         this.codgAgencia = agenciaDto.getCodgAgencia();
     }
 
+    public Agencia(com.confApi.endPoints.agencia.Agencia agencia) {
+        this.codgAgencia = agencia.getCodgAgencia();
+        this.nomeAgencia = agencia.getNomeAgencia();
+        this.cnpj = agencia.getCnpj();
+        this.codgSistemaBackOffice = agencia.getCodgSistemaBackOffice();
+        this.codgUnidade = agencia.getCodgUnidade() != null ? new Unidade(agencia.getCodgUnidade()) : null;
+        this.status = agencia.getStatus();
+        this.statusEmissao = agencia.getStatusEmissao();
+        this.logomarca = agencia.getLogomarca();
+        this.email = agencia.getEmail();
+        this.telefone = agencia.getTelefone();
+        this.endereco = agencia.getEndereco();
+        this.cidade = agencia.getCidade();
+        this.estado = agencia.getEstado();
+        this.bairro = agencia.getBairro();
+        this.cep = agencia.getCep();
+        this.complemento = agencia.getComplemento();
+        this.idWoobaAgencia = agencia.getIdWoobaAgencia();
+        this.usuarioApi = agencia.getUsuarioApi();
+        this.senhaApi = agencia.getSenhaApi();
+        this.unidade = agencia.getCodgUnidade() != null ? new Unidade(agencia.getCodgUnidade()) : null;
+    }
+
     public Agencia() {
     }
 

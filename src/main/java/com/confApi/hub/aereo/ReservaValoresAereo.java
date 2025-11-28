@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.endPoints.reservaValoresAereos.ReservaValoresAereoResponse;
+
 import java.io.Serializable;
 
 public class ReservaValoresAereo implements Serializable {
@@ -26,7 +28,21 @@ public class ReservaValoresAereo implements Serializable {
         this.moeda = moeda;
     }
 
-
+    public ReservaValoresAereo(ReservaValoresAereoResponse reservaValoresAereoResponse) {
+        this.tipoTarifaPax = reservaValoresAereoResponse.getTipoTarifaPax();
+        this.valorTarifa = reservaValoresAereoResponse.getValorTarifa();
+        this.valorTarifaNet = reservaValoresAereoResponse.getValorTarifaNet();
+        this.valorTaxaEmbarque = reservaValoresAereoResponse.getValorTaxaEmbarque();
+        this.taxaDu = reservaValoresAereoResponse.getTaxaDu();
+        this.taxaRc = reservaValoresAereoResponse.getTaxaRc();
+        this.taxaRav = reservaValoresAereoResponse.getTaxaRav();
+        this.valorMkp = reservaValoresAereoResponse.getValorMkp();
+        this.percMkp = reservaValoresAereoResponse.getPercMkp();
+        this.valorTxCombustivel = reservaValoresAereoResponse.getValorTxCombustivel();
+        this.taxaAssento = reservaValoresAereoResponse.getTaxaAssento();
+        this.totalGeral = reservaValoresAereoResponse.getTotalGeral();
+        this.moeda = reservaValoresAereoResponse.getMoeda();
+    }
 
     public ReservaValoresAereo(Integer tipoTarifaPax) {
         this.tipoTarifaPax = tipoTarifaPax;

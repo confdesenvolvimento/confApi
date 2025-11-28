@@ -2,6 +2,7 @@ package com.confApi.db.confManager.usuario;
 
 import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.unidade.dto.Unidade;
+import com.confApi.endPoints.usuario.UsuarioResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.io.Serializable;
@@ -10,44 +11,48 @@ import java.io.Serializable;
 public class Usuario implements Serializable {
 
     private Integer codgUsuario;
-
     private String nomeCompleto;
-
     private String loginUsuario;
-
     private String chaveUsuario;
-
     private String email;
-
     private String senha;
-
     private String idToken;
-
     private String cpf;
-
     private String telefone;
-
     private String celular;
-
     private String codgSistemaBackOffice;
-
     private Integer status;
-
     private String emissaoAutorizada;
-
     private String sexo;
-
     private String administradorAgencia;
-
     private String tipoUsuario;
-
     private Unidade unidade;
-
     private Agencia agencia;
-
     private Integer codigoWooba;
-
     private String qrcode;
+
+    public Usuario(UsuarioResponse usuarioResponse) {
+        this.codgUsuario = usuarioResponse.getCodgUsuario();
+        this.nomeCompleto = usuarioResponse.getNomeCompleto();
+        this.loginUsuario = usuarioResponse.getLoginUsuario();
+        this.chaveUsuario = usuarioResponse.getChaveUsuario();
+        this.email = usuarioResponse.getEmail();
+        this.senha = usuarioResponse.getSenha();
+        this.idToken = usuarioResponse.getIdToken();
+        this.cpf = usuarioResponse.getCpf();
+        this.telefone = usuarioResponse.getTelefone();
+        this.celular = usuarioResponse.getCelular();
+        this.codgSistemaBackOffice = usuarioResponse.getCodgSistemaBackOffice();
+        this.status = usuarioResponse.getStatus();
+        this.emissaoAutorizada = usuarioResponse.getEmissaoAutorizada();
+        this.sexo = usuarioResponse.getSexo();
+        this.administradorAgencia = usuarioResponse.getAdministradorAgencia();
+        this.tipoUsuario = usuarioResponse.getTipoUsuario();
+        this.unidade = usuarioResponse.getUnidade() != null ? new Unidade(usuarioResponse.getUnidade()) : null;
+        this.agencia = usuarioResponse.getAgencia() != null ? new Agencia(usuarioResponse.getAgencia()) : null;
+        this.codigoWooba = usuarioResponse.getCodigoWooba();
+        this.qrcode = usuarioResponse.getQrcode();
+    }
 
     public Usuario(Integer codgUsuario) {
         this.codgUsuario = codgUsuario;
@@ -218,5 +223,31 @@ public class Usuario implements Serializable {
 
     public void setQrcode(String qrcode) {
         this.qrcode = qrcode;
+    }
+
+    @Override
+    public String toString() {
+        return "Usuario{" +
+                "codgUsuario=" + codgUsuario +
+                ", nomeCompleto='" + nomeCompleto + '\'' +
+                ", loginUsuario='" + loginUsuario + '\'' +
+                ", chaveUsuario='" + chaveUsuario + '\'' +
+                ", email='" + email + '\'' +
+                ", senha='" + senha + '\'' +
+                ", idToken='" + idToken + '\'' +
+                ", cpf='" + cpf + '\'' +
+                ", telefone='" + telefone + '\'' +
+                ", celular='" + celular + '\'' +
+                ", codgSistemaBackOffice='" + codgSistemaBackOffice + '\'' +
+                ", status=" + status +
+                ", emissaoAutorizada='" + emissaoAutorizada + '\'' +
+                ", sexo='" + sexo + '\'' +
+                ", administradorAgencia='" + administradorAgencia + '\'' +
+                ", tipoUsuario='" + tipoUsuario + '\'' +
+                ", unidade=" + unidade +
+                ", agencia=" + agencia +
+                ", codigoWooba=" + codigoWooba +
+                ", qrcode='" + qrcode + '\'' +
+                '}';
     }
 }

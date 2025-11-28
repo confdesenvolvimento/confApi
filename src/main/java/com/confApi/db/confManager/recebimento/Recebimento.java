@@ -6,6 +6,8 @@ import com.confApi.db.confManager.gatewayCartao.GatewayCartao;
 import com.confApi.db.confManager.reservaAereo.ReservaAereo;
 import com.confApi.db.confManager.reservaHotel.dto.ReservaHotel;
 import com.confApi.db.confManager.reservaPacote.ReservaPacote;
+import com.confApi.endPoints.recebimento.RecebimentoResponse;
+import com.confApi.endPoints.reservaPacote.ReservaPacoteResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.io.Serializable;
@@ -42,6 +44,36 @@ public class Recebimento implements Serializable {
     private String qrcodePix;
     private String copiacolaPix;
     private ReservaPacote codgReservaPacote;
+
+    public Recebimento(RecebimentoResponse recebimentoResponse, ReservaPacoteResponse reservaPacoteResponse) {
+        this.codgRecebimento = recebimentoResponse.getCodgCodgRecebimento();
+        this.valrRecebimento = recebimentoResponse.getValorPagamento();
+        this.numrCartao = recebimentoResponse.getCartaoSelecionado().getNumeroCartao();
+        this.validadeCartao = recebimentoResponse.getCartaoSelecionado().getValidadeCartao();
+        this.codgSegCartao = recebimentoResponse.getCartaoSelecionado().getCodgSegurancaCartao();
+        this.titularCartao = recebimentoResponse.getCartaoSelecionado().getTitularBandeira();
+        this.qtdeParcela = Integer.parseInt(recebimentoResponse.getCartaoSelecionado().getQuantidadeParcelas());
+        this.valrPrimeiraParcela = recebimentoResponse.getValorEntrada();
+        this.valrDemaisParcela = recebimentoResponse.getValorEntrada();
+        this.codgAutCartao = recebimentoResponse.getCartaoSelecionado().getCodgAutorizacao();
+        this.codgTransacao = recebimentoResponse.getCartaoSelecionado().getCodgTransacao();
+        this.orderGatewayCartao = null;
+        this.status = recebimentoResponse.getStatusRecebimento();
+        this.valrEntrada = recebimentoResponse.getValorEntrada();
+        this.dataRecebimento = recebimentoResponse.getDataRecebimento();
+        this.codgBandeira = new Bandeira(recebimentoResponse.getCartaoSelecionado());
+        this.codgGatewayCartao = null;
+        this.codgFormaPagto = new FormaPagamento(recebimentoResponse.getCodgFormaPagamento());
+        this.valrCancelado = 0.0;
+        this.codgReservaAereo = null;
+        this.link = recebimentoResponse.getLink();
+        this.codgReservaHotel = null;
+        this.assinaturaEletronica = recebimentoResponse.getAssinatura();
+        this.mensagem = null;
+        this.qrcodePix = null;
+        this.copiacolaPix = null;
+        this.codgReservaPacote = new ReservaPacote(reservaPacoteResponse);
+    }
 
     public String getMensagem() {
         return mensagem;

@@ -2,11 +2,10 @@ package com.confApi.hub.limites;
 
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
-import com.confApi.confApp.dto.SandBoxResp;
 import com.confApi.config.UrlConfig;
-import com.confApi.hub.limites.dto.StatusResponse;
 import com.confApi.hub.limites.dto.Disponibilidade;
 import com.confApi.hub.limites.dto.LimiteCreditoRQ;
+import com.confApi.hub.limites.dto.StatusResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -42,7 +41,7 @@ public class LimitesService {
         try {
             // 1) Token
             ConfAppResp token = confAppService.token();
-    System.out.println("URL: "+UrlConfig.URL_CONFIANCA_HUB+" - "+API_ACTION);
+            System.out.println("URL: " + UrlConfig.URL_CONFIANCA_HUB + " - " + API_ACTION);
             // 2) URL
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_HUB)
@@ -108,7 +107,8 @@ public class LimitesService {
                     url,
                     HttpMethod.GET,
                     entity,
-                    new ParameterizedTypeReference<StatusResponse>() {}
+                    new ParameterizedTypeReference<StatusResponse>() {
+                    }
             );
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {

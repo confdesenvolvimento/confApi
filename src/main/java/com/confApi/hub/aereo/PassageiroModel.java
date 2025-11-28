@@ -1,8 +1,12 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.endPoints.bilhete.BilheteResponse;
+import com.confApi.endPoints.passageiro.PassageiroResponse;
+import com.confApi.endPoints.reservaValoresAereos.ReservaValoresAereoResponse;
 import com.confApi.hub.aereo.dto.DocumentoPassageiro;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -43,6 +47,35 @@ public class PassageiroModel implements Serializable {
             return date;
         } else {
             return null;
+        }
+    }
+
+    public PassageiroModel(PassageiroResponse passageiroResponse) {
+        this.codgPassageiroDb = passageiroResponse.getCodgPassageiroDb();
+        this.cpf = passageiroResponse.getCpf();
+        this.documento = new DocumentoPassageiro(passageiroResponse.getDocumento());
+        this.email = passageiroResponse.getEmail();
+        this.faixaEtaria = passageiroResponse.getFaixaEtaria();
+        this.nascimento = passageiroResponse.getNascimento();
+        this.nome = passageiroResponse.getNome();
+        this.nomeDoMeio = passageiroResponse.getNomeDoMeio();
+        this.sobrenome = passageiroResponse.getSobrenome();
+        this.passaporte = new PassaporteModel(passageiroResponse.getPassaporte());
+        this.sexo = passageiroResponse.getSexo();
+        this.telefone = new ContatoModel(passageiroResponse.getTelefone());
+        this.voeBiz = passageiroResponse.getVoeBiz();
+        this.idPassageiro = passageiroResponse.getIdPassageiro();
+        this.valores = new ArrayList<>();
+        if(passageiroResponse.getValores() != null) {
+            for (ReservaValoresAereoResponse reservaValoresAereoResponse : passageiroResponse.getValores()) {
+                this.valores.add(new ReservaValoresAereo(reservaValoresAereoResponse));
+            }
+        }
+        this.bilhetes = new ArrayList<>();
+        if(passageiroResponse.getBilhetes() != null){
+            for(BilheteResponse bilheteResponse : passageiroResponse.getBilhetes()){
+                this.bilhetes.add(new BilheteModel(bilheteResponse));
+            }
         }
     }
 

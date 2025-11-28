@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo.dto;
 
+import com.confApi.endPoints.contato.ContatoResponse;
+
 import java.io.Serializable;
 
 
@@ -12,6 +14,15 @@ public class Contato implements Serializable{
     private String numeroTelefone;
     private String nome;
 
+    public Contato(ContatoResponse contatoResponse) {
+        this.cidade = contatoResponse.getCidade();
+        this.email = contatoResponse.getEmail();
+        this.endereco = contatoResponse.getEndereco();
+        this.numeroDDD = contatoResponse.getNumeroDDD();
+        this.numeroDDI = contatoResponse.getNumeroDDI();
+        this.numeroTelefone = contatoResponse.getNumeroTelefone();
+        this.nome = contatoResponse.getNome();
+    }
 
     public Contato() {
     }

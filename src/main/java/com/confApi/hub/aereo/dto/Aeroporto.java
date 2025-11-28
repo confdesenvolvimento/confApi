@@ -1,11 +1,18 @@
 package com.confApi.hub.aereo.dto;
 
+import com.confApi.endPoints.aeroporto.AeroportoResponse;
+
 import java.io.Serializable;
 import java.util.Objects;
 
 public class Aeroporto implements Serializable{
     private String codigoIata;
     private String descricao = "";
+
+    public Aeroporto(AeroportoResponse aeroportoResponse) {
+        this.codigoIata = aeroportoResponse.getCodigoIata();
+        this.descricao = aeroportoResponse.getDescricao();
+    }
 
     public Aeroporto() {
     }

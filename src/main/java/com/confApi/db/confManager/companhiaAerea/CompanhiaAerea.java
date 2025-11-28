@@ -1,5 +1,6 @@
 package com.confApi.db.confManager.companhiaAerea;
 
+import com.confApi.endPoints.companhiaAerea.CompanhiaAereaResponse;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -19,6 +20,21 @@ public class CompanhiaAerea implements Serializable {
     private String imgEmissao;
     private String imhLogoSmall;
     private String imgLogo;
+
+    public CompanhiaAerea(CompanhiaAereaResponse companhiaAereaResponse) {
+        this.codgCompanhiaAerea = companhiaAereaResponse.getCodgCompanhiaAerea();
+        this.nomeCia = companhiaAereaResponse.getNomeCia();
+        this.iataCia = companhiaAereaResponse.getIataCia();
+        this.numrCia = companhiaAereaResponse.getNumrCia();
+        this.status = companhiaAereaResponse.getStatus();
+        this.flagReserva = companhiaAereaResponse.getFlagReserva();
+        this.flagEmitir = companhiaAereaResponse.getFlagEmitir();
+        this.codgIntegracao = companhiaAereaResponse.getCodgIntegracao();
+        this.imgPesquisa = companhiaAereaResponse.getImgPesquisa();
+        this.imgEmissao = companhiaAereaResponse.getImgEmissao();
+        this.imhLogoSmall = companhiaAereaResponse.getImhLogoSmall();
+        this.imgLogo = companhiaAereaResponse.getImgLogo();
+    }
 
     public CompanhiaAerea(String iataCia) {
         this.iataCia = iataCia;

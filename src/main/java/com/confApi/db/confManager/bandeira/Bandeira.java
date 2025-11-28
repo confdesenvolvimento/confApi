@@ -1,6 +1,8 @@
 package com.confApi.db.confManager.bandeira;
 
 
+import com.confApi.endPoints.cartao.CartaoResponse;
+
 import java.io.Serializable;
 
 public class Bandeira implements Serializable {
@@ -8,6 +10,12 @@ public class Bandeira implements Serializable {
     private Integer codgBandeira;
     private String nomeBandeira;
     private String siglaBandeira;
+
+    public Bandeira(CartaoResponse cartaoResponse) {
+        this.codgBandeira = Integer.parseInt(cartaoResponse.getCodgBandeira());
+        this.nomeBandeira = cartaoResponse.getNomeBandeira();
+        this.siglaBandeira = cartaoResponse.getSiglaBandeira();
+    }
 
     public Bandeira() {
     }
@@ -20,6 +28,10 @@ public class Bandeira implements Serializable {
 
     public Bandeira(Integer codgBandeira) {
         this.codgBandeira = codgBandeira;
+    }
+
+    public Bandeira(String nomeBandeira) {
+        this.nomeBandeira = nomeBandeira;
     }
 
     public Integer getCodgBandeira() {

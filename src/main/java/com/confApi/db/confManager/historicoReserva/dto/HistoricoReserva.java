@@ -1,6 +1,7 @@
 package com.confApi.db.confManager.historicoReserva.dto;
 
 import com.confApi.db.confManager.usuario.Usuario;
+import com.confApi.endPoints.historicoReserva.HistoricoReservaResponse;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -16,6 +17,18 @@ public class HistoricoReserva implements Serializable {
     private Usuario codgUsuario;
     private Integer codgReservaHotel;
     private Integer codgReservaPacote;
+
+    public HistoricoReserva(HistoricoReservaResponse historicoReservaResponse) {
+        this.codgHistoricoReserva = historicoReservaResponse.getCodgHistoricoReserva();
+        this.codgReservaAereo = historicoReservaResponse.getCodgReservaAereo();
+        this.dataHoraTransacao = historicoReservaResponse.getDataHoraTransacao();
+        this.descricao = historicoReservaResponse.getDescricao();
+        this.ipAcesso = historicoReservaResponse.getIpAcesso();
+        this.flagInterno = historicoReservaResponse.getFlagInterno();
+        this.codgUsuario = new Usuario(historicoReservaResponse.getCodgUsuario());
+        this.codgReservaHotel = historicoReservaResponse.getCodgReservaHotel();
+        this.codgReservaPacote = historicoReservaResponse.getCodgReservaPacote();
+    }
 
     public HistoricoReserva(int codgHistoricoReserva, String descricao, String ipAcesso, int flagInterno, Usuario codgUsuario, Integer codgReservaPacote, Date dataHoraTransacao) {
         this.codgHistoricoReserva = codgHistoricoReserva;

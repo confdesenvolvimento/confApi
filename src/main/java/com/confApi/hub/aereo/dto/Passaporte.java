@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo.dto;
 
+import com.confApi.endPoints.passaporte.PassaporteResponse;
+
 import java.util.Date;
 
 public class Passaporte {
@@ -30,6 +32,16 @@ public class Passaporte {
         } else{
             return null;
         }
+    }
+
+    public Passaporte(PassaporteResponse passaporteResponse) {
+        this.nacionalidade = passaporteResponse.getNacionalidade();
+        this.nomeDoMeioPax = passaporteResponse.getNomeDoMeioPax();
+        this.nomePax = passaporteResponse.getNomePax();
+        this.numero = passaporteResponse.getNumero();
+        this.paisEmissor = passaporteResponse.getPaisEmissor();
+        this.sobrenomePax = passaporteResponse.getSobrenomePax();
+        this.validade = passaporteResponse.getValidade();
     }
 
     public Passaporte(String numero) {

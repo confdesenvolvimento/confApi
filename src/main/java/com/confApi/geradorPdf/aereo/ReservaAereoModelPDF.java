@@ -74,7 +74,7 @@ public class ReservaAereoModelPDF {
         this.dataCancelamento = reservaAereoModel.getDataCancelamento();
         this.descMotivoCancelamento = reservaAereoModel.getDescricaoMotivoCancelamento();
         this.regraReserva = reservaAereoModel.getRegraReserva();
-        this.sistema = reservaAereoModel.getSistema();
+        this.sistema = reservaAereoModel.getSistema() != null ? reservaAereoModel.getSistema() : "wooba";
         this.companhiaAerea = reservaAereoModel.getCompanhiaAerea();
         this.codgCompanhiaAerea = reservaAereoModel.getCodgCompanhiaAerea();
         this.agencia = reservaAereoModel.getAgencia();

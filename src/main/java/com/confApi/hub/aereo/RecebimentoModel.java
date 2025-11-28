@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.endPoints.recebimento.RecebimentoResponse;
+
 import java.io.Serializable;
 import java.util.Date;
 
@@ -16,6 +18,23 @@ public class RecebimentoModel implements Serializable {
     private Integer codgCodgRecebimento;
     private String assinatura;
     private String link;
+
+    public RecebimentoModel() {
+    }
+
+    public RecebimentoModel(RecebimentoResponse recebimentoResponse) {
+        this.codgFormaPagamento = recebimentoResponse.getCodgFormaPagamento();
+        this.nomeFormaPagamento = recebimentoResponse.getNomeFormaPagamento();
+        this.valorEntrada = recebimentoResponse.getValorEntrada();
+        this.valorPagamento = recebimentoResponse.getValorPagamento();
+        this.formaDePagamento = new FormaPagamentoModel(recebimentoResponse.getFormaDePagamento());
+        this.cartaoSelecionado = new CartaoModel(recebimentoResponse.getCartaoSelecionado());
+        this.statusRecebimento = recebimentoResponse.getStatusRecebimento();
+        this.dataRecebimento = recebimentoResponse.getDataRecebimento();
+        this.codgCodgRecebimento = recebimentoResponse.getCodgCodgRecebimento();
+        this.assinatura = recebimentoResponse.getAssinatura();
+        this.link = recebimentoResponse.getLink();
+    }
 
     public String getLink() {
         return link;

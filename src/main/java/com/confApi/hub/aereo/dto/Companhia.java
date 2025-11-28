@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo.dto;
 
+import com.confApi.endPoints.companhiaAerea.CompanhiaResponse;
+
 import java.io.Serializable;
 import java.util.Objects;
 
@@ -7,6 +9,12 @@ public class Companhia implements Serializable {
     private Integer id = 0;
     private String codigoIata = "";
     private String descricao = "";
+
+    public Companhia(CompanhiaResponse companhia) {
+        this.id = companhia.getId();
+        this.codigoIata = companhia.getCodigoIata();
+        this.descricao = companhia.getDescricao();
+    }
 
     public Companhia() {
     }

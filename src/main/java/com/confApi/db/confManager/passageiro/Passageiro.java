@@ -20,7 +20,7 @@ public class Passageiro implements Serializable {
     private String nomePassageiro;
     private String meioNomePassageiro;
     private String sobrenomePassageiro;
-    private int sexo;
+    private Integer sexo;
     private int tipoPassageiro;
     private String cpf;
     private String telefone;
@@ -123,11 +123,11 @@ public class Passageiro implements Serializable {
         this.sobrenomePassageiro = sobrenomePassageiro;
     }
 
-    public int getSexo() {
+    public Integer getSexo() {
         return sexo;
     }
 
-    public void setSexo(int sexo) {
+    public void setSexo(Integer sexo) {
         this.sexo = sexo;
     }
 

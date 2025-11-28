@@ -18,7 +18,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ReservaAereo implements Serializable {
 
-    private int codgReservaAereo;
+    private Integer codgReservaAereo;
     private Usuario codgUsuarioCriacao;
     private Date dataCriacao;
     private Date dataEmissao;
@@ -76,10 +76,7 @@ public class ReservaAereo implements Serializable {
         this.localizador = localizador;
     }
 
-
-
-
-    public ReservaAereo(int codgReservaAereo) {
+    public ReservaAereo(Integer codgReservaAereo) {
         this.codgReservaAereo = codgReservaAereo;
     }
 
@@ -120,11 +117,6 @@ public class ReservaAereo implements Serializable {
         this.valorTotalReserva = valorTotalReserva;
     }
 
-
-
-
-
-
     public List<Passageiro> getPassageiros() {
         return passageiros;
     }
@@ -132,7 +124,6 @@ public class ReservaAereo implements Serializable {
     public void setPassageiros(List<Passageiro> passageiros) {
         this.passageiros = passageiros;
     }
-
 
     public List<Trecho> getTrechos() {
         return trechos;
@@ -142,11 +133,11 @@ public class ReservaAereo implements Serializable {
         this.trechos = trechos;
     }
 
-    public int getCodgReservaAereo() {
+    public Integer getCodgReservaAereo() {
         return codgReservaAereo;
     }
 
-    public void setCodgReservaAereo(int codgReservaAereo) {
+    public void setCodgReservaAereo(Integer codgReservaAereo) {
         this.codgReservaAereo = codgReservaAereo;
     }
 
@@ -269,10 +260,6 @@ public class ReservaAereo implements Serializable {
     public void setCodgReservaPacote(ReservaPacote codgReservaPacote) {
         this.codgReservaPacote = codgReservaPacote;
     }
-
-
-
-
 
 }
 

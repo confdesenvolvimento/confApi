@@ -6,6 +6,13 @@ import com.confApi.db.confManager.companhiaAerea.CompanhiaAerea;
 import com.confApi.db.confManager.historicoReserva.dto.HistoricoReserva;
 import com.confApi.db.confManager.reservaPacote.ReservaPacote;
 import com.confApi.db.confManager.usuario.Usuario;
+import com.confApi.endPoints.contato.ContatoResponse;
+import com.confApi.endPoints.formaPagamento.FormaPagamentoResponse;
+import com.confApi.endPoints.historicoReserva.HistoricoReservaResponse;
+import com.confApi.endPoints.passageiro.PassageiroResponse;
+import com.confApi.endPoints.recebimento.RecebimentoResponse;
+import com.confApi.endPoints.reservaAereo.ReservaAereoResponse;
+import com.confApi.endPoints.trechoReserva.TrechoReservaResponse;
 import com.confApi.hub.aereo.dto.TrechoReserva;
 import lombok.Data;
 
@@ -70,32 +77,78 @@ public class ReservaAereoModel implements Serializable {
     private ReservaPacote reservaPacote;
     private Boolean isPacote = false;
 
-    public void populaRecebimento() {
-
-        FormaPagamentoModel formaPagamentoSelect = new FormaPagamentoModel();
-        for (FormaPagamentoModel formas : formasPagamentos) {
-            if (formaPagamentoSelecionada.getCodgFormaPagto().equals(formas.getCodgFormaPagto())) {
-                formaPagamentoSelect = formas;
+    public ReservaAereoModel(ReservaAereoResponse reservaAereoResponse) {
+        this.codgReservaAereoDB = reservaAereoResponse.getCodgReservaAereoDB();
+        this.localizador = reservaAereoResponse.getLocalizador();
+        this.statusReserva = reservaAereoResponse.getStatusReserva();
+        this.dataCriacao = reservaAereoResponse.getDataCriacao();
+        this.dataEmissao = reservaAereoResponse.getDataEmissao();
+        this.prazoReserva = reservaAereoResponse.getPrazoReserva();
+        this.dataCancelamento = reservaAereoResponse.getDataCancelamento();
+        this.descMotivoCancelamento = reservaAereoResponse.getDescMotivoCancelamento();
+        this.regraReserva = reservaAereoResponse.getRegraReserva();
+        this.sistema = reservaAereoResponse.getSistema();
+        this.companhiaAerea = reservaAereoResponse.getCompanhiaAerea();
+        this.codgCompanhiaAerea = new CompanhiaAerea(reservaAereoResponse.getCodgCompanhiaAerea());
+        this.nomeAgencia = reservaAereoResponse.getNomeAgencia();
+        this.agencia = reservaAereoResponse.getAgencia() != null ? new Agencia(reservaAereoResponse.getAgencia()) : null;
+        this.nomeUnidade = reservaAereoResponse.getNomeUnidade();
+        this.usuarioCriacao = reservaAereoResponse.getUsuarioCriacao();
+        this.usuarioCriacao2 = new Usuario(reservaAereoResponse.getUsuarioCriacao2());
+        this.usuarioCancelamento = reservaAereoResponse.getUsuarioCancelamento();
+        this.trechos = new ArrayList<>();
+        for(TrechoReservaResponse trechoReserva : reservaAereoResponse.getTrechos()){
+            this.trechos.add(new TrechoReserva(trechoReserva));
+        }
+        this.contatos = new ArrayList<>();
+        for (ContatoResponse contato : reservaAereoResponse.getContatos()) {
+            this.contatos.add(new ContatoModel(contato));
+        }
+        this.passageiros = new ArrayList<>();
+        for (PassageiroResponse passageiro : reservaAereoResponse.getPassageiros()) {
+            this.passageiros.add(new PassageiroModel(passageiro));
+        }
+        this.motivoCancelamento = reservaAereoResponse.getMotivoCancelamento();
+        this.descricaoMotivoCancelamento = reservaAereoResponse.getDescricaoMotivoCancelamento();
+        this.isCancelarTktsAtivos = reservaAereoResponse.getIsCancelarTktsAtivos();
+        this.formaPagamentoSelecionada = new FormaPagamentoModel(reservaAereoResponse.getFormaPagamentoSelecionada());
+        this.formasPagamentos = new ArrayList<>();
+        for(FormaPagamentoResponse formaPagamento : reservaAereoResponse.getFormasPagamentos()){
+            this.formasPagamentos.add(new FormaPagamentoModel(formaPagamento));
+        }
+        this.recebimento = reservaAereoResponse.getRecebimento() != null ? new RecebimentoModel(reservaAereoResponse.getRecebimento()) : null;
+        this.recebimentos = new ArrayList<>();
+        for(RecebimentoResponse recebimento : reservaAereoResponse.getRecebimentos()){
+            this.recebimentos.add(new RecebimentoModel(recebimento));
+        }
+        this.pagamento = reservaAereoResponse.getPagamento() != null ? new PagamentoModel(reservaAereoResponse.getPagamento()) : null;
+        this.isEmitido = reservaAereoResponse.getIsEmitido();
+        this.tarifaGeral = reservaAereoResponse.getTarifaGeral();
+        this.tarifaNetGeral = reservaAereoResponse.getTarifaNetGeral();
+        this.taxaEmbarqueGeral = reservaAereoResponse.getTaxaEmbarqueGeral();
+        this.taxaDUGeral = reservaAereoResponse.getTaxaDUGeral();
+        this.taxaRAVGeral = reservaAereoResponse.getTaxaRAVGeral();
+        this.taxaRCGeral = reservaAereoResponse.getTaxaRCGeral();
+        this.taxaAssento = reservaAereoResponse.getTaxaAssento();
+        this.taxaTxCombustivelGeral = reservaAereoResponse.getTaxaTxCombustivelGeral();
+        this.valorTotalReserva = reservaAereoResponse.getValorTotalReserva();
+        this.isExibirTkt = reservaAereoResponse.getIsExibirTkt();
+        this.isExibirBtnCancelarTkt = reservaAereoResponse.getIsExibirBtnCancelarTkt();
+        this.isExibirBtnCancelarReserva = reservaAereoResponse.getIsExibirBtnCancelarReserva();
+        this.isExibirBtnMarcarAssento = reservaAereoResponse.getIsExibirBtnMarcarAssento();
+        this.isExibitBtnImprimir = reservaAereoResponse.getIsExibitBtnImprimir();
+        this.isExibirRav = reservaAereoResponse.getIsExibirRav();
+        this.isExibirRC = reservaAereoResponse.getIsExibirRC();
+        this.isExibirTxCombustivel = reservaAereoResponse.getIsExibirTxCombustivel();
+        this.msg = reservaAereoResponse.getMsg();
+        this.historico = new ArrayList<>();
+        if(reservaAereoResponse.getHistorico() != null) {
+            for (HistoricoReservaResponse historicoReserva : reservaAereoResponse.getHistorico()) {
+                this.historico.add(new HistoricoReserva(historicoReserva));
             }
         }
-        if (formaPagamentoSelect != null) {
-            RecebimentoModel recebimentoModel = new RecebimentoModel();
-            recebimentoModel.setCodgFormaPagamento(formaPagamentoSelect.getCodgFormaPagto());
-            recebimentoModel.setFormaDePagamento(formaPagamentoSelect);
-            recebimentoModel.setNomeFormaPagamento(formaPagamentoSelect.getNomeFormaPagto());
-            recebimentoModel.setValorEntrada(valorTotalReserva);
-            recebimentoModel.setValorPagamento(valorTotalReserva);
-
-            recebimento = recebimentoModel;
-        }
-        if (recebimento.getCodgFormaPagamento() != null) {
-            if (recebimento.getCodgFormaPagamento() == 2) {
-              //  UtilDebug.sysError("Forma de pagamento Selecionada: " + recebimento.getCodgFormaPagamento());
-                listarCartoes(recebimento.getFormaDePagamento());
-                recebimento.setCartaoSelecionado(new CartaoModel());
-            }
-        }
-
+        this.reservaPacote = reservaAereoResponse.getReservaPacote() != null ? new ReservaPacote(reservaAereoResponse.getReservaPacote()) : null;
+        this.isPacote = reservaAereoResponse.getIsPacote();
     }
 
     public void listarCartoes(FormaPagamentoModel formaPagamentoModel) {

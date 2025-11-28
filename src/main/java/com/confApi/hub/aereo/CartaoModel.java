@@ -1,5 +1,8 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.endPoints.cartao.CartaoResponse;
+import com.confApi.endPoints.parcelaCartao.ParcelaCartaoResponse;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +22,28 @@ public class CartaoModel implements Serializable {
     private String codgTransacao;
     private List<ParcelaCartaoModel> parcelasCartao = new ArrayList<>();
     private ParcelaCartaoModel parcelaSelecionada;
+
+    public CartaoModel() {
+    }
+
+    public CartaoModel(CartaoResponse cartaoResponse) {
+        this.codgBandeira = cartaoResponse.getCodgBandeira();
+        this.siglaBandeira = cartaoResponse.getSiglaBandeira();
+        this.nomeBandeira = cartaoResponse.getNomeBandeira();
+        this.titularBandeira = cartaoResponse.getTitularBandeira();
+        this.numeroCartao = cartaoResponse.getNumeroCartao();
+        this.validadeCartao = cartaoResponse.getValidadeCartao();
+        this.codgSegurancaCartao = cartaoResponse.getCodgSegurancaCartao();
+        this.quantidadeParcelas = cartaoResponse.getQuantidadeParcelas();
+        this.valor = cartaoResponse.getValor();
+        this.codgAutorizacao = cartaoResponse.getCodgAutorizacao();
+        this.codgTransacao = cartaoResponse.getCodgTransacao();
+        this.parcelasCartao = new ArrayList<>();
+        for(ParcelaCartaoResponse parcelaCartaoResponse : cartaoResponse.getParcelasCartao()){
+            parcelasCartao.add(new ParcelaCartaoModel(parcelaCartaoResponse));
+        }
+        this.parcelaSelecionada = new ParcelaCartaoModel(cartaoResponse.getParcelaSelecionada());
+    }
 
     @Override
     public int hashCode() {

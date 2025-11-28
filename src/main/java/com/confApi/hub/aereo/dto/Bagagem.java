@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo.dto;
 
+import com.confApi.endPoints.bagagem.BagagemResponse;
+
 import java.io.Serializable;
 import java.util.Objects;
 
@@ -13,6 +15,14 @@ public class Bagagem implements Serializable{
     private Double valor;
     private Integer peso;
     private String unidadeDeMedida;
+
+    public Bagagem(BagagemResponse bagagemResponse) {
+        this.id = bagagemResponse.getId();
+        this.quantidade = bagagemResponse.getQuantidade();
+        this.valor = bagagemResponse.getValor();
+        this.peso = bagagemResponse.getPeso();
+        this.unidadeDeMedida = bagagemResponse.getUnidadeDeMedida();
+    }
 
     public Bagagem() {
     }

@@ -1,5 +1,9 @@
 package com.confApi.hub.aereo.dto;
 
+import com.confApi.endPoints.trechoReserva.TrechoReservaResponse;
+import com.confApi.endPoints.voo.VooResponse;
+
+import java.util.ArrayList;
 import java.util.List;
 
 public class TrechoReserva {
@@ -13,7 +17,20 @@ public class TrechoReserva {
     private String tempoDeDuracao;
     private String identificacaoDaViagem;
 
-
+    public TrechoReserva(TrechoReservaResponse trechoReservaResponse) {
+        this.sistema = trechoReservaResponse.getSistema();
+        this.companhia = new Companhia(trechoReservaResponse.getCompanhia());
+        this.destino = new Aeroporto(trechoReservaResponse.getDestino());
+        this.duracao = trechoReservaResponse.getDuracao();
+        this.numeroParadas = trechoReservaResponse.getNumeroParadas();
+        this.origem = new Aeroporto(trechoReservaResponse.getOrigem());
+        this.voos = new ArrayList<>();
+        for (VooResponse vooResponse : trechoReservaResponse.getVoos()) {
+            this.voos.add(new Voo(vooResponse));
+        }
+        this.tempoDeDuracao = trechoReservaResponse.getTempoDeDuracao();
+        this.identificacaoDaViagem = trechoReservaResponse.getIdentificacaoDaViagem();
+    }
 
     public TrechoReserva() {
     }

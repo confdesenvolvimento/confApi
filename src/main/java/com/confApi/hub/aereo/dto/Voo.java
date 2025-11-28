@@ -1,6 +1,9 @@
 package com.confApi.hub.aereo.dto;
 
 import com.confApi.db.confManager.assentoAereo.Assento;
+import com.confApi.endPoints.assento.AssentoResponse;
+import com.confApi.endPoints.bagagem.BagagemResponse;
+import com.confApi.endPoints.voo.VooResponse;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -45,6 +48,50 @@ public class Voo implements Serializable{
     private String descricaocss = "color_default";
     private String baseTarifaria;
     private Boolean isCodeShare = false;
+
+    public Voo(VooResponse vooResponse) {
+        this.id = vooResponse.getId();
+        this.destino = new Aeroporto(vooResponse.getDestino());
+        this.origem = new Aeroporto(vooResponse.getOrigem());
+        this.ciaMandatoria = new Companhia(vooResponse.getCiaMandatoria());
+        this.ciaOperadora = vooResponse.getCiaOperadora() != null ? new Companhia(vooResponse.getCiaOperadora()) : null;
+        this.bagagemInclusa = vooResponse.getBagagemInclusa();
+        this.bagagemIndicador = vooResponse.getBagagemIndicador();
+        this.bagagemPeso = vooResponse.getBagagemPeso();
+        this.bagagemQuantidade = vooResponse.getBagagemQuantidade();
+        this.bagagemUnidadeDeMedida = vooResponse.getBagagemUnidadeDeMedida();
+        this.bagagens = new ArrayList<>();
+        for(BagagemResponse bagagem:vooResponse.getBagagens()){
+            this.bagagens.add(new Bagagem(bagagem));
+        }
+        this.dataPartida = vooResponse.getDataPartida();
+        this.horaPartida = vooResponse.getHoraPartida();
+        this.dataChegada = vooResponse.getDataChegada();
+        this.horaChegada = vooResponse.getHoraChegada();
+        this.duracao = vooResponse.getDuracao();
+        this.equipamento = vooResponse.getEquipamento();
+        this.qtdEscalas = vooResponse.getQtdEscalas();
+        this.classe = vooResponse.getClasse();
+        this.numeroVoo = vooResponse.getNumeroVoo();
+        this.cabine = vooResponse.getCabine();
+        this.tipoSegmento = vooResponse.getTipoSegmento();
+        this.isConexao = vooResponse.getIsConexao();
+        this.isReembolsavel = vooResponse.getIsReembolsavel();
+        this.assentos = new ArrayList<>();
+        for(AssentoResponse assento:vooResponse.getAssentos()){
+            this.assentos.add(new Assento(assento));
+        }
+        this.conexao = vooResponse.getConexao();
+        this.familia = vooResponse.getFamilia();
+        this.familiaCodigo = vooResponse.getFamiliaCodigo();
+        this.localizadorCia = vooResponse.getLocalizadorCia();
+        this.status = vooResponse.getStatus();
+        this.surface = vooResponse.getSurface();
+        this.identificacaoDoVoo = vooResponse.getIdentificacaoDoVoo();
+        this.descricaocss = vooResponse.getDescricaocss();
+        this.baseTarifaria = vooResponse.getBaseTarifaria();
+        this.isCodeShare = vooResponse.getIsCodeShare();
+    }
 
     public String getBaseTarifaria() {
         return baseTarifaria;

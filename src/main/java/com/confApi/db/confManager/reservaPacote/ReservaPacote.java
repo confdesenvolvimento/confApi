@@ -3,11 +3,14 @@ package com.confApi.db.confManager.reservaPacote;
 import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.recebimento.Recebimento;
 import com.confApi.db.confManager.usuario.Usuario;
+import com.confApi.endPoints.recebimento.RecebimentoResponse;
+import com.confApi.endPoints.reservaPacote.ReservaPacoteResponse;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.io.Serializable;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -30,6 +33,25 @@ public class ReservaPacote implements Serializable {
 
     private List<Recebimento> recebimentosDB;
 
+    public ReservaPacote(ReservaPacoteResponse reservaPacoteResponse) {
+        this.codgPacote = reservaPacoteResponse.getCodgPacote();
+        this.idenPacote = reservaPacoteResponse.getIdenPacote();
+        this.dataCriacao = reservaPacoteResponse.getDataCriacao();
+        this.dataLimiteEmissao = reservaPacoteResponse.getDataLimiteEmissao();
+        this.dataEmissao = reservaPacoteResponse.getDataEmissao();
+        this.dataCancelamento = reservaPacoteResponse.getDataCancelamento();
+        this.status = reservaPacoteResponse.getStatus();
+        this.codgAgencia = new Agencia(reservaPacoteResponse.getCodgAgencia());
+        this.descricaoMotivoCancelamento = reservaPacoteResponse.getDescricaoMotivoCancelamento();
+        this.codgUsuarioCriacao = new Usuario(reservaPacoteResponse.getCodgUsuarioCriacao());
+        this.codgUsuarioCancelamento = new Usuario(reservaPacoteResponse.getCodgUsuarioCancelamento());
+        this.statusPagamento = reservaPacoteResponse.getStatusPagamento();
+        this.prazoPagamentoCliente = reservaPacoteResponse.getPrazoPagamentoCliente();
+        this.recebimentosDB = new ArrayList<>();
+        for (RecebimentoResponse recebimentoResponse: reservaPacoteResponse.getRecebimentosDB()){
+            this.recebimentosDB.add(new Recebimento(recebimentoResponse, reservaPacoteResponse));
+        }
+    }
 
     public ReservaPacote() {
     }

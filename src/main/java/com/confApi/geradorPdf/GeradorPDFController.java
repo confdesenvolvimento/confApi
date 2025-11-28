@@ -1,5 +1,6 @@
 package com.confApi.geradorPdf;
 
+import com.confApi.geradorPdf.aereo.GeradorAereoPDF;
 import com.confApi.geradorPdf.aereo.ReservaAereoModelPDF;
 import com.confApi.geradorPdf.EnvioReservaAereoPDF.EnvioPlanoViagemReservaAereoPDF;
 import com.confApi.geradorPdf.geradorAereoPDF.EnvioPdfService;
@@ -21,6 +22,9 @@ public class GeradorPDFController {
 
     @Autowired
     private GeradorReservaAereoPDFService aereoPDFService;
+
+    @Autowired
+    private GeradorPDFService geradorPDFService;
 /*
     @PostMapping("/reservaAereo")
     public void geradorPdf(@RequestBody GeradorAereoPDFModel geradorAereoPDFModel) throws IOException {
@@ -37,13 +41,18 @@ public class GeradorPDFController {
         System.out.println("getUsuarioConfDto :  "+geradorAereoPDFModel.getUsuarioConfDto());
         System.out.println("plano viagem :  "+geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
         System.out.println("reserva :  "+geradorAereoPDFModel.getReservaAereoModel().getUsuarioCriacao2().getCodigoWooba());
-        new GeradorPDFService().popularAereoPDF(geradorAereoPDFModel);
+        geradorPDFService.popularAereoPDF(geradorAereoPDFModel);
     }
 
     @PostMapping("/reservaHotel")
     public void geradorHotelPdf(@RequestBody GeradorHotelPDFModel geradorHotelPDFModel)  {
         System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getUsuarioConfDto());
         System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getReservaHotelModel().getCodgAgencia());
-        new GeradorPDFService().popularHotelPDF(geradorHotelPDFModel);
+        geradorPDFService.popularHotelPDF(geradorHotelPDFModel);
+    }
+
+    @PostMapping("/reservaAereoApp")
+    public void geradorPdfApp(@RequestBody GeradorAereoPDF geradorAereoPDF ) throws IOException {
+        geradorPDFService.popularAereoPDFApp(geradorAereoPDF);
     }
 }
