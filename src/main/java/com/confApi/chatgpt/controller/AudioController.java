@@ -5,6 +5,9 @@ import com.confApi.chatgpt.profile.ProfilePromptRegistry;
 import com.confApi.chatgpt.service.ChatService;
 import com.confApi.chatgpt.service.SpeechToTextService;
 import com.confApi.chatgpt.service.TextToSpeechService;
+import com.confApi.db.confManager.agencia.AgenciaApi;
+import com.confApi.db.confManager.agencia.AgenciaService;
+import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.hub.limites.LimitesService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,6 +39,7 @@ public class AudioController {
     private final ChatMemoriaService chatMemoriaService;
     private final LimitesService limitesService;
     private final ChatService chatService;
+    private final AgenciaService agenciaService;
 
     private final ObjectMapper mapper;
 
@@ -57,11 +61,15 @@ public class AudioController {
             @RequestParam(required = false) String model,
             @RequestParam(required = false) String language
     ) throws IOException, NoSuchAlgorithmException {
+
         // Parse seguro do JSON opcional
         ConversationRequestDTO request = null;
+
         if (requestJson != null && !requestJson.isBlank()) {
             request = mapper.readValue(requestJson, ConversationRequestDTO.class);
         }
+
+        Agencia agenciaDB = new AgenciaApi().findCodgAgencia(Integer.parseInt(String.valueOf(request.codgAgencia())));
 
         String mdl = "gpt-4o-mini-transcribe";
         String lang = (language != null && !language.isBlank()) ? language : "pt";
@@ -69,11 +77,36 @@ public class AudioController {
         // 1) Transcreve
         String transcript = stt.transcribe(file, mdl, lang);
 
+        if (request != null) {
+            request = new ConversationRequestDTO(
+                    request.identificacao(),
+                    request.unidade(),
+                    agenciaDB.getCodgSistemaBackOffice(),
+                    request.codgAgencia(),
+                    request.codgUsuario(),
+                    transcript,          // <- novo input
+                    request.history(),
+                    request.model(),
+                    request.stream(),
+                    request.keywords()
+            );
+        }
+
         // 2) Monta mensagens para o chat
         List<ChatMessageDTO> messages = new ArrayList<>();
-        if (request != null && request.history() != null && !request.history().isEmpty()) {
+
+        if (request.history().isEmpty()) {
+            String sys = profiles.systemPrompt("confia", request.codgAgencia(), request.codgUsuario());
+            ChatMessageDTO system = new ChatMessageDTO("system", sys);
+
+            // 2) Histórico (se vier) + dados adicionais do sistema + input atual
+            messages.add(system);
+        }
+
+        if (request.history() != null && !request.history().isEmpty()) {
             messages.addAll(request.history());
         }
+
         chatService.actionApis(messages, request);
 
         String ident = (request != null && request.identificacao() != null) ? request.identificacao() : "chat";
@@ -107,7 +140,6 @@ public class AudioController {
         String reply = chat.content() == null ? "" : chat.content().trim();
         if (!reply.isEmpty()) {
             bytes = tts.synthesize(reply, null, null, "mp3");
-            System.out.println("Bytes recebidos: " + bytes.length);
             String b64 = java.util.Base64.getEncoder().encodeToString(bytes);
             audio = new ChatAudioDTO("mp3", "audio/mpeg", b64, bytes.length);
         }
