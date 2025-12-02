@@ -72,7 +72,7 @@ public class AudioController {
         Agencia agenciaDB = new AgenciaApi().findCodgAgencia(Integer.parseInt(String.valueOf(request.codgAgencia())));
 
         String mdl = "gpt-4o-mini-transcribe";
-        String lang = (language != null && !language.isBlank()) ? language : "pt";
+        String lang = (language != null && !language.isBlank()) ? language : "pt-BR";
 
         // 1) Transcreve
         String transcript = stt.transcribe(file, mdl, lang);
