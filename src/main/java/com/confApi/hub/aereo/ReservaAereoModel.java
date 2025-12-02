@@ -14,7 +14,9 @@ import com.confApi.endPoints.recebimento.RecebimentoResponse;
 import com.confApi.endPoints.reservaAereo.ReservaAereoResponse;
 import com.confApi.endPoints.trechoReserva.TrechoReservaResponse;
 import com.confApi.hub.aereo.dto.TrechoReserva;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -22,6 +24,8 @@ import java.util.Date;
 import java.util.List;
 
 @Data
+@AllArgsConstructor
+@NoArgsConstructor
 public class ReservaAereoModel implements Serializable {
 
     private Long codgReservaAereoDB;
