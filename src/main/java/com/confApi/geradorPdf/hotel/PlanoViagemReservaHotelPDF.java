@@ -14,4 +14,5 @@ public class PlanoViagemReservaHotelPDF {
     private String emailCopia;
     private boolean receberCopiaEmail = true;
     private boolean semValores ;
+    private String emailsList;
 }
