@@ -75,6 +75,7 @@ public class AlertaTarifaService implements Serializable {
                     String.class
             );
             if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
+
                 return mapper.readValue(resp.getBody(), new TypeReference<List<AlertaTarifaDTO>>() {});
             }
         } catch (Exception e) {
@@ -130,6 +131,7 @@ public class AlertaTarifaService implements Serializable {
                     String.class
             );
             if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
+
                 return mapper.readValue(resp.getBody(), new TypeReference<List<AlertaTarifaDTO>>() {});
             }
         } catch (Exception e) {

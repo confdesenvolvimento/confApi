@@ -17,8 +17,8 @@ public class AlertaTarifaDTO implements Serializable {
     private Integer id;
     private Usuario usuario;
     private Agencia agencia;
-    private Aeroporto origem;
-    private Aeroporto destino;
+    private com.confApi.db.confManager.aeroporto.Aeroporto origem;
+    private com.confApi.db.confManager.aeroporto.Aeroporto destino;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     private Date periodoInicio;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
@@ -58,24 +58,24 @@ public class AlertaTarifaDTO implements Serializable {
     public String toString() {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("📢 ALERTA DE TARIFA Nº ").append(id != null ? id : "N/I").append("\n");
+        //sb.append("📢ALERTA DE TARIFA Nº ").append(id != null ? id : "N/I").append("\n");
 
         if (origem != null && destino != null) {
-            sb.append("✈️ Rota: ")
-                    .append(origem.getCodigoIata()).append(" → ").append(destino.getCodigoIata()).append(" (")
-                    .append(origem.getDescricao()).append(" → ").append(destino.getDescricao()).append(")\n");
+            sb.append(" Rota: ")
+                    .append(origem.getIataAeroporto()).append(" → ").append(destino.getIataAeroporto()).append(" (")
+                    .append(origem.getNomeAeroporto()).append(" → ").append(destino.getNomeAeroporto()).append(")\n");
         }
 
-        sb.append("📅 Período: ")
+        sb.append("Período: ")
                 .append(formatarData(periodoInicio)).append(" até ").append(formatarData(periodoFinal)).append("\n");
 
-        sb.append("📆 Validade do alerta: ").append(formatarData(validade)).append("\n");
+       // sb.append("📆 Validade do alerta: ").append(formatarData(validade)).append("\n");
 
         if (valorMaximo != null) {
-            sb.append("💰 Menor valor encontrado: R$ ").append(String.format("%.2f", valorMaximo)).append("\n");
+            sb.append(" Menor valor encontrado: R$ ").append(String.format("%.2f", valorMaximo)).append("\n");
         }
         if (menorValorEncontrado != null || maiorValorEncontrado != null) {
-            sb.append("📊 Faixa de valores encontrados: ");
+            sb.append("Faixa de valores encontrados: ");
             if (menorValorEncontrado != null) {
                 sb.append("mín R$ ").append(String.format("%.2f", menorValorEncontrado)).append(" ");
             }
@@ -85,7 +85,7 @@ public class AlertaTarifaDTO implements Serializable {
             sb.append("\n");
         }
 
-        sb.append("🧾 Status: ").append(obterStatusDescricao(status)).append("\n");
+       // sb.append("🧾 Status: ").append(obterStatusDescricao(status)).append("\n");
 
         if (observacao != null && !observacao.isBlank()) {
             sb.append("🗒️ Observação: ").append(observacao).append("\n");
@@ -94,7 +94,7 @@ public class AlertaTarifaDTO implements Serializable {
         // Exibe os logs detalhados
 
             if (logs != null && !logs.isEmpty()) {
-                sb.append("   📚 Tarifas Encontradas:\n");
+                sb.append(" Tarifas Encontradas:\n");
                 for (AlertaTarifaLogDTO log : logs) {
                     sb.append("      ").append(log.toString().replace("\n", "\n      ")).append("\n");
                     sb.append("\n");

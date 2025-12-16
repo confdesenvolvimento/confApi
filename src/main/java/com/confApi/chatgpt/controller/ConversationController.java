@@ -25,7 +25,7 @@ import java.util.*;
 public class ConversationController {
 
 
-    
+
     private final ChatService chatService;
     private final ProfilePromptRegistry profiles;
 

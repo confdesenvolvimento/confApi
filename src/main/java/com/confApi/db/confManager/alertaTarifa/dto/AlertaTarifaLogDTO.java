@@ -37,9 +37,9 @@ public class AlertaTarifaLogDTO implements Serializable {
         return "\n🔹 [Alerta de Tarifa - Dia Desconto]" +
                 "\n📅 Data da Tarifa: " + (dataTarifa != null ? sdf.format(dataTarifa) : "N/I") +
                 "\n💰 Valor Encontrado: R$ " + String.format("%.2f", valorEncontrado) +
-                "\n🕓 Encontrado em: " + (dataProcessamento != null ? sdf.format(dataProcessamento) : "N/I") +
-                "\n💬 Mensagem: " + (mensagem != null ? mensagem : "-") +
-                "\n📉 Desconto Detectado: " + String.format("%.2f", percentualDesconto) + "%";
+              //  "\n🕓 Encontrado em: " + (dataProcessamento != null ? sdf.format(dataProcessamento) : "N/I") +
+             //   "\n💬 Mensagem: " + (mensagem != null ? mensagem : "-") +
+                "\n📉 Desconto : " + String.format("%.2f", percentualDesconto) + "%";
     }
     @Override
     public boolean equals(Object o) {
