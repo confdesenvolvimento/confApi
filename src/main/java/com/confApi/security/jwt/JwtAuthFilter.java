@@ -1,7 +1,6 @@
 package com.confApi.security.jwt;
 
 import com.confApi.service.UsuarioServiceImpl;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -15,36 +14,42 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 public class JwtAuthFilter extends OncePerRequestFilter {
-    @Autowired
-    private JwtService jwtService;
-    @Autowired
-    private UsuarioServiceImpl usuarioService;
 
-    /*
-     * public JwtAuthFilter(JwtService jwtService, UsuarioServiceImpl
-     * usuarioService) { this.jwtService = jwtService; this.usuarioService =
-     * usuarioService; }
-     */
+    private final JwtService jwtService;
+    private final UsuarioServiceImpl usuarioService;
+
+    // ✅ Injeção por construtor (garante que não ficará null)
+    public JwtAuthFilter(JwtService jwtService, UsuarioServiceImpl usuarioService) {
+        this.jwtService = jwtService;
+        this.usuarioService = usuarioService;
+    }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse,
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        String authorization = httpServletRequest.getHeader("Authorization");
 
-        if (authorization != null && authorization.startsWith("Bearer")) {
-            String token = authorization.split(" ")[1];
-            boolean isValid = jwtService.tokenValido(token);
-            if (isValid) {
+        String authorization = request.getHeader("Authorization");
+
+        if (authorization != null && authorization.startsWith("Bearer ")) {
+            String token = authorization.substring("Bearer ".length());
+
+            if (jwtService.tokenValido(token) && SecurityContextHolder.getContext().getAuthentication() == null) {
                 String loginUsuario = jwtService.obterLoginUsuario(token);
                 UserDetails usuario = usuarioService.loadUserByUsername(loginUsuario);
-                UsernamePasswordAuthenticationToken user = new UsernamePasswordAuthenticationToken(usuario, null,
-                        usuario.getAuthorities());
-                user.setDetails(new WebAuthenticationDetailsSource().buildDetails(httpServletRequest));
-                SecurityContextHolder.getContext().setAuthentication(user);
+
+                // 🔍 DEBUG (remova depois)
+                System.out.println("JWT USER: " + usuario.getUsername());
+                usuario.getAuthorities().forEach(a -> System.out.println("JWT AUTH: " + a.getAuthority()));
+
+                UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
+
+                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }
 
-        filterChain.doFilter(httpServletRequest, httpServletResponse);
-
+        filterChain.doFilter(request, response);
     }
 }

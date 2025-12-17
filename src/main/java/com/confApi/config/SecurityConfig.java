@@ -5,8 +5,6 @@ import com.confApi.security.jwt.JwtService;
 import com.confApi.service.UsuarioServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
@@ -18,40 +16,41 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @EnableWebSecurity
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
-    @Autowired
-    public UsuarioServiceImpl usuarioService;
 
     @Autowired
-    public JwtService jwtService;
+    private UsuarioServiceImpl usuarioService;
+
+    @Autowired
+    private JwtService jwtService;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    // ✅ Cria o filtro passando dependências (sem @Autowired dentro do filtro)
     @Bean
     public OncePerRequestFilter jwtFilter() {
-        //System.out.println("SecurityConfig.Configure3");
-        return new JwtAuthFilter();
+        return new JwtAuthFilter(jwtService, usuarioService);
     }
-/*
-    @Override
-    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
-        // TODO Auto-generated method stub
-        //System.out.println("SecurityConfig.Configure1");
-        auth.userDetailsService(usuarioService).passwordEncoder(passwordEncoder());
-    }*/
+
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {
-        http.csrf().disable()  // Desabilita CSRF (opcional)
+        http.csrf().disable()
                 .authorizeRequests()
-                .anyRequest().authenticated()
+
+                // ✅ todos autenticados podem acessar /services/external/**
+                .antMatchers("/services/external/**").authenticated()
+
+                // ❌ demais endpoints: autenticado e NÃO pode ter EXTERNAL
+                .anyRequest().access("isAuthenticated() and !hasAuthority('EXTERNAL')")
+
                 .and()
                 .sessionManagement()
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .addFilterBefore(jwtFilter(), UsernamePasswordAuthenticationFilter.class);
-
     }
+
 }
