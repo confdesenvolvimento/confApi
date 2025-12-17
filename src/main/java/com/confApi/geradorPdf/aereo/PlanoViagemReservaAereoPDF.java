@@ -16,6 +16,7 @@ public class PlanoViagemReservaAereoPDF implements Serializable {
     private String emailCopia;
     private boolean receberCopiaEmail;
     private boolean semValores;
+    private String emailsList;
 
     public PlanoViagemReservaAereoPDF(GeradorAereoPDF geradorAereoPDF) {
         this.assunto = "Plano de viagem - " + geradorAereoPDF.getReservaLocalizaodr();
