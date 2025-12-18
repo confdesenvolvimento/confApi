@@ -2,6 +2,7 @@ package com.confApi.db.confManager.usuario;
 
 import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.unidade.dto.Unidade;
+import com.confApi.db.confManager.usuario.dto.UsuarioClienteDto;
 import com.confApi.endPoints.usuario.UsuarioResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 

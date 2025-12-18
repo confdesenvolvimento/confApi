@@ -1,6 +1,6 @@
 package com.confApi.geradorPdf;
 
-import com.confApi.db.confManager.usuario.UsuarioConfDto;
+import com.confApi.db.confManager.usuario.dto.UsuarioConfDto;
 import com.confApi.endPoints.agencia.Agencia;
 import com.confApi.endPoints.reservaAereo.ReservaAereoConsultarLocalizadorRequest;
 import com.confApi.endPoints.reservaAereo.ReservaAereoResponse;

@@ -1,4 +1,4 @@
-package com.confApi.db.confManager.usuario;
+package com.confApi.db.confManager.usuario.dto;
 
 import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.unidade.dto.Unidade;
