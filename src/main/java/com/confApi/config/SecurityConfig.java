@@ -41,11 +41,11 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .authorizeRequests()
 
                 // ✅ todos autenticados podem acessar /services/external/**
-                .antMatchers("/services/external/**").authenticated()
+                .antMatchers("/services/external/**").permitAll()
 
-                // ❌ demais endpoints: autenticado e NÃO pode ter EXTERNAL
-                .anyRequest().access("isAuthenticated() and !hasAuthority('EXTERNAL')")
-
+               // // ❌ demais endpoints: autenticado e NÃO pode ter EXTERNAL
+               // .anyRequest().access("isAuthenticated() and !hasAuthority('external')")
+                .anyRequest().authenticated()
                 .and()
                 .sessionManagement()
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)

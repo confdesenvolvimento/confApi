@@ -22,6 +22,7 @@ public class UsuarioDTO {
     private String grupo;
     private String tipo;
     private String tokenIdentificacao;
+    private String status;
 
     public UsuarioDTO() {}
 
