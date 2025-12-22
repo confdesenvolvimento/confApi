@@ -1,5 +1,7 @@
 package com.confApi.endPoints.usuario;
 
+import com.confApi.corporate.dto.usuarioExternoDTO.UsuarioExternoResponseDTO;
+import com.confApi.corporate.mapper.UsuarioExternoMapper;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.db.confManager.usuario.dto.AuthRequestDto;
 import com.confApi.db.confManager.usuario.dto.UsuarioDto;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import java.io.IOException;
+import java.util.Map;
 
 @Service
 public class UsuarioService {
@@ -22,9 +25,18 @@ public class UsuarioService {
         return new UsuarioResponse(usuario);
     }
 
-    public ResponseEntity<Object> autenficarUsuarioExterno(String login) {
-        Object usuario = usuarioApi.consultaUsuarioByLoginWooba(login);
-        return ResponseEntity.ok((usuario));
+    public UsuarioExternoResponseDTO autenficarUsuarioExterno(String login) throws IOException {
+
+        Object retorno = usuarioApi.consultaUsuarioByLoginWooba(login);
+
+        if (retorno == null) {
+            return null;
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> json = (Map<String, Object>) retorno;
+
+        return UsuarioExternoMapper.toDTO(json);
     }
 
     public ResponseEntity<UsuarioDto> autenficarUsuarioAuth(@RequestBody AuthRequestDto requestDto) throws IOException {

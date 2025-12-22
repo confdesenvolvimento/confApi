@@ -1,4 +1,4 @@
-package com.confApi.corporate.dto;
+package com.confApi.corporate.dto.familiaDTO;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;

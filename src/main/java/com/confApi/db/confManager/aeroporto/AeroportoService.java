@@ -41,51 +41,32 @@ public class AeroportoService {
 
     public List<Aeroporto> findAeroportoByParametros(AeroportoParamRq paramRq) {
 
-        List<Aeroporto> aeroportos = new ArrayList<>();
-
-        String urlBase = UrlConfig.URL_CONFIANCA_MANAGER + "aeroporto/iataParametros";
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(urlBase);
-
-        if (paramRq.getIataPais() != null) {
-            builder.queryParam("iataPais", paramRq.getIataPais());
-        }
-
-        // REGRA DO MANAGER: iataAeroporto nunca pode ser null
-        if (paramRq.getIataAeroporto() != null) {
-            builder.queryParam("iataAeroporto", paramRq.getIataAeroporto());
-        } else {
-            builder.queryParam("iataAeroporto", "");
-        }
-
-        if (paramRq.getNomeAeroporto() != null) {
-            builder.queryParam("nomeAeroporto", paramRq.getNomeAeroporto());
-        }
-
-        String url = builder.toUriString();
-        System.out.println("URL AEROPORTO PARAMETROS: " + url);
+        String url = UrlConfig.URL_CONFIANCA_MANAGER + "aeroporto/iataParam";
+        System.out.println("URL AEROPORTO PARAMETROS (POST): " + url);
 
         try {
+            HttpHeaders headers = defaultHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+
+            HttpEntity<AeroportoParamRq> entity = new HttpEntity<>(paramRq, headers);
+
             ResponseEntity<String> response = restTemplate.exchange(
                     url,
-                    HttpMethod.GET,
-                    new HttpEntity<>(defaultHeaders()),
+                    HttpMethod.POST,
+                    entity,
                     String.class
             );
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                aeroportos = mapper.readValue(
-                        response.getBody(),
-                        new TypeReference<List<Aeroporto>>() {}
-                );
+                return mapper.readValue(response.getBody(), new TypeReference<List<Aeroporto>>() {});
             }
 
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, "Erro ao consultar aeroportos por parâmetros", ex);
         }
 
-        return aeroportos;
+        return new ArrayList<>();
     }
-
 
 
     public List<Aeroporto> findAeroportoByIataPais(String iataPais) {

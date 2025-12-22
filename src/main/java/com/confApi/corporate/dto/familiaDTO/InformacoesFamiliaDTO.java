@@ -1,4 +1,4 @@
-package com.confApi.corporate.dto;
+package com.confApi.corporate.dto.familiaDTO;
 
 import lombok.Data;
 

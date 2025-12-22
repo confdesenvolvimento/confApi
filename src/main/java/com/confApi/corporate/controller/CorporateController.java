@@ -1,7 +1,8 @@
 package com.confApi.corporate.controller;
 
-import com.confApi.corporate.dto.CompanhiaFamiliaDTO;
+import com.confApi.corporate.dto.familiaDTO.CompanhiaFamiliaDTO;
 import com.confApi.corporate.dto.AeroportoDTO.AeroportoDTO;
+import com.confApi.corporate.dto.usuarioExternoDTO.UsuarioExternoResponseDTO;
 import com.confApi.corporate.mapper.AeroportoMapper;
 import com.confApi.corporate.mapper.FamiliaMapper;
 import com.confApi.db.confManager.aeroporto.Aeroporto;
@@ -46,22 +47,47 @@ public class CorporateController {
     }
 
     @PostMapping("/getUserUsuario")
-    public ResponseEntity<Object> autenficarUsuarioExterno(@RequestBody AuthRequestDto requestDto) throws IOException {
-        if (requestDto.getLoginUsuario() != null && requestDto.getLoginUsuario().length() > 20) {
+    public ResponseEntity<UsuarioExternoResponseDTO> autenficarUsuarioExterno(
+            @RequestBody AuthRequestDto requestDto) throws IOException {
+
+        String login = requestDto.getLoginUsuario();
+
+        // -------- Validação --------
+        if (login == null || login.isBlank()) {
             return ResponseEntity
                     .badRequest()
-                    .body("Login é muito grande. Máximo permitido: 20 caracteres.");
+                    .body(buildMensagem("Login não informado."));
         }
-        return ResponseEntity.ok()
-                .body(usuarioService
-                        .autenficarUsuarioExterno(requestDto.getLoginUsuario())
-                        .getBody());
-    }
 
-    @GetMapping("/iataParametros")
-    public List<AeroportoDTO> getAeroportoByParametros(AeroportoParamRq paramRq) throws IOException {
+        if (login.length() > 20) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(buildMensagem("Login é muito grande. Máximo permitido: 20 caracteres."));
+        }
+
+        // -------- Chamada Service --------
+        UsuarioExternoResponseDTO response =
+                usuarioService.autenficarUsuarioExterno(login);
+
+        if (response == null || response.getUsuario() == null) {
+            return ResponseEntity.ok(
+                    buildMensagem("Usuário não encontrado.")
+            );
+        }
+
+        return ResponseEntity.ok(response);
+    }
+    private UsuarioExternoResponseDTO buildMensagem(String msg) {
+        UsuarioExternoResponseDTO dto = new UsuarioExternoResponseDTO();
+        dto.setMensagem(msg);
+        return dto;
+    }
+    @PostMapping(value = "/iataParametros", consumes = "application/json", produces = "application/json")
+    public ResponseEntity<List<AeroportoDTO>> getAeroportoByParametros(
+            @RequestBody AeroportoParamRq paramRq) throws IOException {
+
         List<Aeroporto> lista = aeroportoService.findAeroportoByParametros(paramRq);
-        return AeroportoMapper.toAeroportoDTOList(lista);
+        return ResponseEntity.ok(AeroportoMapper.toAeroportoDTOList(lista));
     }
 
     @GetMapping("/iataPais/{iataPais}")

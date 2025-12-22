@@ -1,7 +1,7 @@
 package com.confApi.corporate.mapper;
-import com.confApi.corporate.dto.CompanhiaFamiliaDTO;
-import com.confApi.corporate.dto.FamiliaDTO;
-import com.confApi.corporate.dto.InformacoesFamiliaDTO;
+import com.confApi.corporate.dto.familiaDTO.CompanhiaFamiliaDTO;
+import com.confApi.corporate.dto.familiaDTO.FamiliaDTO;
+import com.confApi.corporate.dto.familiaDTO.InformacoesFamiliaDTO;
 import com.confApi.db.confManager.companhiaAerea.CompanhiaAerea;
 import com.confApi.db.confManager.familia.dto.FamiliaCompanhia;
 import com.confApi.db.confManager.familia.dto.FamiliaInformacoes;
