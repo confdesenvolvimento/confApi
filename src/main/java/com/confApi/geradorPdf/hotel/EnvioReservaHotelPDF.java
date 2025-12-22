@@ -1,6 +1,6 @@
 package com.confApi.geradorPdf.hotel;
 
-import com.confApi.db.confManager.usuario.UsuarioConfDto;
+import com.confApi.db.confManager.usuario.dto.UsuarioConfDto;
 import lombok.Data;
 
 @Data

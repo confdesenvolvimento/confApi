@@ -1,6 +1,6 @@
 package com.confApi.geradorPdf.EnvioReservaAereoPDF;
 
-import com.confApi.db.confManager.usuario.UsuarioConfDto;
+import com.confApi.db.confManager.usuario.dto.UsuarioConfDto;
 import com.confApi.geradorPdf.aereo.GeradorAereoPDFModel;
 import com.confApi.geradorPdf.aereo.PlanoViagemReservaAereoPDF;
 import lombok.Data;

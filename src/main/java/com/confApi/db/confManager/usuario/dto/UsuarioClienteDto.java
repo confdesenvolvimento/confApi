@@ -1,5 +1,6 @@
-package com.confApi.db.confManager.usuario;
+package com.confApi.db.confManager.usuario.dto;
 
+import com.confApi.db.confManager.usuario.Usuario;
 import lombok.Data;
 
 @Data
