@@ -1,11 +1,15 @@
 package com.confApi.corporate.controller;
 
 import com.confApi.corporate.dto.CompanhiaFamiliaDTO;
+import com.confApi.corporate.dto.AeroportoDTO.AeroportoDTO;
+import com.confApi.corporate.mapper.AeroportoMapper;
 import com.confApi.corporate.mapper.FamiliaMapper;
+import com.confApi.db.confManager.aeroporto.Aeroporto;
+import com.confApi.db.confManager.aeroporto.AeroportoService;
+import com.confApi.db.confManager.aeroporto.DTO.AeroportoParamRq;
 import com.confApi.db.confManager.familia.FamiliaService;
 import com.confApi.db.confManager.familia.dto.FamiliaCompanhia;
 import com.confApi.db.confManager.usuario.dto.AuthRequestDto;
-import com.confApi.db.confManager.usuario.dto.autenticar.UsuarioResponseDTO;
 import com.confApi.endPoints.usuario.UsuarioService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +28,9 @@ public class CorporateController {
 
     @Autowired
     private UsuarioService usuarioService;
+
+    @Autowired
+    private AeroportoService aeroportoService;
 
     @GetMapping("/getFamiliaByNomecia")
     public List<CompanhiaFamiliaDTO> getFamiliaByNomecia(
@@ -51,4 +58,21 @@ public class CorporateController {
                         .getBody());
     }
 
+    @GetMapping("/iataParametros")
+    public List<AeroportoDTO> getAeroportoByParametros(AeroportoParamRq paramRq) throws IOException {
+        List<Aeroporto> lista = aeroportoService.findAeroportoByParametros(paramRq);
+        return AeroportoMapper.toAeroportoDTOList(lista);
+    }
+
+    @GetMapping("/iataPais/{iataPais}")
+    public List<AeroportoDTO> getAeroportoByIataPais(@PathVariable String iataPais) throws IOException {
+        List<Aeroporto> lista = aeroportoService.findAeroportoByIataPais(iataPais);
+        return AeroportoMapper.toAeroportoDTOList(lista);
+    }
+
+    @GetMapping("/iata/{iata}")
+    public AeroportoDTO getAeroportoByIata(@PathVariable String iata) throws IOException {
+        Aeroporto aeroporto = aeroportoService.findAeroportoByIata(iata);
+        return AeroportoMapper.toAeroportoDTO(aeroporto);
+    }
 }
