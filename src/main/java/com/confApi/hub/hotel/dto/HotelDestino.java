@@ -11,4 +11,5 @@ public class HotelDestino {
     private String nomeHotel;
     private Boolean isHotel = false;
     private String descricao ="";
+    private String codgHotel;
 }

@@ -11,6 +11,7 @@ import java.util.List;
 @ToString
 @EqualsAndHashCode
 public class HotelPesquisaQuarto {
+    private Integer id;
     private String nomeQuartoPesquisa;
     private Integer qtdQuartos = 1;
     private Integer qtdAdultos = 1;

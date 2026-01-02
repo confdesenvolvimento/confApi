@@ -24,6 +24,10 @@ public class TarifaHotel implements Serializable {
     private Double valorTaxaIss = 0.0;
     private Double valorTaxaServico = 0.0;
     private String moeda;
+    private Double cambio = 1.0;
+    private Double valorComissaoExtra = 0.0;
+    private Double percentualComissaoExtra = 0.0;
+    private Integer tipoComissao = 1;
     private String disponibilidade;
     private List<TarifaDiaria> tarifasDiaria = new ArrayList<>();
 
@@ -203,5 +207,36 @@ public class TarifaHotel implements Serializable {
         this.valorTaxaServico = valorTaxaServico;
     }
 
+    public Double getCambio() {
+        return cambio;
+    }
+
+    public void setCambio(Double cambio) {
+        this.cambio = cambio;
+    }
+
+    public Double getValorComissaoExtra() {
+        return valorComissaoExtra;
+    }
+
+    public void setValorComissaoExtra(Double valorComissaoExtra) {
+        this.valorComissaoExtra = valorComissaoExtra;
+    }
+
+    public Double getPercentualComissaoExtra() {
+        return percentualComissaoExtra;
+    }
+
+    public void setPercentualComissaoExtra(Double percentualComissaoExtra) {
+        this.percentualComissaoExtra = percentualComissaoExtra;
+    }
+
+    public Integer getTipoComissao() {
+        return tipoComissao;
+    }
+
+    public void setTipoComissao(Integer tipoComissao) {
+        this.tipoComissao = tipoComissao;
+    }
 }
 

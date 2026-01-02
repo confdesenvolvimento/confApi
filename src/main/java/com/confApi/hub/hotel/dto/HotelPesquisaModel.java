@@ -17,6 +17,12 @@ public class HotelPesquisaModel {
     private Date dataSaida;
     private Integer quantidadeNoites;
     private Integer quantidadeQuartos = 1;
-    private Integer cidade;
+    private String codgCidade;
+    private String nomeCidade;
+    private String codgEstado;
+    private String nomeEstado;
+    private String codgPais;
+    private String nomePais;
+    private Integer codgCidadeDb;
     private List<HotelPesquisaQuarto> quartoPesquisa = new ArrayList<HotelPesquisaQuarto>();
 }
