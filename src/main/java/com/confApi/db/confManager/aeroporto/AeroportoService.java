@@ -23,7 +23,7 @@ import java.util.logging.Logger;
 @Service
 public class AeroportoService {
 
-    private static final Logger LOG = Logger.getLogger(FamiliaService.class.getName());
+    private static final Logger LOG = Logger.getLogger(AeroportoService.class.getName());
     private final RestTemplate restTemplate;
     private final ObjectMapper mapper;
 
