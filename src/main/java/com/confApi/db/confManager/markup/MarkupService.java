@@ -108,7 +108,7 @@ public class MarkupService {
             String url = String.format("%s%s/findVlrMarkupByProduto/%d",
                     UrlConfig.URL_CONFIANCA_MANAGER, urlAPI, codgProduto);
 
-        
+
 
             ResponseEntity<Double> resp = restTemplate.exchange(
                     url,
@@ -136,4 +136,44 @@ public class MarkupService {
 
         return new HttpEntity<>(body, headers);
     }
+    public List<Markup> findByMkp(Markup filtro) {
+        try {
+            // Mesmo comportamento do front: não filtrar por valorMarkup
+            if (filtro != null) {
+                filtro.setValorMarkup(null);
+            }
+
+            // Token
+            ConfAppResp token = confAppService.token();
+
+            // URL
+            String url = String.format("%s%s/findByMkp", UrlConfig.URL_CONFIANCA_MANAGER, urlAPI);
+            System.out.println("findByMkp -> " + url);
+
+            // Headers
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + token.getToken());
+
+            // Body + headers
+            HttpEntity<Markup> requestEntity = new HttpEntity<>(filtro, headers);
+
+            // POST -> List<Markup>
+            ResponseEntity<List<Markup>> responseEntity = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    requestEntity,
+                    new ParameterizedTypeReference<List<Markup>>() {}
+            );
+
+            List<Markup> lista = responseEntity.getBody();
+            return lista != null ? lista : Collections.emptyList();
+
+        } catch (Exception e) {
+            Logger.getLogger(getClass().getName()).log(Level.SEVERE, "Erro ao buscar Markup via /findByMkp", e);
+            return Collections.emptyList();
+        }
+    }
+
+
 }

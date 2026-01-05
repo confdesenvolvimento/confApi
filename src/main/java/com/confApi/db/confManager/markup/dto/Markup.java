@@ -9,6 +9,7 @@ public class Markup implements Serializable {
     private Integer codgAgencia;
     private Double valorMarkup;
 
+
     public Integer getCodgProduto() { return codgProduto; }
     public void setCodgProduto(Integer codgProduto) { this.codgProduto = codgProduto; }
 
