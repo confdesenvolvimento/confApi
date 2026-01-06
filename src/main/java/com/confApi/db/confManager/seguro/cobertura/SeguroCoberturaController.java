@@ -17,12 +17,12 @@ public class SeguroCoberturaController {
 
     @GetMapping("/findAll")
     public List<SeguroCobertura> findAllSeguroCoberturas () throws IOException {
-        return seguroCoberturaService.findAllSeguroSeguroCoberturas();
+        return seguroCoberturaService.findAll();
     }
 
     @GetMapping("/findById/{id}")
     public Optional<SeguroCobertura> findSeguroCoberturaById(@PathVariable Integer id) throws IOException{
-        return seguroCoberturaService.findSeguroCoberturaById(id);
+        return seguroCoberturaService.findById(id);
     }
 
     @PostMapping("/save")
@@ -34,7 +34,7 @@ public class SeguroCoberturaController {
     public ResponseEntity<SeguroCobertura> updateSeguroCoberturaById(@RequestBody SeguroCobertura seguroCobertura,
                                                                  @PathVariable Integer id){
 
-        if(!seguroCoberturaService.findSeguroCoberturaById(id).isPresent()){
+        if(!seguroCoberturaService.findById(id).isPresent()){
             return ResponseEntity.noContent().build();
         }
 
@@ -43,9 +43,9 @@ public class SeguroCoberturaController {
     }
 
     @DeleteMapping("/deleteById/{id}")
-    public ResponseEntity<Void>deleteSeguroCoberturaById(@PathVariable Integer id){
+    public ResponseEntity<Void> deleteSeguroCoberturaById(@PathVariable Integer id){
 
-        if(!seguroCoberturaService.findSeguroCoberturaById(id).isPresent()){
+        if(!seguroCoberturaService.findById(id).isPresent()){
             return ResponseEntity.noContent().build();
         }
         seguroCoberturaService.deleteById(id);

@@ -64,10 +64,10 @@ public class SeguroCoberturaAPI extends AbstractTransactionServiceApi implements
                     : Collections.emptyList();
 
         } catch (HttpClientErrorException ex) {
-            LOG.log(Level.SEVERE, "Erro HTTP ao consultar seguro reserva. Status: " + ex.getStatusCode(), ex
+            LOG.log(Level.SEVERE, "Erro HTTP ao consultar seguro cobertura. Status: " + ex.getStatusCode(), ex
             );
         } catch (Exception ex) {
-            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
+            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro cobertura", ex);
         }
         return Collections.emptyList();
     }
@@ -106,7 +106,7 @@ public class SeguroCoberturaAPI extends AbstractTransactionServiceApi implements
                     ex);
 
         } catch (Exception ex) {
-            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
+            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro cobertura", ex);
         }
 
         return Optional.empty();
@@ -141,11 +141,11 @@ public class SeguroCoberturaAPI extends AbstractTransactionServiceApi implements
 
         } catch (HttpClientErrorException ex) {
             LOG.log(Level.SEVERE,
-                    "Erro HTTP ao salvar seguro reserva. Status: " + ex.getStatusCode(),
+                    "Erro HTTP ao salvar seguro cobertura. Status: " + ex.getStatusCode(),
                     ex);
 
         } catch (Exception ex) {
-            LOG.log(Level.SEVERE, "Erro inesperado ao salvar seguro reserva", ex);
+            LOG.log(Level.SEVERE, "Erro inesperado ao salvar seguro cobertura", ex);
         }
 
         return null;
@@ -181,11 +181,11 @@ public class SeguroCoberturaAPI extends AbstractTransactionServiceApi implements
 
         } catch (HttpClientErrorException ex) {
             LOG.log(Level.SEVERE,
-                    "Erro HTTP ao consultar seguro reserva. Status: " + ex.getStatusCode(),
+                    "Erro HTTP ao consultar seguro cobertura. Status: " + ex.getStatusCode(),
                     ex);
 
         } catch (Exception ex) {
-            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
+            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro cobertura", ex);
         }
 
         return false;

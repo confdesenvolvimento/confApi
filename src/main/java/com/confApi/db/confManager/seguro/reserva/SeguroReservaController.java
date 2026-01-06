@@ -16,13 +16,13 @@ public class SeguroReservaController {
     private SeguroReservaService seguroReservaService;
 
     @GetMapping("/findAll")
-    public List<SeguroReserva> findAllSeguroReservas () throws IOException {
-        return seguroReservaService.findAllSeguroReservas();
+    public List<SeguroReserva> findAllSeguroReservas() throws IOException {
+        return seguroReservaService.findAll();
     }
 
     @GetMapping("/findById/{id}")
-    public Optional<SeguroReserva>findSeguroReservaById(@PathVariable Integer id) throws IOException{
-        return seguroReservaService.findSeguroReservaById(id);
+    public Optional<SeguroReserva> findSeguroReservaById(@PathVariable Integer id) throws IOException{
+        return seguroReservaService.findById(id);
     }
 
     @PostMapping("/save")
@@ -34,7 +34,7 @@ public class SeguroReservaController {
     public ResponseEntity<SeguroReserva> updateSeguroReservaById(@RequestBody SeguroReserva seguroReserva,
                                                                  @PathVariable Integer id){
 
-        if(!seguroReservaService.findSeguroReservaById(id).isPresent()){
+        if(!seguroReservaService.findById(id).isPresent()){
             return ResponseEntity.notFound().build();
         }
 
@@ -44,9 +44,9 @@ public class SeguroReservaController {
     }
 
     @DeleteMapping("/deleteById/{id}")
-    public ResponseEntity<Void>deleteSeguroReservaById(@PathVariable Integer id){
+    public ResponseEntity<Void> deleteSeguroReservaById(@PathVariable Integer id){
 
-        if(!seguroReservaService.findSeguroReservaById(id).isPresent()){
+        if(!seguroReservaService.findById(id).isPresent()){
             return ResponseEntity.notFound().build();
         }
 

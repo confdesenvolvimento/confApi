@@ -13,11 +13,11 @@ public class SeguroCoberturaService {
     @Autowired
     private SeguroCoberturaAPI seguroCoberturaAPI;
 
-    public List<SeguroCobertura> findAllSeguroSeguroCoberturas(){
+    public List<SeguroCobertura> findAll(){
         return seguroCoberturaAPI.findAll();
     }
 
-    public Optional<SeguroCobertura> findSeguroCoberturaById(Integer id){
+    public Optional<SeguroCobertura> findById(Integer id){
         return seguroCoberturaAPI.findById(id);
     }
 

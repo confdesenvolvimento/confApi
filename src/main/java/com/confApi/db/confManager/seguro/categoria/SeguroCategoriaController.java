@@ -1,0 +1,56 @@
+package com.confApi.db.confManager.seguro.categoria;
+
+import com.confApi.db.confManager.seguro.cobertura.SeguroCobertura;
+import com.confApi.db.confManager.seguro.cobertura.SeguroCoberturaService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
+
+@RestController
+@RequestMapping("manager/seguro/categoria")
+public class SeguroCategoriaController {
+
+    @Autowired
+    private SeguroCategoriaService seguroCategoriaService;
+
+    @GetMapping("/findAll")
+    public List<SeguroCategoria> findAllSeguroCoberturas() throws IOException {
+        return seguroCategoriaService.findAll();
+    }
+
+    @GetMapping("/findById/{id}")
+    public Optional<SeguroCategoria> findSeguroCoberturaById(@PathVariable Integer id) throws IOException{
+        return seguroCategoriaService.findById(id);
+    }
+
+    @PostMapping("/save")
+    public SeguroCategoria createSeguroCategoria(@RequestBody SeguroCategoria seguroCategoria){
+        return seguroCategoriaService.save(seguroCategoria);
+    }
+
+    @PutMapping("/updateById/{id}")
+    public ResponseEntity<SeguroCategoria> updateSeguroCategoriaById(@RequestBody SeguroCategoria seguroCategoria,
+                                                                     @PathVariable Integer id){
+
+        if(!seguroCategoriaService.findById(id).isPresent()){
+            return ResponseEntity.noContent().build();
+        }
+
+        seguroCategoria.setCodgSeguroCategoria(id);
+        return ResponseEntity.ok(seguroCategoriaService.save(seguroCategoria));
+    }
+
+    @DeleteMapping("/deleteById/{id}")
+    public ResponseEntity<Void> deleteSeguroCategoriaById(@PathVariable Integer id){
+
+        if(!seguroCategoriaService.findById(id).isPresent()){
+            return ResponseEntity.noContent().build();
+        }
+        seguroCategoriaService.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+}
