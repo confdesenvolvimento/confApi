@@ -33,11 +33,23 @@ public class SeguroReservaController {
     @PutMapping("/updateById/{id}")
     public ResponseEntity<SeguroReserva> updateSeguroReservaById(@RequestBody SeguroReserva seguroReserva,
                                                                  @PathVariable Integer id){
+
+        if(!seguroReservaService.findSeguroReservaById(id).isPresent()){
+            return ResponseEntity.notFound().build();
+        }
+
+        seguroReserva.setCodgReservaSeguro(id);
+
         return ResponseEntity.ok(seguroReservaService.save(seguroReserva));
     }
 
     @DeleteMapping("/deleteById/{id}")
     public ResponseEntity<Void>deleteSeguroReservaById(@PathVariable Integer id){
+
+        if(!seguroReservaService.findSeguroReservaById(id).isPresent()){
+            return ResponseEntity.notFound().build();
+        }
+
         seguroReservaService.deleteById(id);
         return ResponseEntity.noContent().build();
     }
