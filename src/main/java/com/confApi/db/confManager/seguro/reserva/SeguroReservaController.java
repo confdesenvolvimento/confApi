@@ -1,10 +1,8 @@
 package com.confApi.db.confManager.seguro.reserva;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.util.List;
@@ -25,5 +23,22 @@ public class SeguroReservaController {
     @GetMapping("/findById/{id}")
     public Optional<SeguroReserva>findSeguroReservaById(@PathVariable Integer id) throws IOException{
         return seguroReservaService.findSeguroReservaById(id);
+    }
+
+    @PostMapping("/save")
+    public SeguroReserva createSeguroReserva(@RequestBody SeguroReserva seguroReserva){
+        return seguroReservaService.save(seguroReserva);
+    }
+
+    @PutMapping("/updateById/{id}")
+    public ResponseEntity<SeguroReserva> updateSeguroReservaById(@RequestBody SeguroReserva seguroReserva,
+                                                                 @PathVariable Integer id){
+        return ResponseEntity.ok(seguroReservaService.save(seguroReserva));
+    }
+
+    @DeleteMapping("/deleteById/{id}")
+    public ResponseEntity<Void>deleteSeguroReservaById(@PathVariable Integer id){
+        seguroReservaService.deleteById(id);
+        return ResponseEntity.noContent().build();
     }
 }

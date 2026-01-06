@@ -81,8 +81,16 @@ public class SeguroReservaService {
         return seguroReservaAPI.findAll();
     }
 
-    public Optional<SeguroReserva>findSeguroReservaById(Integer id){
+    public Optional<SeguroReserva> findSeguroReservaById(Integer id){
         return seguroReservaAPI.findById(id);
+    }
+
+    public SeguroReserva save(SeguroReserva seguroReserva){
+        return seguroReservaAPI.save(seguroReserva);
+    }
+
+    public void deleteById(Integer id){
+        seguroReservaAPI.deleteById(id);
     }
 
 }
