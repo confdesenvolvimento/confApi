@@ -1,7 +1,5 @@
 package com.confApi.db.confManager.seguro.categoria;
 
-import com.confApi.db.confManager.seguro.cobertura.SeguroCobertura;
-import com.confApi.db.confManager.seguro.cobertura.SeguroCoberturaService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
