@@ -3,7 +3,6 @@ package com.confApi.endPoints.seguro.coberturaDetalhada;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
-import com.confApi.db.confManager.seguro.categoria.SeguroCategoria;
 import com.confApi.db.confManager.seguro.coberturaDetalhada.SeguroCoberturaDetalhada;
 import com.confApi.endPoints.seguro.reserva.SeguroReservaAPI;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -140,7 +139,7 @@ public class SeguroCoberturaDetalhadaAPI {
 
         } catch (HttpClientErrorException ex) {
             LOG.log(Level.SEVERE,
-                    "Erro HTTP ao salvar seguro categoria. Status: " + ex.getStatusCode(),
+                    "Erro HTTP ao salvar seguro cobertura detalhada. Status: " + ex.getStatusCode(),
                     ex);
 
         } catch (Exception ex) {
@@ -180,11 +179,11 @@ public class SeguroCoberturaDetalhadaAPI {
 
         } catch (HttpClientErrorException ex) {
             LOG.log(Level.SEVERE,
-                    "Erro HTTP ao consultar seguro categoria. Status: " + ex.getStatusCode(),
+                    "Erro HTTP ao consultar seguro cobertura detalhada. Status: " + ex.getStatusCode(),
                     ex);
 
         } catch (Exception ex) {
-            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro categoria", ex);
+            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro cobertura detalhada", ex);
         }
 
         return false;

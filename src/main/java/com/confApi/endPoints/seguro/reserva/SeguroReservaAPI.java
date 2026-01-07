@@ -20,7 +20,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @Service
-public class SeguroReservaAPI extends AbstractTransactionServiceApi implements Serializable {
+public class SeguroReservaAPI{
 
     private static final Logger LOG =
             Logger.getLogger(SeguroReservaAPI.class.getName());
