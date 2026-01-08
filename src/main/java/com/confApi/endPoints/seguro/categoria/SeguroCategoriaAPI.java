@@ -4,6 +4,7 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.seguro.categoria.SeguroCategoria;
+import com.confApi.db.confManager.seguro.coberturaDetalhada.SeguroCoberturaDetalhada;
 import com.confApi.endPoints.seguro.reserva.SeguroReservaAPI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
@@ -133,6 +134,44 @@ public class SeguroCategoriaAPI {
                             HttpMethod.POST,
                             requestEntity,
                             SeguroCategoria.class
+                    );
+
+            return response.getBody();
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE,
+                    "Erro HTTP ao salvar seguro categoria. Status: " + ex.getStatusCode(),
+                    ex);
+
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao salvar seguro categoria", ex);
+        }
+
+        return null;
+    }
+
+    public List<SeguroCategoria> saveAll(List <SeguroCategoria> seguroCategorias) {
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<List<SeguroCategoria>> requestEntity =
+                    new HttpEntity<>(seguroCategorias, headers);
+
+            ResponseEntity<List<SeguroCategoria>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/saveAll",
+                            HttpMethod.POST,
+                            requestEntity,
+                            new ParameterizedTypeReference<List<SeguroCategoria>>() {}
                     );
 
             return response.getBody();

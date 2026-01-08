@@ -30,6 +30,11 @@ public class SeguroCategoriaController {
         return seguroCategoriaService.save(seguroCategoria);
     }
 
+    @PostMapping("/saveAll")
+    public List<SeguroCategoria> seguroCategorias(@RequestBody List<SeguroCategoria> seguroCategorias){
+        return seguroCategoriaService.saveAll(seguroCategorias);
+    }
+
     @PutMapping("/updateById/{id}")
     public ResponseEntity<SeguroCategoria> updateSeguroCategoriaById(@RequestBody SeguroCategoria seguroCategoria,
                                                                      @PathVariable Integer id){

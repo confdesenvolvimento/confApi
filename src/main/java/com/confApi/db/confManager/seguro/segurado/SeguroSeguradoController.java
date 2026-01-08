@@ -30,6 +30,11 @@ public class SeguroSeguradoController {
 
 
 
+    @PostMapping("/saveAll")
+    public List<SeguroSegurado> createSeguroSegurados(@RequestBody List<SeguroSegurado> seguroSegurados){
+        return seguroSeguradoService.saveAll(seguroSegurados);
+    }
+
     @PutMapping("/updateById/{id}")
     public ResponseEntity<SeguroSegurado> updateSeguroSeguradoById(@RequestBody SeguroSegurado seguroSegurado,
                                                                                        @PathVariable Integer id){
