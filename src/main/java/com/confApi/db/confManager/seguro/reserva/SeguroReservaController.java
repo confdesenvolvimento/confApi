@@ -14,7 +14,6 @@ public class SeguroReservaController {
 
     @Autowired
     private SeguroReservaService seguroReservaService;
-    
 
     @GetMapping("/findAll")
     public List<SeguroReserva> findAllSeguroReservas() throws IOException {
@@ -22,8 +21,9 @@ public class SeguroReservaController {
     }
 
     @GetMapping("/findById/{id}")
-    public Optional<SeguroReserva> findSeguroReservaById(@PathVariable Integer id) throws IOException{
-        return seguroReservaService.findById(id);
+    public ResponseEntity<SeguroReserva> findSeguroReservaById(@PathVariable Integer id) throws IOException{
+        Optional<SeguroReserva>seguroReserva = seguroReservaService.findById(id);
+        return seguroReserva.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
     }
     
     @GetMapping("/findByLocalizador/{localizador}")

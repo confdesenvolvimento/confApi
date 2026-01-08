@@ -28,8 +28,6 @@ public class SeguroSeguradoController {
         return seguroSeguradoService.findById(id);
     }
 
-
-
     @PostMapping("/saveAll")
     public List<SeguroSegurado> createSeguroSegurados(@RequestBody List<SeguroSegurado> seguroSegurados){
         return seguroSeguradoService.saveAll(seguroSegurados);
