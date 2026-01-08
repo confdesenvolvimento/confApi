@@ -14,11 +14,7 @@ public class SeguroReservaController {
 
     @Autowired
     private SeguroReservaService seguroReservaService;
-
-    @PostMapping("/save")
-    public SeguroReserva createSeguroReserva(@RequestBody SeguroReserva seguroReserva){
-        return seguroReservaService.save(seguroReserva);
-    }
+    
 
     @GetMapping("/findAll")
     public List<SeguroReserva> findAllSeguroReservas() throws IOException {
@@ -29,8 +25,17 @@ public class SeguroReservaController {
     public Optional<SeguroReserva> findSeguroReservaById(@PathVariable Integer id) throws IOException{
         return seguroReservaService.findById(id);
     }
+    
+    @GetMapping("/findByLocalizador/{localizador}")
+    public ResponseEntity<SeguroReserva> findByLocalizador(@PathVariable String localizador){
+        Optional<SeguroReserva>seguroReserva = seguroReservaService.findByLocalizador(localizador);
+        return seguroReserva.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
+    }
 
-
+    @PostMapping("/save")
+    public SeguroReserva createSeguroReserva(@RequestBody SeguroReserva seguroReserva){
+        return seguroReservaService.save(seguroReserva);
+    }
 
     @PutMapping("/updateById/{id}")
     public ResponseEntity<SeguroReserva> updateSeguroReservaById(@RequestBody SeguroReserva seguroReserva,

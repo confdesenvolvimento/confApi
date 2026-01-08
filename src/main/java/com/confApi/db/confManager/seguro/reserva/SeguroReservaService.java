@@ -22,6 +22,10 @@ public class SeguroReservaService {
         return seguroReservaAPI.findById(id);
     }
 
+    public Optional<SeguroReserva> findByLocalizador(String localizador){
+        return seguroReservaAPI.findByLocalizador(localizador);
+    }
+
     public SeguroReserva save(SeguroReserva seguroReserva){
         return seguroReservaAPI.save(seguroReserva);
     }
