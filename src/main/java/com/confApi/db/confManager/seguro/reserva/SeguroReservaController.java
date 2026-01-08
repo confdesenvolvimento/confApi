@@ -15,6 +15,11 @@ public class SeguroReservaController {
     @Autowired
     private SeguroReservaService seguroReservaService;
 
+    @PostMapping("/save")
+    public SeguroReserva createSeguroReserva(@RequestBody SeguroReserva seguroReserva){
+        return seguroReservaService.save(seguroReserva);
+    }
+
     @GetMapping("/findAll")
     public List<SeguroReserva> findAllSeguroReservas() throws IOException {
         return seguroReservaService.findAll();
@@ -25,10 +30,7 @@ public class SeguroReservaController {
         return seguroReservaService.findById(id);
     }
 
-    @PostMapping("/save")
-    public SeguroReserva createSeguroReserva(@RequestBody SeguroReserva seguroReserva){
-        return seguroReservaService.save(seguroReserva);
-    }
+
 
     @PutMapping("/updateById/{id}")
     public ResponseEntity<SeguroReserva> updateSeguroReservaById(@RequestBody SeguroReserva seguroReserva,
