@@ -149,6 +149,44 @@ public class SeguroSeguradoAPI {
         return null;
     }
 
+    public List<SeguroSegurado> saveAll(List <SeguroSegurado> seguroSegurados) {
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<List<SeguroSegurado>> requestEntity =
+                    new HttpEntity<>(seguroSegurados, headers);
+
+            ResponseEntity<List<SeguroSegurado>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/saveAll",
+                            HttpMethod.POST,
+                            requestEntity,
+                            new ParameterizedTypeReference<List<SeguroSegurado>>() {}
+                    );
+
+            return response.getBody();
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE,
+                    "Erro HTTP ao salvar seguro segurado. Status: " + ex.getStatusCode(),
+                    ex);
+
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao salvar seguro segurado", ex);
+        }
+
+        return null;
+    }
+
 
     public boolean deleteById(Integer id) {
 

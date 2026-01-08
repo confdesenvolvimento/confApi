@@ -25,6 +25,10 @@ public class SeguroCategoriaService {
         return seguroCategoriaAPI.save(seguroCategoria);
     }
 
+    public List<SeguroCategoria> saveAll(List<SeguroCategoria> seguroCategorias){
+        return seguroCategoriaAPI.saveAll(seguroCategorias);
+    }
+
     public void deleteById(Integer id){
         seguroCategoriaAPI.deleteById(id);
     }

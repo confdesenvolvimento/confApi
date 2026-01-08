@@ -4,6 +4,7 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.seguro.coberturaDetalhada.SeguroCoberturaDetalhada;
+import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.confApi.endPoints.seguro.reserva.SeguroReservaAPI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
@@ -133,6 +134,44 @@ public class SeguroCoberturaDetalhadaAPI {
                             HttpMethod.POST,
                             requestEntity,
                             SeguroCoberturaDetalhada.class
+                    );
+
+            return response.getBody();
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE,
+                    "Erro HTTP ao salvar seguro cobertura detalhada. Status: " + ex.getStatusCode(),
+                    ex);
+
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao salvar seguro cobertura detalhada", ex);
+        }
+
+        return null;
+    }
+
+    public List<SeguroCoberturaDetalhada> saveAll(List <SeguroCoberturaDetalhada> seguroCoberturaDetalhadas) {
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<List<SeguroCoberturaDetalhada>> requestEntity =
+                    new HttpEntity<>(seguroCoberturaDetalhadas, headers);
+
+            ResponseEntity<List<SeguroCoberturaDetalhada>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/saveAll",
+                            HttpMethod.POST,
+                            requestEntity,
+                            new ParameterizedTypeReference<List<SeguroCoberturaDetalhada>>() {}
                     );
 
             return response.getBody();
