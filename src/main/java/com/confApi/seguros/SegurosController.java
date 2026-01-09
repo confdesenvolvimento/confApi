@@ -1,9 +1,6 @@
 package com.confApi.seguros;
 
-import com.confApi.seguros.dto.CoberturaSeguroDTO;
-import com.confApi.seguros.dto.PlanoSeguroDTO;
-import com.confApi.seguros.dto.SeguroCompraModel;
-import com.confApi.seguros.dto.SeguroViagemPesquisaDTO;
+import com.confApi.seguros.dto.*;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,7 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/v1/seguro")
-public class SegurosController {
+public class  SegurosController {
 
     private final SegurosService service;
 
@@ -36,6 +33,12 @@ System.out.println("Chamou pesquisar Seguro: " +resultado.size());
 
         return null;
     }
+    @PostMapping("/carregarReserva")
+    public SeguroReservaDTO comprar(@RequestBody SeguroCarregarReservaDTO req) {
+        SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
+
+        return response;
+    }
 
 
     public static List<PlanoSeguroDTO> mockPlanosSeguro() {
@@ -52,6 +55,7 @@ System.out.println("Chamou pesquisar Seguro: " +resultado.size());
         planoBasic.setNomePlano("HERO 30 BASIC");
         planoBasic.setPrecoBaseBRL(189.90);
         planoBasic.setPrecoFinalBRL(219.90);
+        planoBasic.setValorCobertura(30000.00);
         planoBasic.setScore(70);
         planoBasic.setDataInicioCobertura("12/01/2026");
         planoBasic.setDataFinalCombertura("20/01/2026");
@@ -86,6 +90,7 @@ System.out.println("Chamou pesquisar Seguro: " +resultado.size());
         planoPlus.setNomePlano("HERO 60 PLUS");
         planoPlus.setPrecoBaseBRL(289.90);
         planoPlus.setPrecoFinalBRL(329.90);
+        planoPlus.setValorCobertura(60000.00);
         planoPlus.setScore(85);
         planoPlus.setDataInicioCobertura("12/01/2026");
         planoPlus.setDataFinalCombertura("20/01/2026");
@@ -125,6 +130,7 @@ System.out.println("Chamou pesquisar Seguro: " +resultado.size());
         planoPremium.setNomePlano("HERO 100 PREMIUM");
         planoPremium.setPrecoBaseBRL(429.90);
         planoPremium.setPrecoFinalBRL(489.90);
+        planoPremium.setValorCobertura(100000.00);
         planoPremium.setScore(95);
         planoPremium.setDataInicioCobertura("12/01/2026");
         planoPremium.setDataFinalCombertura("20/01/2026");

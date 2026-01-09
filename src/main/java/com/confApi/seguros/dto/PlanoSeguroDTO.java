@@ -16,7 +16,8 @@ public class PlanoSeguroDTO implements Serializable {
     private String dataFinalCombertura;
     // ===== Coberturas (moeda + valor) =====
     private String moedaCobertura = "USD"; // USD/EUR etc
-
+    private Double valorCobertura =0.0;
+    private String urlLogo ="https://portaldoagente.com.br/4/Recursos/Imagens/NovoLayout/logo_seguro/sistema_26.png";
     // ===== Preço (sempre em BRL no seu sistema) =====
     private Double precoBaseBRL;        // preço retornado do fornecedor
     private Double precoFinalBRL;       // após comissão/adicionais

@@ -11,6 +11,7 @@ import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.seguros.dto.CoberturaSeguroDTO;
 import com.confApi.seguros.dto.SeguradoDTO;
 import com.confApi.seguros.dto.SeguroCompraModel;
+import com.confApi.seguros.util.DateUtil;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -74,8 +75,8 @@ public final class SeguroCompraToManagerMapper {
         }
 
 
-        r.setDataInicioCobertura(extractDataStringToDate(req.getPlano().getDataInicioCobertura()));
-        r.setDataFinalCobertura(extractDataStringToDate(req.getPlano().getDataFinalCombertura()));
+        r.setDataInicioCobertura(DateUtil.extractDataStringToDate(req.getPlano().getDataInicioCobertura()));
+        r.setDataFinalCobertura(DateUtil.extractDataStringToDate(req.getPlano().getDataFinalCombertura()));
 
         // Observações (opcional): salvar um resumo do plano/forma pagto
         String obs = buildObs(req);
@@ -133,19 +134,7 @@ public final class SeguroCompraToManagerMapper {
 
 
 
-    private static Date extractDataStringToDate(String req) {
-        String dataStr = req; // ex: "12/01/2026"
 
-        try {
-            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-            sdf.setLenient(false); // evita datas inválidas tipo 32/13/2026
-            return sdf.parse(dataStr);
-        } catch (ParseException e) {
-            throw new IllegalArgumentException(
-                    "DataInicioCobertura inválida: " + dataStr + " (esperado dd/MM/yyyy)", e
-            );
-        }
-    }
 
     private static Date extractFimCobertura(SeguroCompraModel req) {
         // TODO: hoje não existe no seu JSON
@@ -192,7 +181,9 @@ public final class SeguroCompraToManagerMapper {
             ss.setEmail(s.getEmail());
 
             // Data nascimento (você já tratou LocalDate -> Date; aqui assumo LocalDate no DTO)
-            ss.setDataNascimento(extractDataStringToDate(s.getNascimento())); // helper abaixo
+            if(s.getNascimento()!=null && !s.getNascimento().isEmpty()){
+            ss.setDataNascimento(DateUtil.extractDataStringToDate(s.getNascimento())); // helper abaixo
+            }
 
             // Estado civil (não veio no JSON atual)
             ss.setEstadoCivil(null);

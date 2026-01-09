@@ -30,7 +30,7 @@ public class SeguroSeguradoController {
 
     @GetMapping("/findByCodgSeguroCobertura/{codgSeguroCobertura}")
     public ResponseEntity<SeguroSegurado>findByCodgSeguroCobertura(@PathVariable Integer codgSeguroCobertura){
-        Optional<SeguroSegurado>seguroSegurado = seguroSeguradoService.findBySeguroCoberturaCodgSeguroCobertura(codgSeguroCobertura);
+        Optional<SeguroSegurado>seguroSegurado = seguroSeguradoService.findBySeguroSeguradoCodgSeguroCobertura(codgSeguroCobertura);
         return seguroSegurado.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
     }
 
