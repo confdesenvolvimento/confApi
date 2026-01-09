@@ -111,7 +111,7 @@ public class SeguroCoberturaDetalhadaAPI {
         return Optional.empty();
     }
 
-    public Optional<SeguroCoberturaDetalhada> findBySeguroCoberturaCodgSeguroCobertura(Integer codgSeguroCobertura) {
+    public List<SeguroCoberturaDetalhada> findBySeguroCoberturaCodgSeguroCobertura(Integer codgSeguroCobertura) {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
@@ -125,18 +125,17 @@ public class SeguroCoberturaDetalhadaAPI {
 
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
 
-            ResponseEntity<SeguroCoberturaDetalhada> response =
+            ResponseEntity<List<SeguroCoberturaDetalhada>> response =
                     restTemplate.exchange(
                             UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/findByCodgSeguroCobertura/" + codgSeguroCobertura,
                             HttpMethod.GET,
                             requestEntity,
-                            SeguroCoberturaDetalhada.class
+                            new ParameterizedTypeReference<List<SeguroCoberturaDetalhada>>(){}
                     );
 
-            return Optional.ofNullable(response.getBody());
-
-        } catch (HttpClientErrorException.NotFound ex) {
-            return Optional.empty();
+            return response.getBody() != null
+                    ? response.getBody()
+                    :Collections.emptyList();
 
         } catch (HttpClientErrorException ex) {
             LOG.log(Level.SEVERE,
@@ -147,7 +146,7 @@ public class SeguroCoberturaDetalhadaAPI {
             LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro cobertura detalhada", ex);
         }
 
-        return Optional.empty();
+        return Collections.emptyList();
     }
 
 

@@ -21,7 +21,7 @@ public class SeguroCoberturaDetalhadaService {
         return seguroCoberturaDetalhadaAPI.findById(id);
     }
 
-    public Optional<SeguroCoberturaDetalhada>findBySeguroCoberturaCodgSeguroCobertura(Integer codgSeguroCobertura){
+    public List<SeguroCoberturaDetalhada>findBySeguroCoberturaCodgSeguroCobertura(Integer codgSeguroCobertura){
         return seguroCoberturaDetalhadaAPI.findBySeguroCoberturaCodgSeguroCobertura(codgSeguroCobertura);
     }
 
