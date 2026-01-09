@@ -31,4 +31,7 @@ public class SeguroReserva {
     private String descricaoMotivoCancelamento;
     private Date dataInicioCobertura;
     private Date dataFinalCobertura;
+    private String contatoNome;
+    private String contatoEmail;
+    private String contatoTelefone;
 }
