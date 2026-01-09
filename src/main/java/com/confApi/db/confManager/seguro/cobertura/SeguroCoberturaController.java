@@ -16,13 +16,20 @@ public class SeguroCoberturaController {
     private SeguroCoberturaService seguroCoberturaService;
 
     @GetMapping("/findAll")
-    public List<SeguroCobertura> findAllSeguroCoberturas () throws IOException {
+    public List<SeguroCobertura> findAllSeguroCoberturas (){
         return seguroCoberturaService.findAll();
     }
 
     @GetMapping("/findById/{id}")
-    public Optional<SeguroCobertura> findSeguroCoberturaById(@PathVariable Integer id) throws IOException{
-        return seguroCoberturaService.findById(id);
+    public ResponseEntity<SeguroCobertura>findCoberturaById(@PathVariable Integer id){
+        Optional<SeguroCobertura> cobertura = seguroCoberturaService.findById(id);
+        return cobertura.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/findByCodgReservaSeguro/{codgReservaSeguro}")
+    public ResponseEntity<SeguroCobertura>findByCodgReservaSeguro(@PathVariable Integer codgReservaSeguro){
+        Optional<SeguroCobertura> cobertura = seguroCoberturaService.findBySeguroReservaCodgReservaSeguro(codgReservaSeguro);
+        return cobertura.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
     }
 
     @PostMapping("/save")

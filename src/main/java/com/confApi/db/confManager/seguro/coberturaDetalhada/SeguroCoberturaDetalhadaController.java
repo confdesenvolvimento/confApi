@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,13 +15,20 @@ public class SeguroCoberturaDetalhadaController {
     private SeguroCoberturaDetalhadaService seguroCoberturaDetalhadaService;
 
     @GetMapping("/findAll")
-    public List<SeguroCoberturaDetalhada> findAllSeguroCoberturaDetalhadas() throws IOException {
+    public List<SeguroCoberturaDetalhada> findAllSeguroCoberturaDetalhadas(){
         return seguroCoberturaDetalhadaService.findAll();
     }
 
     @GetMapping("/findById/{id}")
-    public Optional<SeguroCoberturaDetalhada> findSeguroCoberturaDetalhadaById(@PathVariable Integer id) throws IOException{
-        return seguroCoberturaDetalhadaService.findById(id);
+    public ResponseEntity<SeguroCoberturaDetalhada> findSeguroCoberturaDetalhadaById(@PathVariable Integer id){
+        Optional<SeguroCoberturaDetalhada>seguroCoberturaDetalhada = seguroCoberturaDetalhadaService.findById(id);
+        return seguroCoberturaDetalhada.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/findByCodgSeguroCobertura/{codgSeguroCobertura}")
+    public ResponseEntity<SeguroCoberturaDetalhada>findByCodgSeguroCobertura(@PathVariable Integer codgSeguroCobertura){
+        Optional<SeguroCoberturaDetalhada>seguroCoberturaDetalhada = seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(codgSeguroCobertura);
+        return seguroCoberturaDetalhada.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
     }
 
     @PostMapping("/save")

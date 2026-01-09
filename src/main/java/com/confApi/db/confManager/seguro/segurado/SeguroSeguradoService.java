@@ -21,6 +21,10 @@ public class SeguroSeguradoService {
         return seguroSeguradoAPI.findById(id);
     }
 
+    public Optional<SeguroSegurado>findBySeguroCoberturaCodgSeguroCobertura(Integer codgSeguroCobertura){
+        return seguroSeguradoAPI.findBySeguroCoberturaCodgSeguroCobertura(codgSeguroCobertura);
+    }
+
     public SeguroSegurado save(SeguroSegurado seguroSegurado){
         return seguroSeguradoAPI.save(seguroSegurado);
     }

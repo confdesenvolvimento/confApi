@@ -111,6 +111,45 @@ public class SeguroCategoriaAPI {
         return Optional.empty();
     }
 
+    public Optional<SeguroCategoria> findBySeguroCoberturaCodgSeguroCobertura(Integer codgSeguroCobertura) {
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+
+            ResponseEntity<SeguroCategoria> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/findByCodgSeguroCobertura/" + codgSeguroCobertura,
+                            HttpMethod.GET,
+                            requestEntity,
+                            SeguroCategoria.class
+                    );
+
+            return Optional.ofNullable(response.getBody());
+
+        } catch (HttpClientErrorException.NotFound ex) {
+            return Optional.empty();
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE,
+                    "Erro HTTP ao consultar seguro categoria. Status: " + ex.getStatusCode(),
+                    ex);
+
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro categoria", ex);
+        }
+
+        return Optional.empty();
+    }
+
 
     public SeguroCategoria save(SeguroCategoria seguroCategoria) {
 

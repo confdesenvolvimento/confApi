@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,13 +18,20 @@ public class SeguroSeguradoController {
         return seguroSeguradoService.save(seguroSegurado);
     }
     @GetMapping("/findAll")
-    public List<SeguroSegurado> findAllSeguroSeguradoDetalhadas() throws IOException {
+    public List<SeguroSegurado> findAllSeguroSeguradoDetalhadas(){
         return seguroSeguradoService.findAll();
     }
 
     @GetMapping("/findById/{id}")
-    public Optional<SeguroSegurado> findSeguroSeguradoById(@PathVariable Integer id) throws IOException{
-        return seguroSeguradoService.findById(id);
+    public ResponseEntity<SeguroSegurado> findSeguradoById(@PathVariable Integer id){
+        Optional<SeguroSegurado> segurado = seguroSeguradoService.findById(id);
+        return segurado.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/findByCodgSeguroCobertura/{codgSeguroCobertura}")
+    public ResponseEntity<SeguroSegurado>findByCodgSeguroCobertura(@PathVariable Integer codgSeguroCobertura){
+        Optional<SeguroSegurado>seguroSegurado = seguroSeguradoService.findBySeguroCoberturaCodgSeguroCobertura(codgSeguroCobertura);
+        return seguroSegurado.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
     }
 
     @PostMapping("/saveAll")

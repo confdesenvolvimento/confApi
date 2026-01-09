@@ -112,6 +112,45 @@ public class SeguroCoberturaAPI extends AbstractTransactionServiceApi implements
         return Optional.empty();
     }
 
+    public Optional<SeguroCobertura> findBySeguroReservaCodgReservaSeguro(Integer codgReservaSeguro) {
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+
+            ResponseEntity<SeguroCobertura> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/findByCodgReservaSeguro/" + codgReservaSeguro,
+                            HttpMethod.GET,
+                            requestEntity,
+                            SeguroCobertura.class
+                    );
+
+            return Optional.ofNullable(response.getBody());
+
+        } catch (HttpClientErrorException.NotFound ex) {
+            return Optional.empty();
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE,
+                    "Erro HTTP ao consultar seguro reserva. Status: " + ex.getStatusCode(),
+                    ex);
+
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro cobertura", ex);
+        }
+
+        return Optional.empty();
+    }
+
 
     public SeguroCobertura save(SeguroCobertura seguroCobertura) {
 

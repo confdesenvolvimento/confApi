@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,12 +15,12 @@ public class SeguroReservaController {
     private SeguroReservaService seguroReservaService;
 
     @GetMapping("/findAll")
-    public List<SeguroReserva> findAllSeguroReservas() throws IOException {
+    public List<SeguroReserva> findAllSeguroReservas(){
         return seguroReservaService.findAll();
     }
 
     @GetMapping("/findById/{id}")
-    public ResponseEntity<SeguroReserva> findSeguroReservaById(@PathVariable Integer id) throws IOException{
+    public ResponseEntity<SeguroReserva> findSeguroReservaById(@PathVariable Integer id){
         Optional<SeguroReserva>seguroReserva = seguroReservaService.findById(id);
         return seguroReserva.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
     }
