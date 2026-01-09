@@ -26,9 +26,8 @@ public class SeguroCoberturaDetalhadaController {
     }
 
     @GetMapping("/findByCodgSeguroCobertura/{codgSeguroCobertura}")
-    public ResponseEntity<SeguroCoberturaDetalhada>findByCodgSeguroCobertura(@PathVariable Integer codgSeguroCobertura){
-        Optional<SeguroCoberturaDetalhada>seguroCoberturaDetalhada = seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(codgSeguroCobertura);
-        return seguroCoberturaDetalhada.map(ResponseEntity::ok).orElseGet(()->ResponseEntity.notFound().build());
+    public List<SeguroCoberturaDetalhada>findByCodgSeguroCobertura(@PathVariable Integer codgSeguroCobertura){
+        return seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(codgSeguroCobertura);
     }
 
     @PostMapping("/save")
