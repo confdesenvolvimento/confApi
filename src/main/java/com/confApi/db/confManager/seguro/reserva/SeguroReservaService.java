@@ -1,5 +1,6 @@
 package com.confApi.db.confManager.seguro.reserva;
 
+import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
 import com.confApi.endPoints.seguro.reserva.SeguroReservaAPI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,10 @@ public class SeguroReservaService {
 
     public void deleteById(Integer id){
         seguroReservaAPI.deleteById(id);
+    }
+
+    public void cancelarReservaSeguro(CancelamentoRequestDTO dto, Integer id) {
+        seguroReservaAPI.cancelarReserva(dto, id);
     }
 
 }

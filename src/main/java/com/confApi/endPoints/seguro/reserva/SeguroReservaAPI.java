@@ -4,6 +4,7 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.AbstractTransactionServiceApi;
+import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
 import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
@@ -228,6 +229,40 @@ public class SeguroReservaAPI{
 
         return false;
     }
+
+    public void cancelarReserva(CancelamentoRequestDTO cancelamentoRequestDTO, Integer id) {
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<CancelamentoRequestDTO> requestEntity =
+                    new HttpEntity<>(cancelamentoRequestDTO, headers);
+
+            restTemplate.exchange(
+                    UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/cancelar/" + id,
+                    HttpMethod.PUT,
+                    requestEntity,
+                    Void.class
+            );
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE,
+                    "Erro HTTP ao cancelar reserva. Status: " + ex.getStatusCode(),
+                    ex);
+
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao cancelar reserva", ex);
+        }
+    }
+
 
 }
 

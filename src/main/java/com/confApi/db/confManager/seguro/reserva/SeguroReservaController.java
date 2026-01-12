@@ -1,5 +1,6 @@
 package com.confApi.db.confManager.seguro.reserva;
 
+import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -57,6 +58,19 @@ public class SeguroReservaController {
         }
 
         seguroReservaService.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/cancelar/{id}")
+    public ResponseEntity<Void> cancelarReserva(@RequestBody CancelamentoRequestDTO cancelamentoRequestDTO,
+                                                @PathVariable Integer id){
+
+        if (!seguroReservaService.findById(id).isPresent()){
+            return ResponseEntity.notFound().build();
+        }
+
+        seguroReservaService.cancelarReservaSeguro(cancelamentoRequestDTO, id);
+
         return ResponseEntity.noContent().build();
     }
 }
