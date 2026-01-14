@@ -10,9 +10,7 @@ public class HotelPesquisaQuartoFront implements Serializable {
     private Integer qtdQuartos = 1;
     private Integer qtdAdultos = 1;
     private Integer qtdCriancas = 0;
-    private List<HotelPesquisaIdadeCriancaFront> idadeCriancas = new ArrayList<HotelPesquisaIdadeCriancaFront>();
-
-
+    private List<HotelPesquisaIdadeCriancaFront> idadeCriancas = new ArrayList<>();
 
     public int getId() {
         return id;
@@ -62,5 +60,17 @@ public class HotelPesquisaQuartoFront implements Serializable {
 
     public void setIdadeCriancas(List<HotelPesquisaIdadeCriancaFront> idadeCriancas) {
         this.idadeCriancas = idadeCriancas;
+    }
+
+    @Override
+    public String toString() {
+        return "HotelPesquisaQuartoFront{" +
+                "id=" + id +
+                ", nomeQuartoPesquisa='" + nomeQuartoPesquisa + '\'' +
+                ", qtdQuartos=" + qtdQuartos +
+                ", qtdAdultos=" + qtdAdultos +
+                ", qtdCriancas=" + qtdCriancas +
+                ", idadeCriancas=" + idadeCriancas +
+                '}';
     }
 }

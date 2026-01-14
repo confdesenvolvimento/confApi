@@ -35,4 +35,6 @@ public class HotelAcomodacao {
     private List<Hospedes> hospedes;
     private List<HotelTaxasPoliticas> taxasPoliticas = new ArrayList<>();
     private List<HotelPoliticaCancelamento> politicaCancelamento = new ArrayList<>();
+
+    private String sistema;
 }

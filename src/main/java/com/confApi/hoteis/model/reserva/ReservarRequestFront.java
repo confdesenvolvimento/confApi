@@ -21,4 +21,5 @@ public class ReservarRequestFront {
     private String codgHotel;
     private String codgCidade;
     private List<HotelAcomodacaoFront> acomodacoes;
+    private String searchToken;
 }

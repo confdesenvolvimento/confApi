@@ -1,7 +1,9 @@
 package com.confApi.hub.hotel.mapper;
 
+import com.confApi.hoteis.model.pesquisa.HotelPesquisaIdadeCriancaFront;
 import com.confApi.hoteis.model.pesquisa.HotelPesquisaModelFront;
 import com.confApi.hoteis.model.pesquisa.HotelPesquisaQuartoFront;
+import com.confApi.hub.hotel.dto.HotelPesquisaIdadeCrianca;
 import com.confApi.hub.hotel.dto.HotelPesquisaModel;
 import com.confApi.hub.hotel.dto.HotelPesquisaQuarto;
 
@@ -25,8 +27,6 @@ public class HotelPesquisaMapper {
         model.setQuantidadeQuartos(req.getQuantidadeQuartos());
         model.setQuantidadeNoites(req.getQuantidadeNoites());
 
-
-
         model.setCodgCidade(req.getCodgCidade());
         model.setNomeCidade(req.getNomeCidade());
         model.setNomeEstado(req.getNomeEstado());
@@ -41,7 +41,13 @@ public class HotelPesquisaMapper {
             hpq.setNomeQuartoPesquisa("Quarto " + hpq.getId());
             hpq.setQtdAdultos(q.getQtdAdultos());
             hpq.setQtdCriancas(q.getQtdCriancas());
-
+            List<HotelPesquisaIdadeCrianca> idadesCriancas = new ArrayList<>();
+            for(HotelPesquisaIdadeCriancaFront idadeCrianca : q.getIdadeCriancas()){
+                HotelPesquisaIdadeCrianca hotelPesquisaIdadeCrianca = new HotelPesquisaIdadeCrianca();
+                hotelPesquisaIdadeCrianca.setIdadeCrianca(idadeCrianca.getIdadeCrianca());
+                idadesCriancas.add(hotelPesquisaIdadeCrianca);
+            }
+            hpq.setIdadeCriancas(idadesCriancas);
             quartos.add(hpq);
         }
 

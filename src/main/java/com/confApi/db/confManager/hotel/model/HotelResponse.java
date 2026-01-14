@@ -80,6 +80,8 @@ public class HotelResponse implements Serializable {
 
     private boolean selected = false;// para cotacao de hotel.
 
+    private String searchToken;
+
     public void atualizaValoresTotalQuartoSelecionado(HotelAcomodacao ac, String qtPesquisa) {
        // UtilDebug.sysError("Chamou atualizar");
         tarifasHotel = new TarifaHotel();

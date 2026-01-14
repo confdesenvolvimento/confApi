@@ -56,17 +56,6 @@ public class HotelClient {
             HttpEntity<HotelPesquisaModel> entity =
                     new HttpEntity<>(hubRequest, headers);
 
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    entity,
-                    String.class
-            );
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("Erro ao chamar HUB Hotel. HTTP " + response.getStatusCode());
-            }
-
             // 🔹 2) Parse da resposta do HUB
             ResponseEntity<List<HotelResponse>> hubResponse =
                     restTemplate.exchange(
@@ -76,10 +65,9 @@ public class HotelClient {
                             new ParameterizedTypeReference<List<HotelResponse>>() {
                             }
                     );
-            System.out.println("Resultado HotelClient: " + hubResponse.getBody());
 
             List<HotelResponse> hoteis = hubResponse.getBody();
-            System.out.println("Resultado HotelClient Size: " + hoteis.size());
+
             // 🔹 3) Converter HUB → DTO do ConfAPI
             return hoteis;
 

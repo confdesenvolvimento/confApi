@@ -20,4 +20,6 @@ public class ReservarRequest {
     private String codgHotel;
     private String codgCidade;
     private List<HotelAcomodacao> acomodacoes;
+
+    private String searchToken;
 }

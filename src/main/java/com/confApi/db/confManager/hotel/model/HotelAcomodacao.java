@@ -53,6 +53,8 @@ public class HotelAcomodacao implements Serializable {
     private Integer idPesquisaQuartoCotacao;
     private String idUnico;
 
+    private String sistema;
+
     public HotelAcomodacao() {
         // Gera um UUID único no momento da criação do objeto
         this.idUnico = UUID.randomUUID().toString();

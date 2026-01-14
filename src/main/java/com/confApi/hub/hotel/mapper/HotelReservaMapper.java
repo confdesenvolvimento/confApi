@@ -43,6 +43,7 @@ public final class HotelReservaMapper {
 
         hub.setCodgHotel(front.getCodgHotel());
         hub.setCodgCidade(front.getCodgCidade());
+        hub.setSearchToken(front.getSearchToken());
 
         // 2) Acomodações
         List<HotelAcomodacaoFront> acomodacoesFront =
@@ -57,6 +58,7 @@ public final class HotelReservaMapper {
             aHub.setCodgPlanoTarifa(aFront.getCodgPlanoTarifa());
             aHub.setCodgRoom(aFront.getCodgRoom());
             aHub.setSiglaTipoQuarto(aFront.getSiglaTipoQuarto());
+            aHub.setSistema(aFront.getSistema());
 
             // Tarifa
             if (aFront.getTarifaHotel() != null) {
