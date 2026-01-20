@@ -23,8 +23,8 @@ import java.util.UUID;
 
 public final class SeguroCompraToManagerMapper {
 
-    private SeguroCompraToManagerMapper() {}
-
+    private SeguroCompraToManagerMapper() {
+    }
 
 
     public static SeguroReserva toReserva(SeguroCompraModel req) {
@@ -68,13 +68,15 @@ public final class SeguroCompraToManagerMapper {
         // Valores: usando plano do JSON
         if (req.getPlano() != null) {
             Double base = safeDouble(req.getPlano().getPrecoBaseBRL());
-            Double fin  = safeDouble(req.getPlano().getPrecoFinalBRL());
+            Double fin = safeDouble(req.getPlano().getPrecoFinalBRL());
 
             r.setValorTotalReservaNet(base);
             r.setValorTotalReservaMarkup(round2(fin));
         }
 
-
+        r.setContatoEmail(req.getContatoEmergencia().getEmail());
+        r.setContatoTelefone(req.getContatoEmergencia().getTelefone());
+        r.setContatoNome(req.getContatoEmergencia().getNome());
         r.setDataInicioCobertura(DateUtil.extractDataStringToDate(req.getPlano().getDataInicioCobertura()));
         r.setDataFinalCobertura(DateUtil.extractDataStringToDate(req.getPlano().getDataFinalCombertura()));
 
@@ -128,12 +130,10 @@ public final class SeguroCompraToManagerMapper {
 
         return c;
     }
+
     private static Double safeDouble(Double v) {
         return v == null ? 0.0 : v;
     }
-
-
-
 
 
     private static Date extractFimCobertura(SeguroCompraModel req) {
@@ -157,6 +157,7 @@ public final class SeguroCompraToManagerMapper {
 
         return sb.toString();
     }
+
     public static List<SeguroSegurado> toSegurados(SeguroCompraModel req, SeguroCobertura coberturaSalva) {
         List<SeguroSegurado> list = new ArrayList<>();
         if (req.getSegurados() == null) return list;
@@ -181,8 +182,8 @@ public final class SeguroCompraToManagerMapper {
             ss.setEmail(s.getEmail());
 
             // Data nascimento (você já tratou LocalDate -> Date; aqui assumo LocalDate no DTO)
-            if(s.getNascimento()!=null && !s.getNascimento().isEmpty()){
-            ss.setDataNascimento(DateUtil.extractDataStringToDate(s.getNascimento())); // helper abaixo
+            if (s.getNascimento() != null && !s.getNascimento().isEmpty()) {
+                ss.setDataNascimento(DateUtil.extractDataStringToDate(s.getNascimento())); // helper abaixo
             }
 
             // Estado civil (não veio no JSON atual)
@@ -203,7 +204,9 @@ public final class SeguroCompraToManagerMapper {
         return list;
     }
 
-    /** 3) Detalhes de cobertura (lista do plano.coberturasDetalhes) */
+    /**
+     * 3) Detalhes de cobertura (lista do plano.coberturasDetalhes)
+     */
     public static List<SeguroCoberturaDetalhada> toCoberturaDetalhada(SeguroCompraModel req, SeguroCobertura coberturaSalva) {
         List<SeguroCoberturaDetalhada> list = new ArrayList<>();
         if (req.getPlano() == null || req.getPlano().getCoberturasDetalhes() == null) return list;
@@ -232,7 +235,9 @@ public final class SeguroCompraToManagerMapper {
         return list;
     }
 
-    /** 4) Categoria (só se existir no seu JSON - não veio) */
+    /**
+     * 4) Categoria (só se existir no seu JSON - não veio)
+     */
     public static List<SeguroCategoria> toCategorias(SeguroCompraModel req, SeguroCobertura coberturaSalva) {
         List<SeguroCategoria> list = new ArrayList<>();
 
@@ -244,8 +249,13 @@ public final class SeguroCompraToManagerMapper {
 
     // ===== Helpers =====
 
-    private static Double nvl(Double v) { return v == null ? 0.0 : v; }
-    private static String nz(String s) { return s == null ? "" : s; }
+    private static Double nvl(Double v) {
+        return v == null ? 0.0 : v;
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
+    }
 
     private static Double round2(Double v) {
         if (v == null) return 0.0;

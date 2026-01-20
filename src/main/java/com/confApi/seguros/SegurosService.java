@@ -5,6 +5,7 @@ import com.confApi.db.confManager.seguro.cobertura.SeguroCobertura;
 import com.confApi.db.confManager.seguro.cobertura.SeguroCoberturaService;
 import com.confApi.db.confManager.seguro.coberturaDetalhada.SeguroCoberturaDetalhada;
 import com.confApi.db.confManager.seguro.coberturaDetalhada.SeguroCoberturaDetalhadaService;
+import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
 import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import com.confApi.db.confManager.seguro.reserva.SeguroReservaService;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
@@ -66,6 +67,8 @@ public class SegurosService {
 
     }
 
+
+
     public SeguroReservaDTO carregarReserva(String localizador) {
         Optional<SeguroReserva> optionalSeguroReserva = seguroReservaService.findByLocalizador(localizador);
         SeguroReserva reserva = optionalSeguroReserva.get();
@@ -77,6 +80,12 @@ public class SegurosService {
         dto.setStatusPagamentoCliente(reserva.getStatusPagamentoCliente());
         dto.setDataCriacao(reserva.getDataCriacao());
         dto.setDataEmissao(reserva.getDataEmissao());
+        dto.setCodgUsuario(reserva.getUsuario().getCodgUsuario());
+        dto.setLoginUsuario(reserva.getUsuario().getLoginUsuario());
+        dto.setNomeUsuario(reserva.getUsuario().getNomeCompleto());
+
+        dto.setCodgAgencia(reserva.getAgencia().getCodgAgencia());
+        dto.setNomeAgencia(reserva.getAgencia().getNomeAgencia());
 
         dto.setDataInicioCobertura(reserva.getDataInicioCobertura());
         dto.setDataFinalCobertura(reserva.getDataFinalCobertura());
@@ -96,20 +105,26 @@ public class SegurosService {
         Optional<SeguroCobertura> cobertura = seguroCoberturaService.findBySeguroReservaCodgReservaSeguro(reserva.getCodgReservaSeguro());
         dto.setCobertura(SeguroCoberturaToPlanoMapper.toDTO(cobertura.get(), null));
 
-        List<SeguroSegurado> listaSegurados = new ArrayList<>();
-        Optional<SeguroSegurado> listOptionalSegurados = seguroSeguradoService.findBySeguroSeguradoCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
-        listOptionalSegurados.ifPresent(listaSegurados::add);
+
+        List<SeguroSegurado> listOptionalSegurados = seguroSeguradoService.findBySeguroCoberturaCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
+
         // Segurados
         dto.setSegurados(
-                SeguradoMapper.toDTOList(listaSegurados)
+                SeguradoMapper.toDTOList(listOptionalSegurados)
         );
-        List<SeguroCoberturaDetalhada> seguroCoberturaDetalhadaList = new ArrayList<>();
-        Optional<SeguroCoberturaDetalhada> opt = seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
-        opt.ifPresent(seguroCoberturaDetalhadaList::add);
 
-        dto.getCobertura().getCoberturasDetalhes().addAll(CoberturaSeguroMapper.toDTOList(seguroCoberturaDetalhadaList));
+        List<SeguroCoberturaDetalhada> opt = seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
+
+
+        dto.getCobertura().getCoberturasDetalhes().addAll(CoberturaSeguroMapper.toDTOList(opt));
 
         return dto;
     }
+
+    public void cancelarReserva(CancelamentoRequestDTO cancelamentoRequest){
+        seguroReservaService.cancelarReservaSeguro(cancelamentoRequest);
+    }
+
+
 
 }

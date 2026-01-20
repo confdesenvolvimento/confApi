@@ -1,5 +1,6 @@
 package com.confApi.seguros;
 
+import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
 import com.confApi.seguros.dto.*;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,15 +35,20 @@ System.out.println("Chamou pesquisar Seguro: " +resultado.size());
         return null;
     }
     @PostMapping("/carregarReserva")
-    public SeguroReservaDTO comprar(@RequestBody SeguroCarregarReservaDTO req) {
+    public SeguroReservaDTO carregarReserva(@RequestBody SeguroCarregarReservaDTO req) {
         SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
+        return response;
+    }
 
+    @PostMapping("/cancelarReserva")
+    public SeguroReservaDTO cancelarReserva(@RequestBody CancelamentoRequestDTO req) {
+          service.cancelarReserva(req);
+        SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
         return response;
     }
 
 
     public static List<PlanoSeguroDTO> mockPlanosSeguro() {
-
         List<PlanoSeguroDTO> planos = new ArrayList<>();
 
         // =========================

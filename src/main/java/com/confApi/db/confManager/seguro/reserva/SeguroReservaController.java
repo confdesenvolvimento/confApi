@@ -68,8 +68,8 @@ public class SeguroReservaController {
         if (!seguroReservaService.findById(id).isPresent()){
             return ResponseEntity.notFound().build();
         }
-
-        seguroReservaService.cancelarReservaSeguro(cancelamentoRequestDTO, id);
+        cancelamentoRequestDTO.setCodgReserva(id);
+        seguroReservaService.cancelarReservaSeguro(cancelamentoRequestDTO);
 
         return ResponseEntity.noContent().build();
     }

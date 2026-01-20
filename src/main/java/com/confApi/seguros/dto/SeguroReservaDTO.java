@@ -31,7 +31,10 @@ public class SeguroReservaDTO implements Serializable {
 
     // Identificação
     private Integer codgAgencia;
+    private String nomeAgencia;
     private Integer codgUsuario;
+    private String loginUsuario;
+    private String nomeUsuario;
     private Integer codgErp;
     private Integer codgUnidade;
 
@@ -43,7 +46,7 @@ public class SeguroReservaDTO implements Serializable {
 
     // Contato emergência (opcional)
     private ContatoEmergenciaDTO contatoEmergencia ;
-
+    private String motivoCancelamento;
     // Recebimento/pagamento (opcional)
    // private SeguroRecebimentoDTO recebimento;
 }

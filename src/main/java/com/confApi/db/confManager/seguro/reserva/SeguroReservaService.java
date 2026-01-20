@@ -35,8 +35,8 @@ public class SeguroReservaService {
         seguroReservaAPI.deleteById(id);
     }
 
-    public void cancelarReservaSeguro(CancelamentoRequestDTO dto, Integer id) {
-        seguroReservaAPI.cancelarReserva(dto, id);
+    public void cancelarReservaSeguro(CancelamentoRequestDTO dto) {
+        seguroReservaAPI.cancelarReserva(dto, dto.getCodgReserva());
     }
 
 }
