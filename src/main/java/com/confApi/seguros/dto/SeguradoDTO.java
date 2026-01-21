@@ -1,5 +1,6 @@
 package com.confApi.seguros.dto;
 
+import com.confApi.seguros.eNums.EstadoCivil;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -16,6 +17,7 @@ public class SeguradoDTO implements Serializable {
     private String sobrenome;
     private String sexo; // F / M
     private String nascimento;
+    private EstadoCivil estadoCivil;
 
     private String email;
     private String telefone;

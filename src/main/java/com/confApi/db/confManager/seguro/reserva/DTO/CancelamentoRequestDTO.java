@@ -9,4 +9,6 @@ public class CancelamentoRequestDTO {
     private Integer codgUsuarioCancelamento;
     private String descricaoMotivoCancelamento;
     private String localizador;
+    private String operacao;
+    private String cpfoudocumento;
 }

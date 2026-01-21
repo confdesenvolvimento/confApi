@@ -69,6 +69,7 @@ public class SegurosService {
 
 
 
+
     public SeguroReservaDTO carregarReserva(String localizador) {
         Optional<SeguroReserva> optionalSeguroReserva = seguroReservaService.findByLocalizador(localizador);
         SeguroReserva reserva = optionalSeguroReserva.get();
@@ -104,7 +105,6 @@ public class SegurosService {
 
         Optional<SeguroCobertura> cobertura = seguroCoberturaService.findBySeguroReservaCodgReservaSeguro(reserva.getCodgReservaSeguro());
         dto.setCobertura(SeguroCoberturaToPlanoMapper.toDTO(cobertura.get(), null));
-
 
         List<SeguroSegurado> listOptionalSegurados = seguroSeguradoService.findBySeguroCoberturaCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
 

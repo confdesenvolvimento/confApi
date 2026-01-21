@@ -5,4 +5,5 @@ import lombok.Data;
 @Data
 public class SeguroCarregarReservaDTO {
     private String localizador;
+    private String operacao;
 }

@@ -19,6 +19,8 @@ public class SeguroViagemPesquisaDTO implements Serializable {
     private String dataInicio;
     private String dataFim;
 
+    private List<PassageiroSeguro> passageiroSeguro;
+
     private int qtd0a64;
     private int qtd65a75;
     private int qtd76a85;
@@ -116,5 +118,13 @@ public class SeguroViagemPesquisaDTO implements Serializable {
 
     public void setFornecedores(List<String> fornecedores) {
         this.fornecedores = fornecedores;
+    }
+
+    public List<PassageiroSeguro> getPassageiroSeguro() {
+        return passageiroSeguro;
+    }
+
+    public void setPassageiroSeguro(List<PassageiroSeguro> passageiroSeguro) {
+        this.passageiroSeguro = passageiroSeguro;
     }
 }
