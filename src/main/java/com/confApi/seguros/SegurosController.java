@@ -23,6 +23,8 @@ public class  SegurosController {
     @PostMapping("/pesquisar")
     public List<PlanoSeguroDTO> pesquisar(@RequestBody SeguroViagemPesquisaDTO req) {
         List<PlanoSeguroDTO> resultado = mockPlanosSeguro();
+      
+       // List<PlanoSeguroDTO> resultado = service.pesquisar();
         System.out.println("Chamou pesquisar Seguro: " +resultado.size());
 
         return resultado;
