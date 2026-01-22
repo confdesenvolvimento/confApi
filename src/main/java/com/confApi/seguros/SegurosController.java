@@ -1,7 +1,9 @@
 package com.confApi.seguros;
 
 import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
+import com.confApi.hub.seguro.HubSeguroClient;
 import com.confApi.seguros.dto.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,15 +18,17 @@ public class  SegurosController {
 
     private final SegurosService service;
 
+    @Autowired
+    private HubSeguroClient hubSeguroClient;
+
     public SegurosController(SegurosService service) {
         this.service = service;
     }
 
     @PostMapping("/pesquisar")
     public List<PlanoSeguroDTO> pesquisar(@RequestBody SeguroViagemPesquisaDTO req) {
-        List<PlanoSeguroDTO> resultado = mockPlanosSeguro();
-      
-       // List<PlanoSeguroDTO> resultado = service.pesquisar();
+//        List<PlanoSeguroDTO> resultado = mockPlanosSeguro();
+        List<PlanoSeguroDTO> resultado = hubSeguroClient.pesquisarDisponibilidade(req);
         System.out.println("Chamou pesquisar Seguro: " +resultado.size());
 
         return resultado;
@@ -32,12 +36,14 @@ public class  SegurosController {
 
     @PostMapping("/comprar")
     public String comprar(@RequestBody SeguroCompraModel req) {
+        String comprar = hubSeguroClient.efetuarReserva(req);
         service.comprar(req);
 
-        return null;
+        return comprar;
     }
     @PostMapping("/carregarReserva")
     public SeguroReservaDTO carregarReserva(@RequestBody SeguroCarregarReservaDTO req) {
+        List<SeguroReservaDTO> resultado = hubSeguroClient.carregarReserva(req);
         SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
         return response;
     }
@@ -45,6 +51,7 @@ public class  SegurosController {
     @PostMapping("/cancelarReserva")
     public SeguroReservaDTO cancelarReserva(@RequestBody CancelamentoRequestDTO req) {
           service.cancelarReserva(req);
+        List<SeguroReservaDTO> resultado = hubSeguroClient.cancelarReserva(req);
         SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
         return response;
     }
