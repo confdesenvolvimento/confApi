@@ -40,7 +40,10 @@ public final class CoberturaSeguroMapper {
         if (list == null || list.isEmpty()) return new ArrayList<>();
 
         return list.stream()
-                .sorted(Comparator.comparing(SeguroCoberturaDetalhada::getIdOrdemExibicao))
+                .sorted(Comparator.comparing(
+                        SeguroCoberturaDetalhada::getIdOrdemExibicao,
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                ))
                 .map(CoberturaSeguroMapper::toDTO)
                 .toList();
     }

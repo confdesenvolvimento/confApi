@@ -36,13 +36,17 @@ public class  SegurosController {
 
     @PostMapping("/comprar")
     public String comprar(@RequestBody SeguroCompraModel req) {
-        String comprar = hubSeguroClient.efetuarReserva(req);
-        service.comprar(req);
+        List<SeguroReservaDTO> comprar = hubSeguroClient.efetuarReserva(req);
+        System.out.println("Chamou comprar Seguro: "+comprar);
+        service.comprar(req, comprar);
 
-        return comprar;
+        return comprar.get(0).getStatus().toString();
     }
     @PostMapping("/carregarReserva")
     public SeguroReservaDTO carregarReserva(@RequestBody SeguroCarregarReservaDTO req) {
+        if(req.getOperacao() == null){
+            req.setOperacao("CONFIANCA");
+        }
         List<SeguroReservaDTO> resultado = hubSeguroClient.carregarReserva(req);
         SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
         return response;

@@ -45,8 +45,8 @@ public class SegurosService {
 
     }
 
-    public void comprar(SeguroCompraModel req) {
-        SeguroReserva reserva = SeguroCompraToManagerMapper.toReserva(req);
+    public void comprar(SeguroCompraModel req, List<SeguroReservaDTO> seguroReservaDTOList) {
+        SeguroReserva reserva = SeguroCompraToManagerMapper.toReserva(req, seguroReservaDTOList);
         SeguroReserva resp = seguroReservaService.save(reserva);
 
         SeguroCobertura seguroCoberturaResp = seguroCoberturaService.save(SeguroCompraToManagerMapper.toCobertura(req, resp));
@@ -56,19 +56,12 @@ public class SegurosService {
             seguroCoberturaDetalhadaService.save(s);
         }
 
-        List<SeguroSegurado> segurados = SeguroCompraToManagerMapper.toSegurados(req, seguroCoberturaResp);
+        List<SeguroSegurado> segurados = SeguroCompraToManagerMapper.toSegurados(req, seguroCoberturaResp, seguroReservaDTOList);
         List<SeguroSegurado> seguradosSalvas = new ArrayList<>();
         for (SeguroSegurado s : segurados) {
             seguradosSalvas.add(seguroSeguradoService.save(s));
         }
-
-        System.out.println("Compra codgSeguro: " + resp.getCodgReservaSeguro());
-
-
     }
-
-
-
 
     public SeguroReservaDTO carregarReserva(String localizador) {
         Optional<SeguroReserva> optionalSeguroReserva = seguroReservaService.findByLocalizador(localizador);
@@ -114,10 +107,8 @@ public class SegurosService {
         );
 
         List<SeguroCoberturaDetalhada> opt = seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
-
-
+        
         dto.getCobertura().getCoberturasDetalhes().addAll(CoberturaSeguroMapper.toDTOList(opt));
-
         return dto;
     }
 
