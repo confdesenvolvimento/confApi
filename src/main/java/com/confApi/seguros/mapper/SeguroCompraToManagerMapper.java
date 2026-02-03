@@ -11,6 +11,7 @@ import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.seguros.dto.CoberturaSeguroDTO;
 import com.confApi.seguros.dto.SeguradoDTO;
 import com.confApi.seguros.dto.SeguroCompraModel;
+import com.confApi.seguros.dto.SeguroReservaDTO;
 import com.confApi.seguros.util.DateUtil;
 
 import java.text.ParseException;
@@ -27,7 +28,7 @@ public final class SeguroCompraToManagerMapper {
     }
 
 
-    public static SeguroReserva toReserva(SeguroCompraModel req) {
+    public static SeguroReserva toReserva(SeguroCompraModel req, List<SeguroReservaDTO> seguroReservaDTOList) {
         SeguroReserva r = new SeguroReserva();
 
         // IDs básicos (vêm do "identificacaoAgenciaModel")
@@ -49,21 +50,21 @@ public final class SeguroCompraToManagerMapper {
 
             if (req.getIdentificacaoAgenciaModel().getCodgErp() != null) {
                 Sistema s = new Sistema();
-                s.setCodgSistema(Integer.valueOf(req.getPlano().getCodgFornecedor())); // <<< ajuste se o campo for outro
+                s.setCodgSistema(Integer.valueOf(req.getPlano().getCodgFornecedor() == null ? "6" : req.getPlano().getCodgFornecedor())); // <<< ajuste se o campo for outro
                 r.setSistema(s);
             }
         }
 
         // Localizador: se ainda não existe (HERO normalmente retorna depois), gera um provisório
-        r.setLocalizador("SEG-" + UUID.randomUUID().toString().substring(0, 10).toUpperCase());
+        r.setLocalizador(seguroReservaDTOList.get(0).getLocalizador());
 
         // Datas
         r.setDataCriacao(LocalDateTime.now());
 
         // Status (ajuste conforme sua regra)
         // Ex.: 0 = CRIADA, 1 = EMITIDA, 2 = CANCELADA...
-        r.setStatus(1);
-        r.setStatusPagamentoCliente(1);
+        r.setStatus(seguroReservaDTOList.get(0).getStatus());
+        r.setStatusPagamentoCliente(0);
 
         // Valores: usando plano do JSON
         if (req.getPlano() != null) {
@@ -158,11 +159,21 @@ public final class SeguroCompraToManagerMapper {
         return sb.toString();
     }
 
-    public static List<SeguroSegurado> toSegurados(SeguroCompraModel req, SeguroCobertura coberturaSalva) {
+    public static List<SeguroSegurado> toSegurados(SeguroCompraModel req, SeguroCobertura coberturaSalva, List<SeguroReservaDTO> seguroReservaDTOList) {
         List<SeguroSegurado> list = new ArrayList<>();
         if (req.getSegurados() == null) return list;
 
         for (SeguradoDTO s : req.getSegurados()) {
+
+            String cpfBusca = s.getCpf() == null ? null : s.getCpf().replaceAll("\\D", "");
+            SeguradoDTO seguradoDTOReserva = seguroReservaDTOList.get(0)
+                    .getSegurados()
+                    .stream()
+                    .filter(x -> x.getCpf() != null
+                            && x.getCpf().replaceAll("\\D", "").equals(cpfBusca))
+                    .findFirst()
+                    .orElse(null);
+
             SeguroSegurado ss = new SeguroSegurado();
             ss.setSeguroCobertura(coberturaSalva);
 
@@ -197,6 +208,7 @@ public final class SeguroCompraToManagerMapper {
             ss.setEnderecoBairro(s.getBairro());
             ss.setEnderecoCidade(s.getCidade());
             ss.setEnderecoEstado(s.getUf());
+            ss.setLocalizador(seguradoDTOReserva == null ? null : seguradoDTOReserva.getLocalizador());
 
             list.add(ss);
         }

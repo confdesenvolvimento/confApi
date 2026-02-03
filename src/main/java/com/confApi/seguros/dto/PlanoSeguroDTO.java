@@ -1,5 +1,6 @@
 package com.confApi.seguros.dto;
 
+import com.confApi.seguros.model.DestinoSeguro;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -26,8 +27,7 @@ public class PlanoSeguroDTO implements Serializable {
     // (opcional) score
     private int score;
 
+    private DestinoSeguro destino;
     List<CoberturaSeguroDTO> coberturasDetalhes = new ArrayList<>();
-
-
 }
 

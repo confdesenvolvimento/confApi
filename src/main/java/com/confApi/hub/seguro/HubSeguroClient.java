@@ -73,18 +73,18 @@ public class HubSeguroClient {
     }
 
 
-    public String efetuarReserva(SeguroCompraModel seguroCompraModel) {
+    public List<SeguroReservaDTO> efetuarReserva(SeguroCompraModel seguroCompraModel) {
         try {
             ConfAppResp token = confAppService.token();
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<SeguroCompraModel> entity = new HttpEntity<>(seguroCompraModel, headers);
 
-            ResponseEntity<String> response = restTemplate.exchange(
+            ResponseEntity<List<SeguroReservaDTO>> response = restTemplate.exchange(
                     UrlConfig.URL_CONFIANCA_HUB + "/api/seguro/emitir",
                     HttpMethod.POST,
                     entity,
-                    String.class
+                    new ParameterizedTypeReference<List<SeguroReservaDTO>>() {}
             );
 
             if (response.getStatusCode().is2xxSuccessful()) {
@@ -95,7 +95,7 @@ public class HubSeguroClient {
                     "emissão de seguro não é valida",
                     response.getStatusCode());
 
-            return null;
+            return response.getBody();
 
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Erro ao emitir seguro hub", e);
@@ -140,6 +140,9 @@ public class HubSeguroClient {
     public List<SeguroReservaDTO> cancelarReserva(CancelamentoRequestDTO cancelarRequest) {
         try {
             ConfAppResp token = confAppService.token();
+            if(cancelarRequest.getOperacao() == null){
+                cancelarRequest.setOperacao("CONFIANCA");
+            }
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<CancelamentoRequestDTO> entity = new HttpEntity<>(cancelarRequest, headers);

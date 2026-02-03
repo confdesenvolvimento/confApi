@@ -34,4 +34,6 @@ public class SeguradoDTO implements Serializable {
     private String bairro;
     private String cidade;
     private String uf;
+
+    private String localizador;
 }

@@ -25,4 +25,5 @@ public class SeguroSegurado {
     private String enderecoBairro;
     private String enderecoCidade;
     private String enderecoEstado;
+    private String localizador;
 }
