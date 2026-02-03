@@ -29,6 +29,9 @@ public class  SegurosController {
     public List<PlanoSeguroDTO> pesquisar(@RequestBody SeguroViagemPesquisaDTO req) {
 //        List<PlanoSeguroDTO> resultado = mockPlanosSeguro();
         List<PlanoSeguroDTO> resultado = hubSeguroClient.pesquisarDisponibilidade(req);
+        for (PlanoSeguroDTO plano : resultado) {
+            plano.setUrlLogo("");
+        }
         System.out.println("Chamou pesquisar Seguro: " +resultado.size());
 
         return resultado;
