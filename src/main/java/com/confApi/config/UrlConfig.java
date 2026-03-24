@@ -15,6 +15,8 @@ public class UrlConfig {
     public String emailConfianca;
     @Value("${confianca-confApp}")
     private String confAppConfianca;
+    @Value("${confianca-cacheHotel}")
+    private String cacheHotel;
 
 
 
@@ -24,6 +26,7 @@ public class UrlConfig {
     public static String URL_CONFIANCA_HUB;
     public static String URL_CONFIANCA_EMAIL;
     public static String URL_CONFIANCA_CONFAPP;
+    public static String URL_CONFIANCA_CACHEHOTEL;
 
     @PostConstruct
     public void init() {
@@ -31,6 +34,7 @@ public class UrlConfig {
         URL_CONFIANCA_HUB = hubConfianca;
         URL_CONFIANCA_EMAIL = emailConfianca;
         URL_CONFIANCA_CONFAPP = confAppConfianca;
+        URL_CONFIANCA_CACHEHOTEL = cacheHotel;
 
     }
 }
