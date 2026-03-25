@@ -3,9 +3,9 @@ package com.confApi.endPoints.seguro.reserva;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
-import com.confApi.db.AbstractTransactionServiceApi;
 import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
 import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
+import com.confApi.seguros.dto.FiltroReservaSeguro;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -21,7 +20,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @Service
-public class SeguroReservaAPI{
+public class SeguroReservaAPI {
 
     private static final Logger LOG =
             Logger.getLogger(SeguroReservaAPI.class.getName());
@@ -56,7 +55,48 @@ public class SeguroReservaAPI{
                             UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/findAll",
                             HttpMethod.GET,
                             requestEntity,
-                            new ParameterizedTypeReference<List<SeguroReserva>>() {}
+                            new ParameterizedTypeReference<List<SeguroReserva>>() {
+                            }
+                    );
+
+            return response.getBody() != null
+                    ? response.getBody()
+                    : Collections.emptyList();
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE, "Erro HTTP ao consultar seguro reserva. Status: " + ex.getStatusCode(), ex
+            );
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
+        }
+        return Collections.emptyList();
+    }
+
+    public List<SeguroReserva> findFiltros(FiltroReservaSeguro filtroReservaSeguro) {
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            } else {
+                LOG.warning("Token de autenticação não obtido do ConfAppService.");
+                return Collections.emptyList();
+            }
+
+            HttpEntity<FiltroReservaSeguro> requestEntity =
+                    new HttpEntity<>(filtroReservaSeguro, headers);
+
+            ResponseEntity<List<SeguroReserva>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/consultarReservas",
+                            HttpMethod.POST,
+                            requestEntity,
+                            new ParameterizedTypeReference<List<SeguroReserva>>() {
+                            }
                     );
 
             return response.getBody() != null
@@ -157,7 +197,7 @@ public class SeguroReservaAPI{
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-
+        
         try {
             ConfAppResp token = confAppService.token();
 
@@ -263,7 +303,42 @@ public class SeguroReservaAPI{
         }
     }
 
+    public SeguroReserva atualizarReservaSeguro(SeguroReserva seguroReserva) {
 
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<SeguroReserva> requestEntity =
+                    new HttpEntity<>(seguroReserva, headers);
+
+            ResponseEntity<SeguroReserva> response = restTemplate.exchange(
+                    UrlConfig.URL_CONFIANCA_MANAGER + API_ACTION_NAME + "/updateById/" + seguroReserva.getCodgReservaSeguro(),
+                    HttpMethod.PUT,
+                    requestEntity,
+                    SeguroReserva.class
+            );
+
+            return response.getBody();
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE,
+                    "Erro HTTP ao cancelar reserva. Status: " + ex.getStatusCode(),
+                    ex);
+            return null;
+
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao cancelar reserva", ex);
+            return null;
+        }
+    }
 }
 
 

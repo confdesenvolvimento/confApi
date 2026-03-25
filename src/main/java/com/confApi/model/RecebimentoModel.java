@@ -15,7 +15,14 @@ public class RecebimentoModel implements Serializable {
     private CartaoModel cartaoSelecionado;
     private Integer statusRecebimento;
     private Date dataRecebimento;
-    private Integer codgCodgRecebimento;
+    private Integer codgRecebimento;
     private String assinatura;
     private String link;
+
+    public RecebimentoModel() {
+    }
+
+    public RecebimentoModel(Integer codgRecebimento) {
+        this.codgRecebimento = codgRecebimento;
+    }
 }

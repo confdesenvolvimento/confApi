@@ -10,6 +10,7 @@ import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import com.confApi.db.confManager.seguro.reserva.SeguroReservaService;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.confApi.db.confManager.seguro.segurado.SeguroSeguradoService;
+import com.confApi.seguros.dto.FiltroReservaSeguro;
 import com.confApi.seguros.dto.SeguradoDTO;
 import com.confApi.seguros.dto.SeguroCompraModel;
 import com.confApi.seguros.dto.SeguroReservaDTO;
@@ -45,22 +46,15 @@ public class SegurosService {
 
     }
 
-    public void comprar(SeguroCompraModel req, List<SeguroReservaDTO> seguroReservaDTOList) {
-        SeguroReserva reserva = SeguroCompraToManagerMapper.toReserva(req, seguroReservaDTOList);
-        SeguroReserva resp = seguroReservaService.save(reserva);
+    public SeguroReserva comprar(SeguroCompraModel req) {
+        SeguroReserva seguroReserva = new SeguroReserva(req);
+        SeguroReserva resp = seguroReservaService.save(seguroReserva);
+        return resp;
+    }
 
-        SeguroCobertura seguroCoberturaResp = seguroCoberturaService.save(SeguroCompraToManagerMapper.toCobertura(req, resp));
-
-        List<SeguroCoberturaDetalhada> coberturaDetalhadas = SeguroCompraToManagerMapper.toCoberturaDetalhada(req, seguroCoberturaResp);
-        for (SeguroCoberturaDetalhada s : coberturaDetalhadas) {
-            seguroCoberturaDetalhadaService.save(s);
-        }
-
-        List<SeguroSegurado> segurados = SeguroCompraToManagerMapper.toSegurados(req, seguroCoberturaResp, seguroReservaDTOList);
-        List<SeguroSegurado> seguradosSalvas = new ArrayList<>();
-        for (SeguroSegurado s : segurados) {
-            seguradosSalvas.add(seguroSeguradoService.save(s));
-        }
+    public SeguroReserva atualizarReserva(SeguroReserva seguroReserva) {
+        SeguroReserva resp = seguroReservaService.atualizarReservaSeguro(seguroReserva);
+        return resp;
     }
 
     public SeguroReservaDTO carregarReserva(String localizador) {
@@ -74,12 +68,12 @@ public class SegurosService {
         dto.setStatusPagamentoCliente(reserva.getStatusPagamentoCliente());
         dto.setDataCriacao(reserva.getDataCriacao());
         dto.setDataEmissao(reserva.getDataEmissao());
-        dto.setCodgUsuario(reserva.getUsuario().getCodgUsuario());
-        dto.setLoginUsuario(reserva.getUsuario().getLoginUsuario());
-        dto.setNomeUsuario(reserva.getUsuario().getNomeCompleto());
+        dto.setCodgUsuario(reserva.getCodgUsuarioCriacao().getCodgUsuario());
+        dto.setLoginUsuario(reserva.getCodgUsuarioCriacao().getLoginUsuario());
+        dto.setNomeUsuario(reserva.getCodgUsuarioCriacao().getNomeCompleto());
 
-        dto.setCodgAgencia(reserva.getAgencia().getCodgAgencia());
-        dto.setNomeAgencia(reserva.getAgencia().getNomeAgencia());
+        dto.setCodgAgencia(reserva.getCodgAgencia().getCodgAgencia());
+        dto.setNomeAgencia(reserva.getCodgAgencia().getNomeAgencia());
 
         dto.setDataInicioCobertura(reserva.getDataInicioCobertura());
         dto.setDataFinalCobertura(reserva.getDataFinalCobertura());
@@ -107,9 +101,13 @@ public class SegurosService {
         );
 
         List<SeguroCoberturaDetalhada> opt = seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
-        
+
         dto.getCobertura().getCoberturasDetalhes().addAll(CoberturaSeguroMapper.toDTOList(opt));
         return dto;
+    }
+
+    public List<SeguroReserva> carregarReservas(FiltroReservaSeguro filtroReservaSeguro) {
+        return seguroReservaService.findFiltro(filtroReservaSeguro);
     }
 
     public void cancelarReserva(CancelamentoRequestDTO cancelamentoRequest){

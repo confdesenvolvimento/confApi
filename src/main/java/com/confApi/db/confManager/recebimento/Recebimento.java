@@ -6,8 +6,11 @@ import com.confApi.db.confManager.gatewayCartao.GatewayCartao;
 import com.confApi.db.confManager.reservaAereo.ReservaAereo;
 import com.confApi.db.confManager.reservaHotel.dto.ReservaHotel;
 import com.confApi.db.confManager.reservaPacote.ReservaPacote;
+import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import com.confApi.endPoints.recebimento.RecebimentoResponse;
 import com.confApi.endPoints.reservaPacote.ReservaPacoteResponse;
+import com.confApi.model.RecebimentoModel;
+import com.confApi.seguros.dto.SeguroCompraModel;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.io.Serializable;
@@ -44,6 +47,43 @@ public class Recebimento implements Serializable {
     private String qrcodePix;
     private String copiacolaPix;
     private ReservaPacote codgReservaPacote;
+    private SeguroReserva codgReservaSeguro;
+
+    public Recebimento(RecebimentoModel recebimentoModel) {
+        this.codgRecebimento = recebimentoModel.getCodgRecebimento() != null ? recebimentoModel.getCodgRecebimento() : null;
+        this.valrRecebimento = recebimentoModel.getValorPagamento();
+        if(recebimentoModel.getCartaoSelecionado() != null){
+            this.numrCartao = recebimentoModel.getCartaoSelecionado().getNumeroCartao();
+            this.validadeCartao = recebimentoModel.getCartaoSelecionado().getValidadeCartao();
+            this.codgSegCartao = recebimentoModel.getCartaoSelecionado().getCodgSegurancaCartao();
+            this.titularCartao = recebimentoModel.getCartaoSelecionado().getTitularBandeira();
+            this.qtdeParcela = Integer.parseInt(recebimentoModel.getCartaoSelecionado().getQuantidadeParcelas());
+            this.codgBandeira = new Bandeira(recebimentoModel.getCartaoSelecionado().getCodgBandeira());
+        }
+        this.valrPrimeiraParcela = recebimentoModel.getValorEntrada();
+        this.valrDemaisParcela = recebimentoModel.getValorEntrada();
+        this.codgAutCartao = null;
+        this.codgTransacao = null;
+        this.orderGatewayCartao = null;
+        this.status = null;
+        this.valrEntrada = recebimentoModel.getValorEntrada();
+        this.dataRecebimento = new Date();
+        this.codgGatewayCartao = null;
+        this.codgFormaPagto = recebimentoModel.getFormaDePagamento();
+        this.valrCancelado = null;
+        this.codgReservaAereo = null;
+        this.link = null;
+        this.codgReservaHotel = null;
+        this.assinaturaEletronica = null;
+        this.mensagem = null;
+        this.qrcodePix = null;
+        this.copiacolaPix = null;
+        this.codgReservaPacote = null;
+        this.codgReservaSeguro = null;
+    }
+
+    public Recebimento() {
+    }
 
     public Recebimento(RecebimentoResponse recebimentoResponse, ReservaPacoteResponse reservaPacoteResponse) {
         this.codgRecebimento = recebimentoResponse.getCodgCodgRecebimento();
@@ -73,6 +113,7 @@ public class Recebimento implements Serializable {
         this.qrcodePix = null;
         this.copiacolaPix = null;
         this.codgReservaPacote = new ReservaPacote(reservaPacoteResponse);
+        this.codgReservaSeguro = null;
     }
 
     public String getMensagem() {
@@ -83,10 +124,6 @@ public class Recebimento implements Serializable {
         this.mensagem = mensagem;
     }
 
-
-
-
-
     public String getAssinaturaEletronica() {
         return assinaturaEletronica;
     }
@@ -95,10 +132,6 @@ public class Recebimento implements Serializable {
         this.assinaturaEletronica = assinaturaEletronica;
     }
 
-
-
-
-
     public ReservaAereo getCodgReservaAereo() {
         return codgReservaAereo;
     }
@@ -106,8 +139,6 @@ public class Recebimento implements Serializable {
     public void setCodgReservaAereo(ReservaAereo codgReservaAereo) {
         this.codgReservaAereo = codgReservaAereo;
     }
-
-
 
     public GatewayCartao getCodgGatewayCartao() {
         return codgGatewayCartao;
@@ -125,11 +156,6 @@ public class Recebimento implements Serializable {
         this.codgFormaPagto = codgFormaPagto;
     }
 
-
-
-
-
-
     public Bandeira getCodgBandeira() {
         return codgBandeira;
     }
@@ -138,10 +164,6 @@ public class Recebimento implements Serializable {
         this.codgBandeira = codgBandeira;
     }
 
-
-
-
-
     public Date getDataRecebimento() {
         return dataRecebimento;
     }
@@ -149,10 +171,6 @@ public class Recebimento implements Serializable {
     public void setDataRecebimento(Date dataRecebimento) {
         this.dataRecebimento = dataRecebimento;
     }
-
-
-
-
 
     public Integer getCodgRecebimento() {
         return codgRecebimento;
@@ -314,13 +332,46 @@ public class Recebimento implements Serializable {
         this.codgReservaPacote = codgReservaPacote;
     }
 
+    public SeguroReserva getCodgReservaSeguro() {
+        return codgReservaSeguro;
+    }
 
+    public void setCodgReservaSeguro(SeguroReserva codgReservaSeguro) {
+        this.codgReservaSeguro = codgReservaSeguro;
+    }
 
     @Override
     public String toString() {
-        return "Recebimento{" + "codgRecebimento=" + codgRecebimento + ", valrRecebimento=" + valrRecebimento + ", numrCartao=" + numrCartao + ", validadeCartao=" + validadeCartao + ", codgSegCartao=" + codgSegCartao + ", titularCartao=" + titularCartao + ", qtdeParcela=" + qtdeParcela + ", valrPrimeiraParcela=" + valrPrimeiraParcela + ", valrDemaisParcela=" + valrDemaisParcela + ", codgAutCartao=" + codgAutCartao + ", codgTransacao=" + codgTransacao + ", orderGatewayCartao=" + orderGatewayCartao + ", status=" + status + ", valrEntrada=" + valrEntrada + ", dataRecebimento=" + dataRecebimento + ", codgBandeira=" + codgBandeira + ", codgGatewayCartao=" + codgGatewayCartao + ", codgFormaPagto=" + codgFormaPagto + ", valrCancelado=" + valrCancelado + ", codgReservaAereo=" + codgReservaAereo + ", link=" + link + ", codgReservaHotel=" + codgReservaHotel + ", assinaturaEletronica=" + assinaturaEletronica + ", mensagem=" + mensagem + ", qrcodePix=" + qrcodePix + ", copiacolaPix=" + copiacolaPix + '}';
+        return "Recebimento{" +
+                "codgRecebimento=" + codgRecebimento +
+                ", valrRecebimento=" + valrRecebimento +
+                ", numrCartao='" + numrCartao + '\'' +
+                ", validadeCartao='" + validadeCartao + '\'' +
+                ", codgSegCartao='" + codgSegCartao + '\'' +
+                ", titularCartao='" + titularCartao + '\'' +
+                ", qtdeParcela=" + qtdeParcela +
+                ", valrPrimeiraParcela=" + valrPrimeiraParcela +
+                ", valrDemaisParcela=" + valrDemaisParcela +
+                ", codgAutCartao='" + codgAutCartao + '\'' +
+                ", codgTransacao='" + codgTransacao + '\'' +
+                ", orderGatewayCartao='" + orderGatewayCartao + '\'' +
+                ", status=" + status +
+                ", valrEntrada=" + valrEntrada +
+                ", dataRecebimento=" + dataRecebimento +
+                ", codgBandeira=" + codgBandeira +
+                ", codgGatewayCartao=" + codgGatewayCartao +
+                ", codgFormaPagto=" + codgFormaPagto +
+                ", valrCancelado=" + valrCancelado +
+                ", codgReservaAereo=" + codgReservaAereo +
+                ", link='" + link + '\'' +
+                ", codgReservaHotel=" + codgReservaHotel +
+                ", assinaturaEletronica='" + assinaturaEletronica + '\'' +
+                ", mensagem='" + mensagem + '\'' +
+                ", qrcodePix='" + qrcodePix + '\'' +
+                ", copiacolaPix='" + copiacolaPix + '\'' +
+                ", codgReservaPacote=" + codgReservaPacote +
+                ", codgReservaSeguro=" + codgReservaSeguro +
+                '}';
     }
-
-
 }
 

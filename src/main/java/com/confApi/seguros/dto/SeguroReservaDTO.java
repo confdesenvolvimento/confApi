@@ -6,6 +6,7 @@ import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
@@ -17,10 +18,10 @@ public class SeguroReservaDTO implements Serializable {
     private Integer status;
     private Integer statusPagamentoCliente;
 
-    private LocalDateTime dataCriacao;
-    private LocalDateTime dataEmissao;
-    private LocalDateTime prazoEmissaoCliente;
-    private LocalDateTime dataCancelamento;
+    private Timestamp dataCriacao;
+    private Timestamp dataEmissao;
+    private Timestamp prazoEmissaoCliente;
+    private Timestamp dataCancelamento;
 
     private Date dataInicioCobertura;
     private Date dataFinalCobertura;

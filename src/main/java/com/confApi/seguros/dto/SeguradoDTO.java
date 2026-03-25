@@ -36,4 +36,10 @@ public class SeguradoDTO implements Serializable {
     private String uf;
 
     private String localizador;
+
+    //apolice
+    private String numeroOperacao;
+    private String numeroApolice;
+    private String paisDestino;
+    private String endpointPdf;
 }

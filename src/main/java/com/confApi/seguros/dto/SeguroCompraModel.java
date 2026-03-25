@@ -1,5 +1,6 @@
 package com.confApi.seguros.dto;
 
+import com.confApi.db.confManager.sistema.Sistema;
 import com.confApi.model.FormaPagamentoModel;
 import com.confApi.model.IdentificacaoAgenciaModel;
 import com.confApi.model.RecebimentoModel;
@@ -15,6 +16,7 @@ public class SeguroCompraModel {
     private PlanoSeguroDTO plano;
     private FormaPagamentoModel formaPagamentoSelecionada;
     private RecebimentoModel recebimento;
+    private Sistema sistema;
 
     public SeguroCompraModel() {
     }

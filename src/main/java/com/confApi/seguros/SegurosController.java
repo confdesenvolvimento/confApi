@@ -1,7 +1,13 @@
 package com.confApi.seguros;
 
+import com.confApi.db.confManager.recebimento.Recebimento;
+import com.confApi.db.confManager.seguro.apolice.SeguroApolice;
 import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
+import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
+import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.confApi.hub.seguro.HubSeguroClient;
+import com.confApi.model.RecebimentoModel;
+import com.confApi.recebimento.RecebimentoService;
 import com.confApi.seguros.dto.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +26,8 @@ public class  SegurosController {
 
     @Autowired
     private HubSeguroClient hubSeguroClient;
+    @Autowired
+    private RecebimentoService recebimentoService;
 
     public SegurosController(SegurosService service) {
         this.service = service;
@@ -32,18 +40,50 @@ public class  SegurosController {
         for (PlanoSeguroDTO plano : resultado) {
             plano.setUrlLogo("");
         }
-        System.out.println("Chamou pesquisar Seguro: " +resultado.size());
-
         return resultado;
     }
 
     @PostMapping("/comprar")
-    public String comprar(@RequestBody SeguroCompraModel req) {
-        List<SeguroReservaDTO> comprar = hubSeguroClient.efetuarReserva(req);
-        System.out.println("Chamou comprar Seguro: "+comprar);
-        service.comprar(req, comprar);
+    public SeguroReserva comprar(@RequestBody SeguroCompraModel req) {
+        Recebimento recebimento = recebimentoService.criarRecebimento(req);
+        if(recebimento.getCodgRecebimento() == null || recebimento.getStatus() != 1){
+            return new SeguroReserva("ERRO: Não foi possivel efetuar o pagamento, tente novamente mais tarde.");
+        }
+        req.setRecebimento(new RecebimentoModel(recebimento.getCodgRecebimento()));
+        SeguroReserva seguroReserva = service.comprar(req);
+        if(seguroReserva.getCodgReservaSeguro() == null){
+            Recebimento recebimentoErro = recebimentoService.cancelarRecebimento(recebimento);
+            return new SeguroReserva("ERRO: Não foi possivel gravar o seguro no banco de dados, tente novamente mais tarde.");
+        }
+        List<SeguroReservaDTO> efetuarCompra = hubSeguroClient.efetuarReserva(req);
 
-        return comprar.get(0).getStatus().toString();
+        if(efetuarCompra == null || efetuarCompra.isEmpty()){
+            Recebimento recebimentoErro = recebimentoService.cancelarRecebimento(recebimento);
+            service.cancelarReserva(new CancelamentoRequestDTO(seguroReserva));
+            return new SeguroReserva("ERRO: Não foi possivel gravar o seguro no banco de dados, tente novamente mais tarde.");
+        }
+
+        seguroReserva.setLocalizador(efetuarCompra.get(0).getLocalizador());
+
+        for (SeguroSegurado segurado : seguroReserva.getSeguradosList()) {
+            SeguradoDTO seguradoDTO = efetuarCompra.get(0)
+                    .getSegurados()
+                    .stream()
+                    .filter(x -> normalizarCpf(x.getCpf()).equals(normalizarCpf(segurado.getCpf())))
+                    .findFirst()
+                    .orElse(null);
+
+            if (seguradoDTO == null) {
+                throw new RuntimeException("Segurado não encontrado no retorno da reserva para CPF: " + segurado.getCpf());
+            }
+
+            SeguroApolice seguroApolice = new SeguroApolice(seguradoDTO);
+            segurado.getApoliceList().add(seguroApolice);
+        }
+
+        service.atualizarReserva(seguroReserva);
+        return seguroReserva;
+//        return null;
     }
     @PostMapping("/carregarReserva")
     public SeguroReservaDTO carregarReserva(@RequestBody SeguroCarregarReservaDTO req) {
@@ -52,6 +92,12 @@ public class  SegurosController {
         }
         List<SeguroReservaDTO> resultado = hubSeguroClient.carregarReserva(req);
         SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
+        return response;
+    }
+
+    @PostMapping("/carregarReservas")
+    public List<SeguroReserva> carregarReservas(@RequestBody FiltroReservaSeguro req) {
+        List<SeguroReserva> response =  service.carregarReservas(req);
         return response;
     }
 
@@ -209,6 +255,10 @@ public class  SegurosController {
         c.setIcone(icone);
         c.setObs(obs);
         return c;
+    }
+
+    private String normalizarCpf(String cpf) {
+        return cpf == null ? null : cpf.replaceAll("\\D", "");
     }
 
 

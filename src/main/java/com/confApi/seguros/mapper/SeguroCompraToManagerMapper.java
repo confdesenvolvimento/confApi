@@ -14,6 +14,7 @@ import com.confApi.seguros.dto.SeguroCompraModel;
 import com.confApi.seguros.dto.SeguroReservaDTO;
 import com.confApi.seguros.util.DateUtil;
 
+import java.sql.Timestamp;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
@@ -38,20 +39,20 @@ public final class SeguroCompraToManagerMapper {
             if (req.getIdentificacaoAgenciaModel().getCodgUsuario() != null) {
                 Usuario u = new Usuario();
                 u.setCodgUsuario(req.getIdentificacaoAgenciaModel().getCodgUsuario());
-                r.setUsuario(u);
+                r.setCodgUsuarioCriacao(u);
             }
 
             // Agencia
             if (req.getIdentificacaoAgenciaModel().getCodgAgencia() != null) {
                 Agencia a = new Agencia();
                 a.setCodgAgencia(req.getIdentificacaoAgenciaModel().getCodgAgencia());
-                r.setAgencia(a);
+                r.setCodgAgencia(a);
             }
 
             if (req.getIdentificacaoAgenciaModel().getCodgErp() != null) {
                 Sistema s = new Sistema();
                 s.setCodgSistema(Integer.valueOf(req.getPlano().getCodgFornecedor() == null ? "6" : req.getPlano().getCodgFornecedor())); // <<< ajuste se o campo for outro
-                r.setSistema(s);
+                r.setCodgSistema(s);
             }
         }
 
@@ -59,7 +60,7 @@ public final class SeguroCompraToManagerMapper {
         r.setLocalizador(seguroReservaDTOList.get(0).getLocalizador());
 
         // Datas
-        r.setDataCriacao(LocalDateTime.now());
+        r.setDataCriacao(Timestamp.valueOf(LocalDateTime.now()));
 
         // Status (ajuste conforme sua regra)
         // Ex.: 0 = CRIADA, 1 = EMITIDA, 2 = CANCELADA...
@@ -84,6 +85,12 @@ public final class SeguroCompraToManagerMapper {
         // Observações (opcional): salvar um resumo do plano/forma pagto
         String obs = buildObs(req);
         r.setObservacaoInterna(obs);
+
+        if(req.getSistema() != null) {
+            r.setCodgSistema(req.getSistema());
+        } else {
+            r.setCodgSistema(new Sistema(6));
+        }
 
         return r;
     }

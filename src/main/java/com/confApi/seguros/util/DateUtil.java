@@ -26,7 +26,7 @@ public final class DateUtil {
         String dataStr = req; // ex: "12/01/2026"
 
         try {
-            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
             sdf.setLenient(false); // evita datas inválidas tipo 32/13/2026
             return sdf.parse(dataStr);
         } catch (ParseException e) {
