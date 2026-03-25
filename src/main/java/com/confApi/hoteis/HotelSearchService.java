@@ -1,5 +1,6 @@
 package com.confApi.hoteis;
 
+import com.confApi.cacheHotel.hotel.CacheHotelService;
 import com.confApi.db.confManager.cambio.Cambio;
 import com.confApi.db.confManager.cambio.CambioService;
 import com.confApi.db.confManager.hotel.model.HotelAcomodacao;
@@ -11,9 +12,11 @@ import com.confApi.hoteis.model.reserva.CancelarReservaRequestHotelFront;
 import com.confApi.hoteis.model.reserva.HotelCarregaModelFront;
 import com.confApi.hoteis.model.reserva.ReservarRequestFront;
 import com.confApi.hub.hotel.dto.HotelReserva;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class HotelSearchService {
@@ -22,6 +25,9 @@ public class HotelSearchService {
     private final MarkupService markupService;
     private final CambioService cambioService;
     private static final double CAMBIO_PADRAO = 8.0;
+
+    @Autowired
+    private CacheHotelService cacheHotelService;
 
     public HotelSearchService(
             HotelClient hubClient,
@@ -49,6 +55,16 @@ public class HotelSearchService {
 
         }
         aplicarCambioHoteis(hotelResponse, cambioList);      // 4) devolver já pronto pra UI
+
+        //4) Salvar no cache -  processo realizado em thred para não parar o processo, mesmo com ou sem erro.
+        CompletableFuture.runAsync(() -> {
+            try {
+                cacheHotelService.salvarCacheHotel(hotelResponse);
+            } catch (Exception e) {
+                // loga o erro mas não interrompe o fluxo
+                System.err.println("Erro ao salvar cache: " + e.getMessage());
+            }
+        });
         return hotelResponse;
     }
 
