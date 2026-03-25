@@ -43,6 +43,11 @@ public class HotelSearchService {
 
         // 3) aplicar comissao extra + markup + prazos
         List<Cambio> cambioList = cambioService.findUltimoCambio();
+        System.out.println("Olha o cambioList ai: " + cambioList.size());
+        for (Cambio cambio : cambioList) {
+        System.out.println("cambio: " + cambio.getMoeda().getSigla() + " - "+cambio.getValorCotacao());
+
+        }
         aplicarCambioHoteis(hotelResponse, cambioList);      // 4) devolver já pronto pra UI
         return hotelResponse;
     }

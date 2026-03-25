@@ -291,9 +291,13 @@ public class ChatService {
             messages.add(listarUltimasVendas(req));
         }
         if (keyword.contains("familias") && !req.keywords().contains(keyword)) {
-            /*Consultar Familias*/
-            String[] cia = keyword.split(";");
-            messages.add(listarFamilias(req, cia[1]));
+            String[] partes = keyword.split(";");
+
+            if (partes.length >= 2 && !partes[1].trim().isEmpty()) {
+                messages.add(listarFamilias(req, partes[1].trim()));
+            } else {
+                System.out.println("Keyword em formato inválido para familias: " + keyword);
+            }
         }
 
         req.keywords().removeIf(Objects::isNull);
@@ -566,6 +570,152 @@ public class ChatService {
         }
 
         return "desconhecido";
+    }
+
+    public FieldAssistantResponseDTO assistField(FieldAssistantRequestDTO req) throws IOException {
+        List<ChatMessageDTO> messages = new ArrayList<>();
+
+        String systemPrompt = """
+        Você é um assistente de preenchimento de campos em sistema.
+        Sua função é ajudar o usuário a escrever melhor, resumir, corrigir ou sugerir conteúdo.
+        Responda sempre de forma objetiva, útil e pronta para uso.
+        Quando solicitado, devolva conteúdo em JSON válido.
+        
+Retorne APENAS um JSON válido.
+Não use markdown.
+Não use ```json.
+Não adicione explicações fora do JSON.
+
+Formato esperado:
+{
+  "resultado": "...",
+  "resumo": "...",
+  "sugestoes": ["...", "...", "..."],
+  "observacao": "..."
+}
+""";
+
+
+        messages.add(new ChatMessageDTO("system", systemPrompt));
+
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("Tipo de assistência: ").append(req.tipo()).append("\n");
+        prompt.append("Campo: ").append(req.campo()).append("\n");
+
+        if (req.labelCampo() != null) {
+            prompt.append("Label do campo: ").append(req.labelCampo()).append("\n");
+        }
+        if (req.contexto() != null) {
+            prompt.append("Contexto: ").append(req.contexto()).append("\n");
+        }
+        if (req.tom() != null) {
+            prompt.append("Tom desejado: ").append(req.tom()).append("\n");
+        }
+        if (req.tamanho() != null) {
+            prompt.append("Tamanho desejado: ").append(req.tamanho()).append("\n");
+        }
+        if (req.valorAtual() != null) {
+            prompt.append("Texto atual: ").append(req.valorAtual()).append("\n");
+        }
+
+        if (req.dadosExtras() != null && !req.dadosExtras().isEmpty()) {
+            prompt.append("Dados extras:\n");
+            req.dadosExtras().forEach((k, v) -> prompt.append("- ").append(k).append(": ").append(v).append("\n"));
+        }
+
+        prompt.append("""
+        
+        Gere a resposta no formato JSON com esta estrutura:
+        {
+          "resultado": "...",
+          "resumo": "...",
+          "sugestoes": ["...", "...", "..."],
+          "observacao": "..."
+        }
+        """);
+
+        messages.add(new ChatMessageDTO("user", prompt.toString()));
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("codgAgencia", req.codgAgencia());
+        metadata.put("codgUsuario", req.codgUsuario());
+        metadata.put("assistenciaCampo", true);
+        metadata.put("tipo", req.tipo().name());
+
+        ChatRequestDTO chatReq = new ChatRequestDTO(
+                messages,
+                null,
+                false,
+                List.of(),
+                metadata
+        );
+
+        ChatResponseDTO resp = chat(chatReq, null, messages);
+
+        String conteudo = resp.content();// ajuste conforme seu DTO real
+        Map<String, Object> json = parseJsonSeguro(conteudo);
+
+        return new FieldAssistantResponseDTO(
+                req.campo(),
+                req.tipo().name(),
+                req.valorAtual(),
+                asString(json.get("resultado")),
+                asString(json.get("resumo")),
+                asStringList(json.get("sugestoes")),
+                asString(json.get("observacao"))
+        );
+    }
+
+    private Map<String, Object> parseJsonSeguro(String content) {
+        Map<String, Object> fallback = new HashMap<>();
+        fallback.put("resultado", content);
+        fallback.put("resumo", null);
+        fallback.put("sugestoes", List.of());
+        fallback.put("observacao", "Resposta retornada em texto livre.");
+
+        if (content == null || content.isBlank()) {
+            return fallback;
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+
+            // 1) remove espaços nas bordas
+            String json = content.trim();
+
+            // 2) remove bloco markdown ```json ... ```
+            if (json.startsWith("```")) {
+                json = json.replaceFirst("^```json\\s*", "");
+                json = json.replaceFirst("^```\\s*", "");
+                json = json.replaceFirst("\\s*```$", "");
+                json = json.trim();
+            }
+
+            // 3) tenta localizar o trecho entre o primeiro { e o último }
+            int ini = json.indexOf("{");
+            int fim = json.lastIndexOf("}");
+            if (ini >= 0 && fim > ini) {
+                json = json.substring(ini, fim + 1);
+            }
+
+            // 4) desserializa
+            return mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            e.printStackTrace();
+            return fallback;
+        }
+    }
+
+    private String asString(Object value) {
+        return value != null ? value.toString() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> asStringList(Object value) {
+        if (value instanceof List<?> list) {
+            return list.stream().map(String::valueOf).toList();
+        }
+        return List.of();
     }
 
     private String profileAgentIA() {
