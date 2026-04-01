@@ -42,4 +42,8 @@ public class SeguradoDTO implements Serializable {
     private String numeroApolice;
     private String paisDestino;
     private String endpointPdf;
+
+    //reserva aereo
+    private Integer codgPassageiro;
+    private String idPassageiro;
 }

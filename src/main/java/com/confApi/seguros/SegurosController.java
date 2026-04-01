@@ -1,5 +1,6 @@
 package com.confApi.seguros;
 
+import com.confApi.db.confManager.passageiro.Passageiro;
 import com.confApi.db.confManager.recebimento.Recebimento;
 import com.confApi.db.confManager.seguro.apolice.SeguroApolice;
 import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
@@ -73,12 +74,21 @@ public class  SegurosController {
                     .findFirst()
                     .orElse(null);
 
+            SeguradoDTO seguradoDTORequest = req.getSegurados()
+                    .stream()
+                    .filter(x -> normalizarCpf(x.getCpf()).equals(normalizarCpf(segurado.getCpf())))
+                    .findFirst()
+                    .orElse(null);
+
             if (seguradoDTO == null) {
                 throw new RuntimeException("Segurado não encontrado no retorno da reserva para CPF: " + segurado.getCpf());
             }
 
             SeguroApolice seguroApolice = new SeguroApolice(seguradoDTO);
             segurado.getApoliceList().add(seguroApolice);
+            if(seguradoDTORequest != null && seguradoDTORequest.getCodgPassageiro() != null) {
+                segurado.setCodgPassageiro(new Passageiro(seguradoDTORequest.getCodgPassageiro()));
+            }
         }
 
         service.atualizarReserva(seguroReserva);

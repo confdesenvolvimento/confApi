@@ -40,4 +40,14 @@ public class SeguroApolice {
         this.paisDestino = seguradoDTO.getPaisDestino();
         this.endpointPdf = seguradoDTO.getEndpointPdf();
     }
+
+    public SeguroApolice(SeguradoDTO seguradoDTO, SeguradoDTO seguradoDTORequest) {
+        this.codgSeguroApolice = null;
+        this.seguroSegurado = null;
+        this.seguroCobertura = null;
+        this.numeroOperacao = seguradoDTO.getNumeroOperacao();
+        this.numeroApolice = seguradoDTO.getNumeroApolice();
+        this.paisDestino = seguradoDTO.getPaisDestino();
+        this.endpointPdf = seguradoDTO.getEndpointPdf();
+    }
 }

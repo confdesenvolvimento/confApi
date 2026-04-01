@@ -3,6 +3,7 @@ package com.confApi.db.confManager.passageiro;
 import com.confApi.db.confManager.assentoAereo.Assento;
 import com.confApi.db.confManager.faturas.dto.model.Bilhete;
 import com.confApi.db.confManager.reservaValor.ReservaValor;
+import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -31,6 +32,7 @@ public class Passageiro implements Serializable {
     private Date dataNascimento;
     private List<ReservaValor> reservaValores;
     private List<Bilhete> bilhetes;
+    private List<SeguroSegurado> segurados;
 
     public Passageiro(com.confApi.hub.aereo.dto.Passageiro pass) {
         this.codgPassageiro = 0;
@@ -195,7 +197,13 @@ public class Passageiro implements Serializable {
         this.dataNascimento = dataNascimento;
     }
 
+    public List<SeguroSegurado> getSegurados() {
+        return segurados;
+    }
 
+    public void setSegurados(List<SeguroSegurado> segurados) {
+        this.segurados = segurados;
+    }
 
     @Override
     public String toString() {

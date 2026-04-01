@@ -27,9 +27,7 @@ public class RecebimentoService {
     private RestTemplate restTemplate;
 
     public Recebimento criarRecebimento(SeguroCompraModel req) {
-        System.out.println("REQ: " + req);
         Recebimento recebimento = new Recebimento(req.getRecebimento());
-
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
@@ -50,10 +48,7 @@ public class RecebimentoService {
                             Recebimento.class
                     );
 
-            System.out.println("RESPONSE DB: " + response.getBody());
-
             return response.getBody();
-
         } catch (Exception ex) {
             System.out.println("ERRO: " + ex.getMessage());
             return null;
@@ -62,7 +57,6 @@ public class RecebimentoService {
     }
 
     public Recebimento cancelarRecebimento(Recebimento recebimento) {
-        System.out.println("REQ: " + recebimento);
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
@@ -83,10 +77,7 @@ public class RecebimentoService {
                             Recebimento.class
                     );
 
-            System.out.println("RESPONSE DB: " + response.getBody());
-
             return response.getBody();
-
         } catch (Exception ex) {
             System.out.println("ERRO: " + ex.getMessage());
             return null;

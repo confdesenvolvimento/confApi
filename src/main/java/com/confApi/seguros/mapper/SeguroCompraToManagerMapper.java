@@ -182,7 +182,7 @@ public final class SeguroCompraToManagerMapper {
                     .orElse(null);
 
             SeguroSegurado ss = new SeguroSegurado();
-            ss.setSeguroCobertura(coberturaSalva);
+            ss.setCodgSeguroCobertura(coberturaSalva);
 
             // Nome
             String nome = nz(s.getNome());
