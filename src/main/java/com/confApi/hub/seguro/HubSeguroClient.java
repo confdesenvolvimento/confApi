@@ -119,8 +119,6 @@ public class HubSeguroClient {
             );
 
             List<SeguroReservaDTO> body = response.getBody();
-
-            // 5) Validação mínima
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 return body;
             }
@@ -141,7 +139,7 @@ public class HubSeguroClient {
         try {
             ConfAppResp token = confAppService.token();
             if(cancelarRequest.getOperacao() == null){
-                cancelarRequest.setOperacao("CONFIANCA");
+                return Collections.emptyList();
             }
 
             HttpHeaders headers = defaultHeaders(token.getToken());

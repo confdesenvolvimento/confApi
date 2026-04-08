@@ -113,10 +113,11 @@ public class  SegurosController {
 
     @PostMapping("/cancelarReserva")
     public SeguroReservaDTO cancelarReserva(@RequestBody CancelamentoRequestDTO req) {
-          service.cancelarReserva(req);
         List<SeguroReservaDTO> resultado = hubSeguroClient.cancelarReserva(req);
-        SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
-        return response;
+        if(resultado != null && !resultado.isEmpty()){
+            service.cancelarReserva(req);
+        }
+        return new SeguroReservaDTO();
     }
 
 
