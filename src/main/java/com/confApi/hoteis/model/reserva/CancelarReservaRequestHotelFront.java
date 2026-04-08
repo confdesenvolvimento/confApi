@@ -6,7 +6,7 @@ import lombok.Data;
 public class CancelarReservaRequestHotelFront {
     private String sistema;
     private String localizador;
-    private Integer codgHotel;
+    private String codgHotel;
     private String dataEntrada;
     private String dataSaida;
     private String motivo;
