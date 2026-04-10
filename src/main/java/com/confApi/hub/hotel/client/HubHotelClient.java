@@ -40,7 +40,7 @@ public class HubHotelClient {
 
     public HubHotelClient(RestTemplate hubRestTemplate,
                           ObjectMapper mapper,
-                          @Value("${hub.base-url}") String baseUrl,
+                          @Value("${confianca-hub}") String baseUrl,
                           @Value("${hub.hotel-path:api/hotel}") String hotelPath) {
         this.restTemplate = hubRestTemplate;
         this.mapper = mapper;

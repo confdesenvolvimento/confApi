@@ -36,7 +36,7 @@ public class NovidadeApi extends AbstractTransactionServiceApi implements Serial
             ObjectMapper objectMapper = new ObjectMapper();
             String responseBody = sendHttpApiGet(UrlConfig.URL_CONFIANCA_MANAGER + urlAPI);
 
-            System.out.println("ResponseBody: [" + responseBody + "]");
+            //System.out.println("ResponseBody: [" + responseBody + "]");
 
             if (responseBody == null || responseBody.isBlank()) {
                 return new ArrayList<>();
@@ -71,7 +71,7 @@ public class NovidadeApi extends AbstractTransactionServiceApi implements Serial
             HttpEntity<Novidade> requestEntity =
                     new HttpEntity<>(null, headers);
 
-            System.out.println("REQUEST" + requestEntity);
+           // System.out.println("REQUEST" + requestEntity);
 
             ResponseEntity<List<Novidade>> response =
                     restTemplate.exchange(
@@ -153,7 +153,7 @@ public class NovidadeApi extends AbstractTransactionServiceApi implements Serial
 
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-            System.out.println("TESTE: " + body);
+          //  System.out.println("TESTE: " + body);
 
             ResponseEntity<String> response = restTemplate.exchange(
                     UrlConfig.URL_CONFIANCA_MANAGER + urlAPI,
@@ -173,15 +173,66 @@ public class NovidadeApi extends AbstractTransactionServiceApi implements Serial
         }
     }
 
-    public Novidade update(Novidade novidade, Integer codgNovidade) throws JsonProcessingException {
-        ObjectMapper objectMapper = new ObjectMapper();
-        String requestBody = objectMapper.writeValueAsString(novidade);
-        String responseBody = sendHttpApiPut(requestBody, UrlConfig.URL_CONFIANCA_MANAGER + urlAPI + "/" + codgNovidade);
+    public Novidade update(Novidade novidade, Integer codgNovidade) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         try {
-            novidade = objectMapper.readValue(responseBody, Novidade.class);
-        } catch (JsonProcessingException ex) {
-            Logger.getLogger(Novidade.class.getName()).log(Level.SEVERE, null, ex);
+            RestTemplate restTemplate = new RestTemplate();
+            ConfAppService confAppService = new ConfAppService();
+            ConfAppResp token = confAppService.token();
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            } else {
+                return null;
+            }
+
+            HttpEntity<Novidade> requestEntity = new HttpEntity<>(novidade, headers);
+
+            ResponseEntity<Novidade> response = restTemplate.exchange(
+                    UrlConfig.URL_CONFIANCA_MANAGER + "/novidade/" + codgNovidade,
+                    HttpMethod.PUT,
+                    requestEntity,
+                    Novidade.class
+            );
+
+         //  System.out.println("Update Status: " + response.getStatusCode());
+            return response.getBody();
+
+        } catch (Exception ex) {
+            System.out.println("Erro ao atualizar novidade: " + ex.getMessage());
+            return null;
         }
-        return novidade;
+    }
+
+    public String delete(Integer codgNovidade) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            ConfAppService confAppService = new ConfAppService();
+            ConfAppResp token = confAppService.token();
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            } else {
+                return "Erro ao obter token.";
+            }
+
+            HttpEntity<Void> requestEntity = new HttpEntity<>(null, headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    UrlConfig.URL_CONFIANCA_MANAGER + "/novidade/" + codgNovidade,
+                    HttpMethod.DELETE,
+                    requestEntity,
+                    String.class
+            );
+
+          // System.out.println("Delete Status: " + response.getStatusCode());
+            return null; // sucesso
+
+        } catch (Exception ex) {
+            System.out.println("Erro ao deletar novidade: " + ex.getMessage());
+            return ex.getMessage();
+        }
     }
 }

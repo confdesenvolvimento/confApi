@@ -1,7 +1,9 @@
 package com.confApi.endPoints.novidade;
 
 import com.confApi.db.confManager.novidade.Novidade;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,8 +24,6 @@ public class NovidadeController {
             @RequestPart("novidade") Novidade obj,
             @RequestPart(value = "arquivo", required = false) MultipartFile arquivo) throws Exception {
 
-        System.out.println("NovidadeController.insertNotificacaoControle: " + obj);
-
         Novidade novidade = novidadeService.insert(obj, arquivo);
         return ResponseEntity.ok().body(novidade);
     }
@@ -40,8 +40,16 @@ public class NovidadeController {
 
     @GetMapping
     public ResponseEntity<List<Novidade>> findAll() throws Exception {
-        System.out.println("findAll");
         return ResponseEntity.ok().body(novidadeService.consultarNovidadeGeral());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> delete(@PathVariable Integer id) throws JsonProcessingException {
+        String erro = novidadeService.delete(id);
+        if (erro != null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(erro);
+        }
+        return ResponseEntity.noContent().build();
     }
 }
 

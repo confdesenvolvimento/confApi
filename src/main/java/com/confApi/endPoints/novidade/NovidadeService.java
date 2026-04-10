@@ -50,4 +50,9 @@ public class NovidadeService {
         NovidadeApi novidadeApi = new NovidadeApi();
         return novidadeApi.update(novidade, codgNovidade);
     }
+
+    public String delete(Integer codgNovidade) throws JsonProcessingException {
+        NovidadeApi novidadeApi = new NovidadeApi();
+        return novidadeApi.delete(codgNovidade);
+    }
 }
