@@ -82,8 +82,6 @@ public class NovidadeApi extends AbstractTransactionServiceApi implements Serial
                             }
                     );
 
-            System.out.println("RESPONSE" + response.getBody());
-
             return response.getBody() != null
                     ? response.getBody()
                     : Collections.emptyList();

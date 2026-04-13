@@ -147,7 +147,6 @@ public class ReservaAereoResponse {
         // Passageiros
         System.out.println("reservaApi.getPassageiros(): " + reservaApi.getPassageiros().size());
         if (reservaApi.getPassageiros() != null && !reservaApi.getPassageiros().isEmpty()) {
-            System.out.println("TESTE");
             for (var paxApi : reservaApi.getPassageiros()) {
                 PassageiroResponse p = new PassageiroResponse();
                 p.setNome(paxApi.getNome());
@@ -171,7 +170,6 @@ public class ReservaAereoResponse {
                     });
                     this.isExibirTkt = true;
                 }
-                System.out.println("PASSAGEIROS: " + p);
                 this.passageiros.add(p);
             }
         }
