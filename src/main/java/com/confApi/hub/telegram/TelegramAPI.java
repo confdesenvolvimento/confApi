@@ -3,6 +3,7 @@ package com.confApi.hub.telegram;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
+import com.confApi.hub.telegram.dto.MensagemRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -22,7 +23,7 @@ public class TelegramAPI {
 
     private static final String API_ACTION = "/telegram";
 
-    public String enviarLogDeErros(String mensagem) {
+    public String enviarLogDeErros(MensagemRequest mensagem) {
 
         try {
             ConfAppResp token = confAppService.token();
@@ -34,7 +35,7 @@ public class TelegramAPI {
 
             HttpHeaders headers = defaultHeaders(token.getToken());
 
-            HttpEntity<String> entity =
+            HttpEntity<MensagemRequest> entity =
                     new HttpEntity<>(mensagem, headers);
 
             ResponseEntity<String> response =
@@ -48,7 +49,6 @@ public class TelegramAPI {
             return response.getBody();
 
         } catch (Exception e) {
-            e.printStackTrace();
             throw new RuntimeException("Erro ao enviar log para Telegram", e);
         }
     }

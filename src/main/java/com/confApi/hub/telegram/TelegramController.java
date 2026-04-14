@@ -1,5 +1,6 @@
 package com.confApi.hub.telegram;
 
+import com.confApi.hub.telegram.dto.MensagemRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,7 +15,7 @@ public class TelegramController {
     private TelegramService telegramService;
 
     @PostMapping("/enviarLogErros")
-    public String enviarLogErros(@RequestBody String mensagem){
+    public String enviarLogErros(@RequestBody MensagemRequest mensagem){
         return telegramService.enviarLogDeErros(mensagem);
     }
 }

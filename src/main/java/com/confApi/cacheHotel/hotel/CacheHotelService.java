@@ -43,7 +43,7 @@ public class CacheHotelService {
                 .collect(Collectors.toList());
 
         //metodo aplicar mkp chamar findByCodProdutoValue
-        lista = aplicarMKPTotalTarifa(lista);
+        //lista = aplicarMKPTotalTarifa(lista);
 
         //metodo para ajustar o nome da cidade, estado e país
         lista = ajusteNomeCidadeEstadoPais(lista);

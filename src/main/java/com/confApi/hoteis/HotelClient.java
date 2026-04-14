@@ -15,6 +15,8 @@ import com.confApi.hub.hotel.dto.HotelReserva;
 import com.confApi.hub.hotel.dto.ReservarRequest;
 import com.confApi.hub.hotel.mapper.HotelPesquisaMapper;
 import com.confApi.hub.hotel.mapper.HotelReservaMapper;
+import com.confApi.hub.telegram.TelegramService;
+import com.confApi.hub.telegram.dto.MensagemRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -33,6 +35,9 @@ public class HotelClient {
     private static final String API_ACTION = "api/hotel";
     @Autowired
     private ConfAppService confAppService;
+
+    @Autowired
+    public TelegramService telegramService;
 
     public HotelClient(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
@@ -69,6 +74,7 @@ public class HotelClient {
             return hoteis;
         } catch (Exception e) {
             e.printStackTrace();
+            logErro("Erro ao pesquisar hotéis", e);
             throw new RuntimeException("Erro ao pesquisar hotéis no HUB", e);
         }
     }
@@ -101,6 +107,7 @@ public class HotelClient {
             return hubResponse.getBody();
         } catch (Exception e) {
             e.printStackTrace();
+            logErro("Erro ao efetuar reserva hotel", e);
             throw new RuntimeException("Erro ao efetuar reserva de hotel no HUB", e);
         }
     }
@@ -182,6 +189,7 @@ public class HotelClient {
 
         } catch (Exception e) {
             e.printStackTrace();
+            logErro("Erro ao carregar reserva hotel", e);
             throw new RuntimeException("Erro ao efetuar reserva de hotel no HUB", e);
         }
     }
@@ -222,6 +230,7 @@ public class HotelClient {
 
         } catch (Exception e) {
             e.printStackTrace();
+            logErro("Erro ao cancelar reserva hotel", e);
             throw new RuntimeException("Erro ao cancelar reserva de hotel no HUB", e);
         }
     }
@@ -232,6 +241,15 @@ public class HotelClient {
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.setBearerAuth(bearerToken);
         return headers;
+    }
+
+    private void logErro(String mensagem, Exception e) {
+        MensagemRequest msg = new MensagemRequest(mensagem + ": " + e.getMessage());
+        msg.setMetodo(Thread.currentThread().getStackTrace()[2].getMethodName());
+        msg.setClasse(this.getClass().getSimpleName());
+        msg.setProjeto("CONFAPI");
+
+        telegramService.enviarLogDeErros(msg);
     }
 
 }
