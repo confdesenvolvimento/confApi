@@ -5,6 +5,8 @@ import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.seguro.reserva.DTO.CancelamentoRequestDTO;
 import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
+import com.confApi.hub.telegram.TelegramService;
+import com.confApi.hub.telegram.dto.MensagemRequest;
 import com.confApi.seguros.dto.FiltroReservaSeguro;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
@@ -32,6 +34,9 @@ public class SeguroReservaAPI {
 
     @Autowired
     private ConfAppService confAppService;
+
+    @Autowired
+    public TelegramService telegramService;
 
     public List<SeguroReserva> findAll() {
 
@@ -64,9 +69,11 @@ public class SeguroReservaAPI {
                     : Collections.emptyList();
 
         } catch (HttpClientErrorException ex) {
+            logErro("Erro no findAll seguro", ex);
             LOG.log(Level.SEVERE, "Erro HTTP ao consultar seguro reserva. Status: " + ex.getStatusCode(), ex
             );
         } catch (Exception ex) {
+            logErro("Erro no findAll seguro", ex);
             LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
         }
         return Collections.emptyList();
@@ -107,6 +114,7 @@ public class SeguroReservaAPI {
             LOG.log(Level.SEVERE, "Erro HTTP ao consultar seguro reserva. Status: " + ex.getStatusCode(), ex
             );
         } catch (Exception ex) {
+            logErro("Erro no findFiltros seguro", ex);
             LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
         }
         return Collections.emptyList();
@@ -146,6 +154,7 @@ public class SeguroReservaAPI {
                     ex);
 
         } catch (Exception ex) {
+            logErro("Erro no findById seguro", ex);
             LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
         }
 
@@ -185,6 +194,7 @@ public class SeguroReservaAPI {
                     ex);
 
         } catch (Exception ex) {
+            logErro("Erro no findByLocalizador seguro", ex);
             LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
         }
 
@@ -224,6 +234,7 @@ public class SeguroReservaAPI {
                     ex);
 
         } catch (Exception ex) {
+            logErro("Erro ao salvar reserva seguro", ex);
             LOG.log(Level.SEVERE, "Erro inesperado ao salvar seguro reserva", ex);
         }
 
@@ -264,6 +275,7 @@ public class SeguroReservaAPI {
                     ex);
 
         } catch (Exception ex) {
+            logErro("Erro ao deletar reserva seguro", ex);
             LOG.log(Level.SEVERE, "Erro inesperado ao consultar seguro reserva", ex);
         }
 
@@ -299,6 +311,7 @@ public class SeguroReservaAPI {
                     ex);
 
         } catch (Exception ex) {
+            logErro("Erro ao cancelar reserva seguro", ex);
             LOG.log(Level.SEVERE, "Erro inesperado ao cancelar reserva", ex);
         }
     }
@@ -335,9 +348,19 @@ public class SeguroReservaAPI {
             return null;
 
         } catch (Exception ex) {
+            logErro("Erro ao atualizar reserva seguro", ex);
             LOG.log(Level.SEVERE, "Erro inesperado ao cancelar reserva", ex);
             return null;
         }
+    }
+
+    private void logErro(String mensagem, Exception e) {
+        MensagemRequest msg = new MensagemRequest(mensagem + ": " + e.getMessage());
+        msg.setMetodo(Thread.currentThread().getStackTrace()[2].getMethodName());
+        msg.setClasse(this.getClass().getSimpleName());
+        msg.setProjeto("CONFAPI");
+
+        telegramService.enviarLogDeErros(msg);
     }
 }
 

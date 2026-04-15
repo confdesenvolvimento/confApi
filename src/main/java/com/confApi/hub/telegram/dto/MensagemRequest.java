@@ -14,4 +14,6 @@ public class MensagemRequest {
         this.mensagem = mensagem;
     }
 
+    public MensagemRequest() {
+    }
 }
