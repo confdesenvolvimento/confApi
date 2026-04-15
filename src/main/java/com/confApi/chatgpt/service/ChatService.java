@@ -173,6 +173,15 @@ public class ChatService {
         }
         updatedHistory.add(new ChatMessageDTO("assistant", assistantContentFinal));
 
+        // 🔽 ADICIONAR AQUI
+        if (!collectedToolCalls.isEmpty()) {
+            ToolCallDTO lastTool = collectedToolCalls.get(collectedToolCalls.size() - 1);
+
+            if ("search_hotels".equals(lastTool.name())) {
+                assistantContentFinal = om.writeValueAsString(lastTool.arguments());
+            }
+        }
+
         return new ChatResponseDTO(
                 completionId,
                 assistantContentFinal,
@@ -748,5 +757,44 @@ Formato esperado:
                 - Pergunta: "Quero ver as famílias da GOL" → Resposta: "familias;GOL"
                 - Pergunta fora do contexto → Resposta: "desconhecido"
                 """;
+    }
+
+    public String identificarTipoConsultaViagem(String input) throws IOException {
+        List<ChatMessageDTO> messages = new ArrayList<>();
+
+        String prompt = """
+            Você é um classificador de intenção.
+            Analise a mensagem do usuário e responda somente com uma das opções abaixo:
+
+            - aereo
+            - hotel
+            - desconhecido
+
+            Regras:
+            - Responda "hotel" se a mensagem for sobre hospedagem, hotel, estadia, check-in/check-out, quartos, hóspedes, diária.
+            - Responda "aereo" se a mensagem for sobre voo, passagem aérea, origem/destino de aeroporto, ida/volta, companhia aérea.
+            - Responda "desconhecido" se não estiver claro.
+
+            Responda apenas com uma palavra.
+            """;
+
+        messages.add(new ChatMessageDTO("system", prompt));
+        messages.add(new ChatMessageDTO("user", input));
+
+        ChatRequestDTO chatReq = new ChatRequestDTO(
+                messages,
+                null,
+                false,
+                List.of(),
+                Map.of("agent", "classificador_viagem")
+        );
+
+        ChatResponseDTO response = chat(chatReq, null, null);
+
+        if (response != null && response.content() != null) {
+            return response.content().trim().toLowerCase();
+        }
+
+        return "desconhecido";
     }
 }

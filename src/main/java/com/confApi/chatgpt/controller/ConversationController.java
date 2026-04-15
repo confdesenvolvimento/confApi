@@ -4,6 +4,8 @@ import com.confApi.chatgpt.dto.*;
 import com.confApi.chatgpt.profile.ProfilePromptRegistry;
 import com.confApi.chatgpt.service.ChatService;
 
+import com.confApi.chatgpt.tools.ToolDefinition;
+import com.confApi.chatgpt.tools.ToolSchemas;
 import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.chatMemoria.dto.ChatMemoria;
 import com.confApi.hub.limites.LimitesService;
@@ -31,56 +33,46 @@ public class ConversationController {
 
     @PostMapping(value = "/chat", produces = MediaType.APPLICATION_JSON_VALUE)
     public ChatResponseDTO chat(@Valid @RequestBody ConversationRequestDTO req) throws IOException {
-        // 1) Mensagem de sistema baseada na identificação (perfil)
-        //req.identificacao()  nao estou usando por enquanto
         List<ChatMessageDTO> messages = new ArrayList<>();
+
         if (req.history().isEmpty()) {
             String sys = profiles.systemPrompt("confia", req.codgAgencia(), req.codgUsuario());
             ChatMessageDTO system = new ChatMessageDTO("system", sys);
-
-            // 2) Histórico (se vier) + dados adicionais do sistema + input atual
             messages.add(system);
         }
 
-        // 2.1) Histórico já tokenizado vindo do front
         if (req.history() != null && !req.history().isEmpty()) {
             messages.addAll(req.history());
         }
 
-        // 2.2) (Opcional) Dados do sistema como no modelo antigo
-        //     Caso você envie um header CSV "X-User-Data: chave1=valor1,chave2=valor2"
         chatService.actionApis(messages, req);
-        /* if (userDataHeader != null && !userDataHeader.isBlank()) {
-            for (String data : userDataHeader.split(",")) {
-                String trimmed = data.trim();
-                if (!trimmed.isEmpty()) {
-                    // Mantém a mesma ideia do modelo antigo, mas agora como mensagem 'system' dedicada
-                    messages.add(new ChatMessageDTO("system", "Dado do sistema: " + trimmed));
-                }
-            }
-        }*/
 
-        // 2.3) Mensagem atual do usuário
         messages.add(new ChatMessageDTO("user", req.input()));
 
-        // 3) Metadados úteis (chegam no log/observabilidade do seu ChatService)
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("codgAgencia", req.codgAgencia());
         metadata.put("codgUsuario", req.codgUsuario());
         metadata.put("identificacao", req.identificacao());
 
-        // 4) Monta o ChatRequestDTO
+        List<ToolDefinition> tools = new ArrayList<>();
+
+        String tipoConsulta = chatService.identificarTipoConsultaViagem(req.input());
+
+        if ("aereo".equals(tipoConsulta)) {
+            tools.add(ToolSchemas.searchFlights());
+        } else if ("hotel".equals(tipoConsulta)) {
+            tools.add(ToolSchemas.searchHotels());
+        }
+
         ChatRequestDTO chatReq = new ChatRequestDTO(
                 messages,
-                req.model(),           // pode vir nulo -> ChatService usa default
-                false,                 // stream off no endpoint /chat
-                List.of(),             // tools podem ser injetadas conforme cenário
+                req.model(),
+                false,
+                tools,
                 metadata
         );
 
-        // 5) Chama o serviço e retorna a resposta
         ChatResponseDTO charResp = chatService.chat(chatReq, req.keywords(), messages);
-
 
         if (req.keywords() != null && !req.keywords().isEmpty()) {
             req.keywords().removeIf(Objects::isNull);
@@ -90,6 +82,7 @@ public class ConversationController {
                 }
             }
         }
+
         return charResp;
     }
 
