@@ -46,7 +46,8 @@ public class HotelSearchService {
         List<HotelResponse> hotelResponse = hubClient.pesquisar(req);
 
         // 2) buscar markup por unidade/produto (Manager)
-        Double mkp = markupService.findByCodProdutoValue(req.getIdentificacaoAgenciaModel().getCodgProduto());
+        //Double mkp = markupService.findByCodProdutoValue(req.getIdentificacaoAgenciaModel().getCodgProduto());
+        Double mkp = markupService.findVlrMarkup(req.getIdentificacaoAgenciaModel());
         System.out.println("Olha o produto ai: " + req.getIdentificacaoAgenciaModel().getCodgProduto() + " " + mkp);
 
         // 3) aplicar comissao extra + markup + prazos

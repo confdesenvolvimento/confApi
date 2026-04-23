@@ -4,6 +4,7 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.markup.dto.Markup;
+import com.confApi.model.IdentificacaoAgenciaModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -40,6 +41,31 @@ public class MarkupService {
         headers.set("Authorization", "Bearer " + token.getToken());
 
         return new HttpEntity<>(headers);
+    }
+    public Double findVlrMarkup(IdentificacaoAgenciaModel model) {
+        try {
+            String url = String.format("%s%s/buscar-valor",
+                    UrlConfig.URL_CONFIANCA_MANAGER,
+                    urlAPI);
+
+            System.out.println("findVlrMarkup -> " + url);
+
+            HttpEntity<Object> entity = buildAuthEntityWithBody(model);
+
+            ResponseEntity<Double> resp = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    Double.class
+            );
+
+            Double body = resp.getBody();
+            return body != null ? body : DEFAULT_MARKUP;
+
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Falha ao obter valor do markup. Usando default: " + DEFAULT_MARKUP, e);
+            return DEFAULT_MARKUP;
+        }
     }
 
     /**
