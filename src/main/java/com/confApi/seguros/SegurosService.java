@@ -11,6 +11,8 @@ import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import com.confApi.db.confManager.seguro.reserva.SeguroReservaService;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.confApi.db.confManager.seguro.segurado.SeguroSeguradoService;
+import com.confApi.model.HistoricoReservaModel;
+import com.confApi.model.mapper.HistoricoModelMapper;
 import com.confApi.seguros.dto.*;
 import com.confApi.seguros.mapper.*;
 import org.springframework.stereotype.Service;
@@ -111,8 +113,13 @@ public class SegurosService {
         List<SeguroCoberturaDetalhada> opt = seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
 
         dto.getCobertura().getCoberturasDetalhes().addAll(CoberturaSeguroMapper.toDTOList(opt));
+        if (dto.getHistorico() == null) {
+            dto.setHistorico(new ArrayList<>());
+        }
 
-      //  historicoReservaService.
+        List<HistoricoReservaModel> historicosModel =
+                HistoricoModelMapper.toModelList(historicoReservaService.findByCodgReservaSeguro(dto.getCodgReservaSeguro()));
+        dto.getHistorico().addAll(historicosModel);
 
         return dto;
     }

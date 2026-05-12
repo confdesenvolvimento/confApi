@@ -84,9 +84,8 @@ public class RecebimentoSeguroMapper {
             return cartao;
         }
 
-        cartao.setNumeroCartao(recebimento.getNumrCartao());
+        cartao.setNumeroCartao(mascararNumeroCartao(recebimento.getNumrCartao()));
         cartao.setValidadeCartao(recebimento.getValidadeCartao());
-
         cartao.setTitularBandeira(recebimento.getTitularCartao());
 
         if (recebimento.getCodgBandeira() != null) {
@@ -95,6 +94,34 @@ public class RecebimentoSeguroMapper {
         }
 
         return cartao;
+    }
+
+    private static String mascararNumeroCartao(String numeroCartao) {
+        if (numeroCartao == null || numeroCartao.trim().isEmpty()) {
+            return null;
+        }
+
+        String apenasNumeros = numeroCartao.replaceAll("\\D", "");
+
+        if (apenasNumeros.length() <= 4) {
+            return "****";
+        }
+
+        if (apenasNumeros.length() <= 8) {
+            return apenasNumeros.substring(0, 4) + "****";
+        }
+
+        String primeirosDigitos = apenasNumeros.substring(0, 4);
+        String ultimosDigitos = apenasNumeros.substring(apenasNumeros.length() - 4);
+
+        int quantidadeMascara = apenasNumeros.length() - 8;
+
+        StringBuilder mascara = new StringBuilder();
+        for (int i = 0; i < quantidadeMascara; i++) {
+            mascara.append("*");
+        }
+
+        return primeirosDigitos + mascara + ultimosDigitos;
     }
 
     private static boolean possuiDadosCartao(Recebimento recebimento) {
