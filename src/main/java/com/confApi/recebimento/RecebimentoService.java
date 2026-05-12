@@ -30,6 +30,7 @@ public class RecebimentoService {
         Recebimento recebimento = new Recebimento(req.getRecebimento());
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        String sistemaNome = req.getSistema() != null ? req.getSistema().getNomeSistema() : "Hero";
 
         try {
             ConfAppResp token = confAppService.token();
@@ -42,7 +43,7 @@ public class RecebimentoService {
 
             ResponseEntity<Recebimento> response =
                     restTemplate.exchange(
-                            UrlConfig.URL_CONFIANCA_MANAGER + "recebimento/Hero?autorizacao=false",
+                            UrlConfig.URL_CONFIANCA_MANAGER + "recebimento/" + sistemaNome + "?autorizacao=false",
                             HttpMethod.POST,
                             requestEntity,
                             Recebimento.class
