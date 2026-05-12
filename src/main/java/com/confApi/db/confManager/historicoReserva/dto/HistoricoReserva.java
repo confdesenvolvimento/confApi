@@ -17,6 +17,7 @@ public class HistoricoReserva implements Serializable {
     private Usuario codgUsuario;
     private Integer codgReservaHotel;
     private Integer codgReservaPacote;
+    private Integer codgReservaSeguro;
 
     public HistoricoReserva(HistoricoReservaResponse historicoReservaResponse) {
         this.codgHistoricoReserva = historicoReservaResponse.getCodgHistoricoReserva();
@@ -67,6 +68,16 @@ public class HistoricoReserva implements Serializable {
         this.codgUsuario = codgUsuario;
         this.codgReservaHotel = codgReservaHotel;
         this.codgReservaPacote = codgReservaPacote;
+    }
+
+    public HistoricoReserva(int codgHistoricoReserva, Date dataHoraTransacao, String descricao, String ipAcesso, int flagInterno, Usuario codgUsuario, Integer codgReservaSeguro) {
+        this.codgHistoricoReserva = codgHistoricoReserva;
+        this.dataHoraTransacao = dataHoraTransacao;
+        this.descricao = descricao;
+        this.ipAcesso = ipAcesso;
+        this.flagInterno = flagInterno;
+        this.codgUsuario = codgUsuario;
+        this.codgReservaSeguro = codgReservaSeguro;
     }
 
     public HistoricoReserva() {
@@ -142,5 +153,13 @@ public class HistoricoReserva implements Serializable {
 
     public void setCodgReservaPacote(Integer codgReservaPacote) {
         this.codgReservaPacote = codgReservaPacote;
+    }
+
+    public Integer getCodgReservaSeguro() {
+        return codgReservaSeguro;
+    }
+
+    public void setCodgReservaSeguro(Integer codgReservaSeguro) {
+        this.codgReservaSeguro = codgReservaSeguro;
     }
 }
