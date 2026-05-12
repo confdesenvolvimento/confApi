@@ -11,12 +11,7 @@ import com.confApi.model.RecebimentoModel;
 import com.confApi.recebimento.RecebimentoService;
 import com.confApi.seguros.dto.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,11 +36,7 @@ public class  SegurosController {
 //        List<PlanoSeguroDTO> resultado = mockPlanosSeguro();
         List<PlanoSeguroDTO> resultado = hubSeguroClient.pesquisarDisponibilidade(req);
         for (PlanoSeguroDTO plano : resultado) {
-            plano.setUrlLogo("https://portaldoagente.com.br/4/Recursos/Imagens/NovoLayout/logo_seguro/sistema_26.png");
-            for (CoberturaSeguroDTO cs : plano.getCoberturasDetalhes()){
-                cs.setIcone(cs.gerarIconePorNome(cs.getNome()));
-
-            }
+            plano.setUrlLogo("");
         }
         return resultado;
     }
@@ -53,19 +44,6 @@ public class  SegurosController {
     @PostMapping("/comprar")
     public SeguroReserva comprar(@RequestBody SeguroCompraModel req) {
         Recebimento recebimento = recebimentoService.criarRecebimento(req);
-
-
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.enable(SerializationFeature.INDENT_OUTPUT);
-try {
-
-
-        String jsonRecebimento = mapper.writeValueAsString(recebimento);
-
-        System.out.println(jsonRecebimento);
-}catch (Exception e){
-    e.printStackTrace();
-}
         if(recebimento.getCodgRecebimento() == null || recebimento.getStatus() != 1){
             return new SeguroReserva("ERRO: Não foi possivel efetuar o pagamento, tente novamente mais tarde.");
         }
@@ -112,15 +90,16 @@ try {
 
         service.atualizarReserva(seguroReserva);
         return seguroReserva;
-      // return null;
+//        return null;
     }
     @PostMapping("/carregarReserva")
     public SeguroReservaDTO carregarReserva(@RequestBody SeguroCarregarReservaDTO req) {
         if(req.getOperacao() == null){
             req.setOperacao("CONFIANCA");
         }
-        List<SeguroReservaDTO> resultado = hubSeguroClient.carregarReserva(req);
         SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
+
+        System.out.println("response:: " + response);
         return response;
     }
 
@@ -132,9 +111,13 @@ try {
 
     @PostMapping("/cancelarReserva")
     public SeguroReservaDTO cancelarReserva(@RequestBody CancelamentoRequestDTO req) {
+
+        System.out.println("req:: " + req);
         List<SeguroReservaDTO> resultado = hubSeguroClient.cancelarReserva(req);
+        System.out.println("resultado:: " + resultado);
         if(resultado != null && !resultado.isEmpty()){
             service.cancelarReserva(req);
+            return service.carregarReserva(req.getOperacao());
         }
         return new SeguroReservaDTO();
     }
