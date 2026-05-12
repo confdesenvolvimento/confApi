@@ -1,5 +1,6 @@
 package com.confApi.seguros;
 
+import com.confApi.db.confManager.historicoReserva.HistoricoReservaService;
 import com.confApi.db.confManager.seguro.categoria.SeguroCategoriaService;
 import com.confApi.db.confManager.seguro.cobertura.SeguroCobertura;
 import com.confApi.db.confManager.seguro.cobertura.SeguroCoberturaService;
@@ -10,10 +11,7 @@ import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import com.confApi.db.confManager.seguro.reserva.SeguroReservaService;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.confApi.db.confManager.seguro.segurado.SeguroSeguradoService;
-import com.confApi.seguros.dto.FiltroReservaSeguro;
-import com.confApi.seguros.dto.SeguradoDTO;
-import com.confApi.seguros.dto.SeguroCompraModel;
-import com.confApi.seguros.dto.SeguroReservaDTO;
+import com.confApi.seguros.dto.*;
 import com.confApi.seguros.mapper.*;
 import org.springframework.stereotype.Service;
 
@@ -29,17 +27,19 @@ public class SegurosService {
     private final SeguroSeguradoService seguroSeguradoService;
     private final SeguroCategoriaService seguroCategoriaService;
     private final SeguroCoberturaDetalhadaService seguroCoberturaDetalhadaService;
+    private final HistoricoReservaService historicoReservaService;
 
 
     public SegurosService(SegurosClient segurosClient, SeguroReservaService seguroReservaService,
                           SeguroCoberturaService seguroCoberturaService,
-                          SeguroSeguradoService seguroSeguradoService, SeguroCategoriaService seguroCategoriaService, SeguroCoberturaDetalhadaService seguroCoberturaDetalhadaService) {
+                          SeguroSeguradoService seguroSeguradoService, SeguroCategoriaService seguroCategoriaService, SeguroCoberturaDetalhadaService seguroCoberturaDetalhadaService, HistoricoReservaService historicoReservaService) {
         this.segurosClient = segurosClient;
         this.seguroReservaService = seguroReservaService;
         this.seguroCoberturaService = seguroCoberturaService;
         this.seguroSeguradoService = seguroSeguradoService;
         this.seguroCategoriaService = seguroCategoriaService;
         this.seguroCoberturaDetalhadaService = seguroCoberturaDetalhadaService;
+        this.historicoReservaService = historicoReservaService;
     }
 
     public void pesquisar(SeguroCompraModel req) {
@@ -100,9 +100,20 @@ public class SegurosService {
                 SeguradoMapper.toDTOList(listOptionalSegurados)
         );
 
+        if (dto.getRecebimentos() == null) {
+            dto.setRecebimentos(new ArrayList<>());
+        }
+
+        dto.getRecebimentos().addAll(
+                RecebimentoSeguroMapper.toDTOList(reserva.getRecebimentos())
+        );
+
         List<SeguroCoberturaDetalhada> opt = seguroCoberturaDetalhadaService.findBySeguroCoberturaCodgSeguroCobertura(cobertura.get().getCodgSeguroCobertura());
 
         dto.getCobertura().getCoberturasDetalhes().addAll(CoberturaSeguroMapper.toDTOList(opt));
+
+      //  historicoReservaService.
+
         return dto;
     }
 

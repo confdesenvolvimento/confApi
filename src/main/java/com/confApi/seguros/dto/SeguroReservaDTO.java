@@ -3,6 +3,8 @@ package com.confApi.seguros.dto;
 import com.confApi.db.confManager.seguro.cobertura.SeguroCobertura;
 import com.confApi.db.confManager.seguro.coberturaDetalhada.SeguroCoberturaDetalhada;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
+import com.confApi.model.HistoricoReservaModel;
+import com.confApi.model.RecebimentoModel;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -49,5 +51,7 @@ public class SeguroReservaDTO implements Serializable {
     private ContatoEmergenciaDTO contatoEmergencia ;
     private String motivoCancelamento;
     // Recebimento/pagamento (opcional)
-   // private SeguroRecebimentoDTO recebimento;
+    private List<RecebimentoModel> recebimentos;
+
+    private List<HistoricoReservaModel> historico;
 }
