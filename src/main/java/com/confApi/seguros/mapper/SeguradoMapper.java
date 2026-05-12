@@ -1,5 +1,6 @@
 package com.confApi.seguros.mapper;
 
+import com.confApi.db.confManager.seguro.apolice.SeguroApolice;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.confApi.seguros.dto.SeguradoDTO;
 import com.confApi.seguros.util.DateUtil;
@@ -38,6 +39,18 @@ public final class SeguradoMapper {
         dto.setBairro(s.getEnderecoBairro());
         dto.setCidade(s.getEnderecoCidade());
         dto.setUf(s.getEnderecoEstado());
+
+        //apolice
+        if (s.getApoliceList() != null && !s.getApoliceList().isEmpty()) {
+
+            SeguroApolice seguroApolice = s.getApoliceList().get(0);
+
+            dto.setNumeroOperacao(seguroApolice.getNumeroOperacao());
+            dto.setNumeroApolice(seguroApolice.getNumeroApolice());
+            dto.setPaisDestino(seguroApolice.getPaisDestino());
+            dto.setEndpointPdf(seguroApolice.getEndpointPdf());
+        }
+
 
         return dto;
     }
