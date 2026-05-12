@@ -11,10 +11,7 @@ import com.confApi.model.RecebimentoModel;
 import com.confApi.recebimento.RecebimentoService;
 import com.confApi.seguros.dto.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -100,8 +97,9 @@ public class  SegurosController {
         if(req.getOperacao() == null){
             req.setOperacao("CONFIANCA");
         }
-        List<SeguroReservaDTO> resultado = hubSeguroClient.carregarReserva(req);
         SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
+
+        System.out.println("response:: " + response);
         return response;
     }
 
@@ -113,9 +111,13 @@ public class  SegurosController {
 
     @PostMapping("/cancelarReserva")
     public SeguroReservaDTO cancelarReserva(@RequestBody CancelamentoRequestDTO req) {
+
+        System.out.println("req:: " + req);
         List<SeguroReservaDTO> resultado = hubSeguroClient.cancelarReserva(req);
+        System.out.println("resultado:: " + resultado);
         if(resultado != null && !resultado.isEmpty()){
             service.cancelarReserva(req);
+            return service.carregarReserva(req.getOperacao());
         }
         return new SeguroReservaDTO();
     }
