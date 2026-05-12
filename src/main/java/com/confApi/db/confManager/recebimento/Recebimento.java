@@ -58,7 +58,7 @@ public class Recebimento implements Serializable {
             this.codgSegCartao = recebimentoModel.getCartaoSelecionado().getCodgSegurancaCartao();
             this.titularCartao = recebimentoModel.getCartaoSelecionado().getTitularBandeira();
             this.qtdeParcela = Integer.parseInt(recebimentoModel.getCartaoSelecionado().getQuantidadeParcelas());
-            this.codgBandeira = new Bandeira(recebimentoModel.getCartaoSelecionado().getCodgBandeira());
+            this.codgBandeira = new Bandeira(Integer.parseInt(recebimentoModel.getCartaoSelecionado().getCodgBandeira()));
         }
         this.valrPrimeiraParcela = recebimentoModel.getValorEntrada();
         this.valrDemaisParcela = recebimentoModel.getValorEntrada();

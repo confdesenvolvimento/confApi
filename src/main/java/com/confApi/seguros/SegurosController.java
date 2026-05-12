@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +41,11 @@ public class  SegurosController {
 //        List<PlanoSeguroDTO> resultado = mockPlanosSeguro();
         List<PlanoSeguroDTO> resultado = hubSeguroClient.pesquisarDisponibilidade(req);
         for (PlanoSeguroDTO plano : resultado) {
-            plano.setUrlLogo("");
+            plano.setUrlLogo("https://portaldoagente.com.br/4/Recursos/Imagens/NovoLayout/logo_seguro/sistema_26.png");
+            for (CoberturaSeguroDTO cs : plano.getCoberturasDetalhes()){
+                cs.setIcone(cs.gerarIconePorNome(cs.getNome()));
+
+            }
         }
         return resultado;
     }
@@ -47,6 +53,19 @@ public class  SegurosController {
     @PostMapping("/comprar")
     public SeguroReserva comprar(@RequestBody SeguroCompraModel req) {
         Recebimento recebimento = recebimentoService.criarRecebimento(req);
+
+
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.enable(SerializationFeature.INDENT_OUTPUT);
+try {
+
+
+        String jsonRecebimento = mapper.writeValueAsString(recebimento);
+
+        System.out.println(jsonRecebimento);
+}catch (Exception e){
+    e.printStackTrace();
+}
         if(recebimento.getCodgRecebimento() == null || recebimento.getStatus() != 1){
             return new SeguroReserva("ERRO: Não foi possivel efetuar o pagamento, tente novamente mais tarde.");
         }
@@ -93,7 +112,7 @@ public class  SegurosController {
 
         service.atualizarReserva(seguroReserva);
         return seguroReserva;
-//        return null;
+      // return null;
     }
     @PostMapping("/carregarReserva")
     public SeguroReservaDTO carregarReserva(@RequestBody SeguroCarregarReservaDTO req) {
