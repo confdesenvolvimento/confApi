@@ -36,7 +36,11 @@ public class  SegurosController {
 //        List<PlanoSeguroDTO> resultado = mockPlanosSeguro();
         List<PlanoSeguroDTO> resultado = hubSeguroClient.pesquisarDisponibilidade(req);
         for (PlanoSeguroDTO plano : resultado) {
-            plano.setUrlLogo("");
+            plano.setUrlLogo("https://portaldoagente.com.br/4/Recursos/Imagens/NovoLayout/logo_seguro/sistema_26.png");
+            for (CoberturaSeguroDTO cs : plano.getCoberturasDetalhes()){
+                cs.setIcone(cs.gerarIconePorNome(cs.getNome()));
+
+            }
         }
         return resultado;
     }
