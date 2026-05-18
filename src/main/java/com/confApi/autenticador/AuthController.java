@@ -2,10 +2,7 @@ package com.confApi.autenticador;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -18,9 +15,15 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/whatsapp")
+    @PostMapping("/validate")
     public ResponseEntity<AuthResponse> authenticate(@RequestBody AuthRequest request) throws JsonProcessingException {
         AuthResponse response = authService.validate(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/token")
+    public ResponseEntity<String> generate() throws JsonProcessingException {
+        String response = authService.generate();
         return ResponseEntity.ok(response);
     }
 }

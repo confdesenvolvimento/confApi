@@ -31,8 +31,6 @@ public class AuthService extends AbstractTransactionServiceApi {
     @Autowired
     private ConfAppService confAppService;
 
-    private final String urlAPI = "http://localhost:8082" +"/autenticacaoplantao";
-
     public AuthResponse validate(AuthRequest request) throws JsonProcessingException {
         if (request == null || request.login() == null || request.token() == null) {
             return AuthResponse.invalid();
@@ -54,7 +52,7 @@ public class AuthService extends AbstractTransactionServiceApi {
 
             ResponseEntity<AuthResponse> response =
                     restTemplate.exchange(
-                            UrlConfig.URL_CONFIANCA_MANAGER + "/autenticacaoplantao",
+                            UrlConfig.URL_CONFIANCA_MANAGER + "/autenticacaoplantao/validate",
                             HttpMethod.POST,
                             requestEntity,
                             AuthResponse.class
@@ -64,13 +62,50 @@ public class AuthService extends AbstractTransactionServiceApi {
 
         } catch (HttpClientErrorException ex) {
             LOG.log(Level.SEVERE,
-                    "Erro HTTP ao salvar seguro segurado. Status: " + ex.getStatusCode(),
+                    "Erro HTTP ao validar token. Status: " + ex.getStatusCode(),
                     ex);
             return AuthResponse.invalid();
 
         } catch (Exception ex) {
-            LOG.log(Level.SEVERE, "Erro inesperado ao salvar seguro apolice", ex);
+            LOG.log(Level.SEVERE, "Erro inesperado ao valisar token", ex);
             return AuthResponse.invalid();
+        }
+    }
+
+    public String generate() throws JsonProcessingException {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<String> requestEntity =
+                    new HttpEntity<>(headers);
+
+            ResponseEntity<String> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_MANAGER + "/autenticacaoplantao/generateToken",
+                            HttpMethod.GET,
+                            requestEntity,
+                            String.class
+                    );
+
+            return response.getBody();
+
+        } catch (HttpClientErrorException ex) {
+            LOG.log(Level.SEVERE,
+                    "Erro HTTP ao gerar token. Status: " + ex.getStatusCode(),
+                    ex);
+            return null;
+
+        } catch (Exception ex) {
+            LOG.log(Level.SEVERE, "Erro inesperado ao gerar token", ex);
+            return null;
         }
     }
 }

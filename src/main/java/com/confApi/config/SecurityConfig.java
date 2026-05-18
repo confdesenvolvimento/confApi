@@ -42,7 +42,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
                 // ✅ todos autenticados podem acessar /services/external/**
                 .antMatchers("/services/external/**").permitAll()
-                .antMatchers("/api/auth/whatsapp").permitAll()
+                .antMatchers("/api/auth/validate").permitAll()
+                .antMatchers("/api/auth/token").permitAll()
 
                // // ❌ demais endpoints: autenticado e NÃO pode ter EXTERNAL
                // .anyRequest().access("isAuthenticated() and !hasAuthority('external')")
