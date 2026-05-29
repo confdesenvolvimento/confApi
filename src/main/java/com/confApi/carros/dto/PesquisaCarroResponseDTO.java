@@ -5,8 +5,8 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class PesquisaResponseCarroDTO {
-    private DadosPesquisaCarroDTO dadosPesquisaCarro;
+public class PesquisaCarroResponseDTO {
+    private DadosCarroPesquisaDTO dadosPesquisaCarro;
     private List<Resultado> results  = new java.util.ArrayList<>();
     private String tokenSession;
     private String tokenSessionExpiresIn;

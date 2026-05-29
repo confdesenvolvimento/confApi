@@ -1,8 +1,6 @@
 package com.confApi.hub.carro;
 
-import com.confApi.carros.dto.PesquisaRequestCarroDTO;
-import com.confApi.carros.dto.PesquisaRequestCarroHub;
-import com.confApi.carros.dto.PesquisaResponseCarroDTO;
+import com.confApi.carros.dto.*;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
@@ -31,38 +29,64 @@ public class HubCarroClient {
         this.restTemplate = hubRestTemplate;
     }
 
-    public List<PesquisaResponseCarroDTO> pesquisarDisponibilidade(PesquisaRequestCarroDTO pesquisaRequestCarroDTO) {
-        PesquisaRequestCarroHub pesquisaRequestCarroHub = new PesquisaRequestCarroHub(pesquisaRequestCarroDTO);
+    public List<PesquisaCarroResponseDTO> pesquisarDisponibilidade(PesquisaCarroRequestDTO pesquisaRequestCarroDTO) {
+        PesquisaCarroRequestHub pesquisaRequestCarroHub = new PesquisaCarroRequestHub(pesquisaRequestCarroDTO);
+
         try {
             ConfAppResp token = confAppService.token();
-
             HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<PesquisaRequestCarroHub> entity = new HttpEntity<>(pesquisaRequestCarroHub, headers);
+            HttpEntity<PesquisaCarroRequestHub> entity = new HttpEntity<>(pesquisaRequestCarroHub, headers);
 
-            // 4) Chamada (LISTA!)
-            ResponseEntity<List<PesquisaResponseCarroDTO>> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/carro/pesquisar",
-                    HttpMethod.POST,
-                    entity,
-                    new ParameterizedTypeReference<List<PesquisaResponseCarroDTO>>() {}
-            );
+            ResponseEntity<List<PesquisaCarroResponseDTO>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_HUB + "api/carro/pesquisar",
+                            HttpMethod.POST,
+                            entity,
+                            new ParameterizedTypeReference<List<PesquisaCarroResponseDTO>>() {}
+                    );
 
-            List<PesquisaResponseCarroDTO> body = response.getBody();
-
-            // 5) Validação mínima
+            List<PesquisaCarroResponseDTO> body = response.getBody();
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 return body;
             }
-
-            LOG.log(Level.WARNING,
-                    "pesquisarDisponibilidade retornou status {0} sem corpo válido",
-                    response.getStatusCode());
-
-            return Collections.emptyList();
+            LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
+            return null;
 
         } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao pesquisar disponibilidade de carros no HUB", e);
-            return Collections.emptyList();
+            LOG.log(Level.SEVERE,"Erro ao pesquisar disponibilidade de carros no HUB", e);
+            return null;
+        }
+    }
+
+    public List<SelecionarCarroResponseDTO> selecionarCarro(SelecionarCarroRequestDTO selecionarCarroRequestDTO) {
+        SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
+
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            HttpEntity<SelecionarCarroRequestHub> entity = new HttpEntity<>(selecionarCarroRequestHub, headers);
+
+            ResponseEntity<List<SelecionarCarroResponseDTO>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_HUB + "api/carro/selecionarCarro",
+                            HttpMethod.POST,
+                            entity,
+                            new ParameterizedTypeReference<List<SelecionarCarroResponseDTO>>() {}
+                    );
+
+            List<SelecionarCarroResponseDTO> body = response.getBody();
+
+            System.out.println("body: " + body);
+
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                return body;
+            }
+            LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
+            return null;
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE,"Erro ao pesquisar disponibilidade de carros no HUB", e);
+            return null;
         }
     }
 

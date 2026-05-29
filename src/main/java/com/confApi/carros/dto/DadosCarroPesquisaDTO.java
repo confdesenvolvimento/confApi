@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class DadosPesquisaCarroDTO {
+public class DadosCarroPesquisaDTO {
     private LocalCarro retiradaVeiculo;
     private LocalCarro devolucaoVeiculo;
     private Integer numeroDias;

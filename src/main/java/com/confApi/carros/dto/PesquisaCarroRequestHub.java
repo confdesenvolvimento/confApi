@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class PesquisaRequestCarroHub {
+public class PesquisaCarroRequestHub {
     private VeiculoLocacaoHub retiradaVeiculo;
     private VeiculoLocacaoHub devolucaoVeiculo;
     private List<Integer> categorias;
@@ -13,7 +13,7 @@ public class PesquisaRequestCarroHub {
     private List<StoreCarroHub> stores;
     private List<SistemaCarroHub> sistemas;
 
-    public PesquisaRequestCarroHub(PesquisaRequestCarroDTO obj) {
+    public PesquisaCarroRequestHub(PesquisaCarroRequestDTO obj) {
         this.retiradaVeiculo = obj.getRetiradaVeiculo();
         this.devolucaoVeiculo = obj.getDevolucaoVeiculo();
         this.categorias = obj.getCategorias();

@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class PesquisaRequestCarroDTO {
+public class PesquisaCarroRequestDTO {
     private VeiculoLocacaoHub retiradaVeiculo;
     private VeiculoLocacaoHub devolucaoVeiculo;
     private List<Integer> categorias;

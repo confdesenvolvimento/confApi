@@ -1,7 +1,6 @@
 package com.confApi.carros;
 
-import com.confApi.carros.dto.PesquisaRequestCarroDTO;
-import com.confApi.carros.dto.PesquisaResponseCarroDTO;
+import com.confApi.carros.dto.*;
 import com.confApi.hub.carro.HubCarroClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,9 +24,14 @@ public class CarrosController {
     }
 
     @PostMapping("/pesquisar")
-    public List<PesquisaResponseCarroDTO> pesquisar(@RequestBody PesquisaRequestCarroDTO req) {
-//        List<PlanoSeguroDTO> resultado = mockPlanosSeguro();
-        List<PesquisaResponseCarroDTO> resultado = hubCarroClient.pesquisarDisponibilidade(req);
+    public List<PesquisaCarroResponseDTO> pesquisar(@RequestBody PesquisaCarroRequestDTO req) {
+        List<PesquisaCarroResponseDTO> resultado = hubCarroClient.pesquisarDisponibilidade(req);
+        return resultado;
+    }
+
+    @PostMapping("/selecionarCarro")
+    public List<SelecionarCarroResponseDTO> selecionarCarro(@RequestBody SelecionarCarroRequestDTO req) {
+        List<SelecionarCarroResponseDTO> resultado = hubCarroClient.selecionarCarro(req);
         return resultado;
     }
 
