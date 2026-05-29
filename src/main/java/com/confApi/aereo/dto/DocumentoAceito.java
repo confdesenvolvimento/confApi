@@ -1,2 +1,9 @@
-package com.confApi.aereo.dto;public class DocumentoAceito {
+package com.confApi.aereo.dto;
+
+import lombok.Data;
+
+@Data
+public class DocumentoAceito {
+    private String descricao;
+    private Integer id;
 }

@@ -15,6 +15,9 @@ public class Bagagem implements Serializable{
     private Double valor;
     private Integer peso;
     private String unidadeDeMedida;
+    private Integer tipo;
+    private Boolean inclusa;
+    private Object indicador;
 
     public Bagagem(BagagemResponse bagagemResponse) {
         this.id = bagagemResponse.getId();
@@ -101,5 +104,27 @@ public class Bagagem implements Serializable{
         return Objects.equals(this.id, other.id);
     }
 
+    public Integer getTipo() {
+        return tipo;
+    }
 
+    public void setTipo(Integer tipo) {
+        this.tipo = tipo;
+    }
+
+    public Boolean getInclusa() {
+        return inclusa;
+    }
+
+    public void setInclusa(Boolean inclusa) {
+        this.inclusa = inclusa;
+    }
+
+    public Object getIndicador() {
+        return indicador;
+    }
+
+    public void setIndicador(Object indicador) {
+        this.indicador = indicador;
+    }
 }
