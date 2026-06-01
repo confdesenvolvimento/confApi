@@ -86,4 +86,10 @@ public class AereoController {
         RemoverAssentoResponse result = aereoClient.removerAssento(req);
         return result;
     }
+
+    @PostMapping("/tarifarPesquisa")
+    public List<PesquisaResponse> tarifarPesquisa(@RequestBody TarifarPesquisaRequest req) {
+        List<PesquisaResponse> result = aereoClient.tarifarPesquisa(req);
+        return result;
+    }
 }

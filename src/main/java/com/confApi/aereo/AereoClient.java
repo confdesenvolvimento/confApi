@@ -14,6 +14,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
@@ -72,6 +73,45 @@ public class AereoClient {
 
         return buscarFormasFinanciamentoResponse;
     }
+    public List<PesquisaResponse> tarifarPesquisa(TarifarPesquisaRequest request) {
+
+        List<PesquisaResponse> pesquisaResponseList = new ArrayList<>();
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            HttpEntity<TarifarPesquisaRequest> entity =
+                    new HttpEntity<>(request, headers);
+
+            JsonLogUtil.logRequest("Aéreo - Tarifar Pesquisa", request);
+
+            ResponseEntity<List<PesquisaResponse>> response = restTemplate.exchange(
+                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/tarifarpesquisa",
+                    HttpMethod.POST,
+                    entity,
+                    new ParameterizedTypeReference<List<PesquisaResponse>>() {}
+            );
+
+            JsonLogUtil.logResponse("Aéreo - Tarifar Pesquisa", response.getBody());
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return response.getBody();
+            }
+
+            LOG.log(
+                    Level.WARNING,
+                    "tarifar pesquisa retornou status {0} sem corpo válido",
+                    response.getStatusCode()
+            );
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, "Erro ao consumir tarifar pesquisa aérea no HUB", e);
+        }
+
+        return pesquisaResponseList;
+    }
+
     public RemoverAssentoResponse removerAssento(RemoverAssentoRequest request) {
 
         RemoverAssentoResponse removerAssentoResponse = new RemoverAssentoResponse();
