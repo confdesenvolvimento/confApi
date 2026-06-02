@@ -4,16 +4,17 @@ import com.confApi.aereo.dto.*;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
-import com.confApi.hub.seguro.HubSeguroClient;
-import com.confApi.seguros.dto.PlanoSeguroDTO;
-import com.confApi.seguros.dto.SeguroViagemPesquisaDTO;
 import com.confApi.util.JsonLogUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -23,504 +24,244 @@ import java.util.logging.Logger;
 @Component
 public class AereoClient {
 
+    private static final Logger LOG = Logger.getLogger(AereoClient.class.getName());
+
+    private static final String API_AEREO = "/api/aereo";
+
     private final RestTemplate restTemplate;
 
-    private static final Logger LOG = Logger.getLogger(AereoClient.class.getName());
     @Autowired
     private ConfAppService confAppService;
 
-
-    public AereoClient(RestTemplate hubRestTemplate) {
+    public AereoClient(@Qualifier("hubRestTemplate") RestTemplate hubRestTemplate) {
         this.restTemplate = hubRestTemplate;
     }
 
     public BuscarFormasFinanciamentoResponse recuperarFormasFinanciamentoToken(BuscarFormasFinanciamentoRequest request) {
-
-        BuscarFormasFinanciamentoResponse buscarFormasFinanciamentoResponse =
-                new BuscarFormasFinanciamentoResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<BuscarFormasFinanciamentoRequest> entity =
-                    new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Recuperar Formas de Financiamento Token", request);
-
-            ResponseEntity<BuscarFormasFinanciamentoResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/recuperarformasdefinanciamentoToken",
-                    HttpMethod.POST,
-                    entity,
-                    BuscarFormasFinanciamentoResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Recuperar Formas de Financiamento Token", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "recuperar formas de financiamento com token retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao recuperar formas de financiamento com token no HUB", e);
-        }
-
-        return buscarFormasFinanciamentoResponse;
+        return post(
+                "Aéreo - Recuperar Formas de Financiamento Token",
+                API_AEREO + "/recuperarformasdefinanciamentoToken",
+                request,
+                BuscarFormasFinanciamentoResponse.class,
+                new BuscarFormasFinanciamentoResponse()
+        );
     }
+
     public List<PesquisaResponse> tarifarPesquisa(TarifarPesquisaRequest request) {
-
-        List<PesquisaResponse> pesquisaResponseList = new ArrayList<>();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<TarifarPesquisaRequest> entity =
-                    new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Tarifar Pesquisa", request);
-
-            ResponseEntity<List<PesquisaResponse>> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/tarifarpesquisa",
-                    HttpMethod.POST,
-                    entity,
-                    new ParameterizedTypeReference<List<PesquisaResponse>>() {}
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Tarifar Pesquisa", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "tarifar pesquisa retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao consumir tarifar pesquisa aérea no HUB", e);
-        }
-
-        return pesquisaResponseList;
+        return post(
+                "Aéreo - Tarifar Pesquisa",
+                API_AEREO + "/tarifarpesquisa",
+                request,
+                new ParameterizedTypeReference<List<PesquisaResponse>>() {},
+                new ArrayList<>()
+        );
     }
 
     public RemoverAssentoResponse removerAssento(RemoverAssentoRequest request) {
-
-        RemoverAssentoResponse removerAssentoResponse = new RemoverAssentoResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<RemoverAssentoRequest> entity =
-                    new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Remover Assento", request);
-
-            ResponseEntity<RemoverAssentoResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/removerassento",
-                    HttpMethod.POST,
-                    entity,
-                    RemoverAssentoResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Remover Assento", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "remover assento retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao remover assento no HUB", e);
-        }
-
-        return removerAssentoResponse;
+        return post(
+                "Aéreo - Remover Assento",
+                API_AEREO + "/removerassento",
+                request,
+                RemoverAssentoResponse.class,
+                new RemoverAssentoResponse()
+        );
     }
 
     public MarcarAssentoResponse marcarAssento(MarcarAssentoRequest request) {
-
-        MarcarAssentoResponse marcarAssentoResponse = new MarcarAssentoResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<MarcarAssentoRequest> entity =
-                    new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Marcar Assento", request);
-
-            ResponseEntity<MarcarAssentoResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/marcarassento",
-                    HttpMethod.POST,
-                    entity,
-                    MarcarAssentoResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Marcar Assento", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "marcar assento retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao marcar assento no HUB", e);
-        }
-
-        return marcarAssentoResponse;
+        return post(
+                "Aéreo - Marcar Assento",
+                API_AEREO + "/marcarassento",
+                request,
+                MarcarAssentoResponse.class,
+                new MarcarAssentoResponse()
+        );
     }
+
     public MapaAssentoResponse buscarMapaAssentos(MapaAssentoRequest request) {
-        MapaAssentoResponse mapaAssentoResponse = new MapaAssentoResponse();
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<MapaAssentoRequest> entity =
-                    new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Buscar Mapa de Assentos", request);
-
-            ResponseEntity<MapaAssentoResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/mapadeassentos",
-                    HttpMethod.POST,
-                    entity,
-                    MapaAssentoResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Buscar Mapa de Assentos", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "buscar mapa de assentos retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao buscar mapa de assentos no HUB", e);
-        }
-
-        return mapaAssentoResponse;
+        return post(
+                "Aéreo - Buscar Mapa de Assentos",
+                API_AEREO + "/mapadeassentos",
+                request,
+                MapaAssentoResponse.class,
+                new MapaAssentoResponse()
+        );
     }
+
     public BuscarFormasFinanciamentoResponse recuperarFormasFinanciamento(BuscarFormasFinanciamentoRequest request) {
-
-        BuscarFormasFinanciamentoResponse buscarFormasFinanciamentoResponse =
-                new BuscarFormasFinanciamentoResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<BuscarFormasFinanciamentoRequest> entity =
-                    new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Recuperar Formas de Financiamento", request);
-
-            ResponseEntity<BuscarFormasFinanciamentoResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/recuperarformasdefinanciamento",
-                    HttpMethod.POST,
-                    entity,
-                    BuscarFormasFinanciamentoResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Recuperar Formas de Financiamento", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "recuperar formas de financiamento retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao recuperar formas de financiamento no HUB", e);
-        }
-
-        return buscarFormasFinanciamentoResponse;
+        return post(
+                "Aéreo - Recuperar Formas de Financiamento",
+                API_AEREO + "/recuperarformasdefinanciamento",
+                request,
+                BuscarFormasFinanciamentoResponse.class,
+                new BuscarFormasFinanciamentoResponse()
+        );
     }
 
     public ConsultarEticketResponse cancelarBilhete(CancelarBilheteRequest request) {
-
-        ConsultarEticketResponse cancelarBilheteResponse = new ConsultarEticketResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<CancelarBilheteRequest> entity = new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Cancelar Bilhete", request);
-
-            ResponseEntity<ConsultarEticketResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/cancelarbilhete",
-                    HttpMethod.POST,
-                    entity,
-                    ConsultarEticketResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Cancelar Bilhete", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "cancelar bilhete retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao cancelar bilhete aéreo no HUB", e);
-        }
-
-        return cancelarBilheteResponse;
+        return post(
+                "Aéreo - Cancelar Bilhete",
+                API_AEREO + "/cancelarbilhete",
+                request,
+                ConsultarEticketResponse.class,
+                new ConsultarEticketResponse()
+        );
     }
 
     public CancelarReservaResponse cancelarReserva(CancelarReservaRequest request) {
-
-        CancelarReservaResponse cancelarReservaResponse = new CancelarReservaResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<CancelarReservaRequest> entity = new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Cancelar Reserva", request);
-
-            ResponseEntity<CancelarReservaResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/cancelar",
-                    HttpMethod.POST,
-                    entity,
-                    CancelarReservaResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Cancelar Reserva", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "cancelar reserva retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao cancelar reserva aérea no HUB", e);
-        }
-
-        return cancelarReservaResponse;
+        return post(
+                "Aéreo - Cancelar Reserva",
+                API_AEREO + "/cancelar",
+                request,
+                CancelarReservaResponse.class,
+                new CancelarReservaResponse()
+        );
     }
+
     public EmitirResponse emitir(EmitirRequest request) {
-
-        EmitirResponse emitirResponse = new EmitirResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<EmitirRequest> entity = new HttpEntity<>(request, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Emitir", request);
-
-            ResponseEntity<EmitirResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/emitir",
-                    HttpMethod.POST,
-                    entity,
-                    EmitirResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Emitir", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "emitir retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao emitir aéreo no HUB", e);
-        }
-
-        return emitirResponse;
+        return post(
+                "Aéreo - Emitir",
+                API_AEREO + "/emitir",
+                request,
+                EmitirResponse.class,
+                new EmitirResponse()
+        );
     }
 
     public ConsultarLocalizadorResponse carregarReserva(ConsultarLocalizadorRequest consultarRequest) {
-
-        ConsultarLocalizadorResponse consultarResponse = new ConsultarLocalizadorResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<ConsultarLocalizadorRequest> entity = new HttpEntity<>(consultarRequest, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Consultar Localizador", consultarRequest);
-
-            ResponseEntity<ConsultarLocalizadorResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/consultar",
-                    HttpMethod.POST,
-                    entity,
-                    ConsultarLocalizadorResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Consultar Localizador", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "consultar localizador retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao consultar localizador aéreo no HUB", e);
-        }
-
-        return consultarResponse;
+        return post(
+                "Aéreo - Consultar Localizador",
+                API_AEREO + "/consultar",
+                consultarRequest,
+                ConsultarLocalizadorResponse.class,
+                new ConsultarLocalizadorResponse()
+        );
     }
+
     public ReservarResponse reserva(ReservarRequest reservarRequest) {
-
-        ReservarResponse reservarResponse = new ReservarResponse();
-
-        try {
-            ConfAppResp token = confAppService.token();
-
-            HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<ReservarRequest> entity = new HttpEntity<>(reservarRequest, headers);
-
-            JsonLogUtil.logRequest("Aéreo - Reservar", reservarRequest);
-
-            ResponseEntity<ReservarResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/reservar",
-                    HttpMethod.POST,
-                    entity,
-                    ReservarResponse.class
-            );
-
-            JsonLogUtil.logResponse("Aéreo - Reservar", response.getBody());
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-
-            LOG.log(
-                    Level.WARNING,
-                    "reservar retornou status {0} sem corpo válido",
-                    response.getStatusCode()
-            );
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao reservar aéreo no HUB", e);
-        }
-
-        return reservarResponse;
+        return post(
+                "Aéreo - Reservar",
+                API_AEREO + "/reservar",
+                reservarRequest,
+                ReservarResponse.class,
+                new ReservarResponse()
+        );
     }
 
     public TarifarResponse tarifar(TarifarRequest tarifarRequest) {
+        return post(
+                "Aéreo - Tarifar",
+                API_AEREO + "/tarifar",
+                tarifarRequest,
+                TarifarResponse.class,
+                new TarifarResponse()
+        );
+    }
 
-        TarifarResponse tarifarResponse = new TarifarResponse();
+    public List<PesquisaResponse> pesquisarDisponibilidade(PesquisaRequestDTO pesquisaRequestDTO) {
+        return post(
+                "Aéreo - Pesquisar Disponibilidade",
+                API_AEREO + "/pesquisa",
+                pesquisaRequestDTO,
+                new ParameterizedTypeReference<List<PesquisaResponse>>() {},
+                Collections.emptyList()
+        );
+    }
+
+    private <REQ, RES> RES post(
+            String operacao,
+            String endpoint,
+            REQ request,
+            Class<RES> responseClass,
+            RES retornoPadrao
+    ) {
+        String url = montarUrl(endpoint);
+        long inicio = System.currentTimeMillis();
 
         try {
             ConfAppResp token = confAppService.token();
 
             HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<TarifarRequest> entity = new HttpEntity<>(tarifarRequest, headers);
-            JsonLogUtil.logRequest("Aéreo - Tarifar", tarifarRequest);
-            ResponseEntity<TarifarResponse> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/tarifar",
+            HttpEntity<REQ> entity = new HttpEntity<>(request, headers);
+
+            JsonLogUtil.logRequest(operacao, request);
+
+            ResponseEntity<RES> response = restTemplate.exchange(
+                    url,
                     HttpMethod.POST,
                     entity,
-                    TarifarResponse.class
+                    responseClass
             );
-            JsonLogUtil.logResponse("Aéreo - Tarifar", response.getBody());
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
 
+            JsonLogUtil.logResponse(operacao, response.getBody());
+
+            logTempoExecucao(operacao, inicio);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 return response.getBody();
             }
 
             LOG.log(
                     Level.WARNING,
-                    "tarifar retornou status {0} sem corpo válido",
-                    response.getStatusCode()
+                    "{0} retornou status {1} sem corpo válido. URL: {2}",
+                    new Object[]{operacao, response.getStatusCode(), url}
             );
 
         } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao tarifar reserva aérea no HUB", e);
+            tratarErro(operacao, url, inicio, e);
         }
 
-        return tarifarResponse;
+        return retornoPadrao;
     }
 
-    public List<PesquisaResponse> pesquisarDisponibilidade(PesquisaRequestDTO pesquisaRequestDTO) {
+    private <REQ, RES> RES post(
+            String operacao,
+            String endpoint,
+            REQ request,
+            ParameterizedTypeReference<RES> responseType,
+            RES retornoPadrao
+    ) {
+        String url = montarUrl(endpoint);
+        long inicio = System.currentTimeMillis();
+
         try {
             ConfAppResp token = confAppService.token();
 
             HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<PesquisaRequestDTO> entity = new HttpEntity<>(pesquisaRequestDTO, headers);
+            HttpEntity<REQ> entity = new HttpEntity<>(request, headers);
 
-            ResponseEntity<List<PesquisaResponse>> response = restTemplate.exchange(
-                    UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/pesquisa",
+            JsonLogUtil.logRequest(operacao, request);
+
+            ResponseEntity<RES> response = restTemplate.exchange(
+                    url,
                     HttpMethod.POST,
                     entity,
-                    new ParameterizedTypeReference<List<PesquisaResponse>>() {
-                    }
+                    responseType
             );
 
-            List<PesquisaResponse> body = response.getBody();
+            JsonLogUtil.logResponse(operacao, response.getBody());
 
-            if (response.getStatusCode().is2xxSuccessful() && body != null) {
-                return body;
+            logTempoExecucao(operacao, inicio);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return response.getBody();
             }
 
-            LOG.log(Level.WARNING,
-                    "pesquisarDisponibilidade retornou status {0} sem corpo válido",
-                    response.getStatusCode());
-
-            return Collections.emptyList();
+            LOG.log(
+                    Level.WARNING,
+                    "{0} retornou status {1} sem corpo válido. URL: {2}",
+                    new Object[]{operacao, response.getStatusCode(), url}
+            );
 
         } catch (Exception e) {
-            LOG.log(Level.SEVERE, "Erro ao pesquisar disponibilidade aérea no HUB", e);
-            return Collections.emptyList();
+            tratarErro(operacao, url, inicio, e);
         }
+
+        return retornoPadrao;
     }
 
+    private String montarUrl(String endpoint) {
+        return UrlConfig.URL_CONFIANCA_HUB + endpoint;
+    }
 
     private HttpHeaders defaultHeaders(String bearerToken) {
         HttpHeaders headers = new HttpHeaders();
@@ -528,5 +269,79 @@ public class AereoClient {
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.setBearerAuth(bearerToken);
         return headers;
+    }
+
+    private void tratarErro(String operacao, String url, long inicio, Exception e) {
+        logTempoExecucao(operacao, inicio);
+
+        if (e instanceof ResourceAccessException) {
+            tratarErroAcesso(operacao, url, e);
+            return;
+        }
+
+        if (e instanceof RestClientResponseException) {
+            tratarErroHttp(operacao, url, (RestClientResponseException) e);
+            return;
+        }
+
+        LOG.log(
+                Level.SEVERE,
+                operacao + " - Erro inesperado ao consumir HUB. URL: " + url,
+                e
+        );
+    }
+
+    private void tratarErroAcesso(String operacao, String url, Exception e) {
+        if (isTimeout(e)) {
+            LOG.log(
+                    Level.SEVERE,
+                    operacao + " - Timeout ao consumir HUB. URL: " + url
+                            + ". Verifique se o HUB está ativo, se a URL está correta, "
+                            + "se o endpoint está demorando demais ou se o readTimeout do RestTemplate está baixo.",
+                    e
+            );
+            return;
+        }
+
+        LOG.log(
+                Level.SEVERE,
+                operacao + " - Erro de conexão/acesso ao consumir HUB. URL: " + url,
+                e
+        );
+    }
+
+    private void tratarErroHttp(String operacao, String url, RestClientResponseException e) {
+        LOG.log(
+                Level.SEVERE,
+                operacao + " - Erro HTTP ao consumir HUB. URL: " + url
+                        + ", Status: " + e.getRawStatusCode()
+                        + ", ResponseBody: " + e.getResponseBodyAsString(),
+                e
+        );
+    }
+
+    private boolean isTimeout(Throwable e) {
+        Throwable causa = e;
+
+        while (causa != null) {
+            if (causa instanceof SocketTimeoutException) {
+                return true;
+            }
+
+            causa = causa.getCause();
+        }
+
+        return false;
+    }
+
+    private void logTempoExecucao(String operacao, long inicio) {
+        long fim = System.currentTimeMillis();
+        long tempoMs = fim - inicio;
+
+        LOG.log(
+                Level.INFO,
+                "{0} - Tempo de execução no HUB: {1} ms",
+                new Object[]{operacao, tempoMs}
+        );
     }
 }
