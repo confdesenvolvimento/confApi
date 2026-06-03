@@ -1,11 +1,11 @@
-package com.confApi.endPoints.usuario;
+package com.confApi.db.confManager.usuario;
 
 import com.confApi.corporate.dto.usuarioExternoDTO.UsuarioExternoResponseDTO;
 import com.confApi.corporate.mapper.UsuarioExternoMapper;
-import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.db.confManager.usuario.dto.AuthRequestDto;
 import com.confApi.db.confManager.usuario.dto.UsuarioDto;
-import com.confApi.db.confManager.usuario.dto.autenticar.UsuarioResponseDTO;
+import com.confApi.endPoints.usuario.UsuarioApi;
+import com.confApi.endPoints.usuario.UsuarioResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;

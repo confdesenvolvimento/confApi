@@ -44,8 +44,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/services/external/**").permitAll()
                 .antMatchers("/api/auth/validate").permitAll()
                 .antMatchers("/api/auth/token").permitAll()
-
-               // // ❌ demais endpoints: autenticado e NÃO pode ter EXTERNAL
+                .antMatchers("/api/clube/usuario/auth").permitAll() // 👈 adiciona isso
+                // // ❌ demais endpoints: autenticado e NÃO pode ter EXTERNAL
                // .anyRequest().access("isAuthenticated() and !hasAuthority('external')")
                 .anyRequest().authenticated()
                 .and()

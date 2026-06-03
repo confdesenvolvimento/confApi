@@ -17,11 +17,13 @@ public class UrlConfig {
     private String confAppConfianca;
     @Value("${confianca-cacheHotel}")
     private String cacheHotel;
+    @Value("${confianca-clube}")
+    private String clubeConfianca;
 
 
 
 
-
+    public static String URL_CONFIANCA_CLUBE;
     public static String URL_CONFIANCA_MANAGER;
     public static String URL_CONFIANCA_HUB;
     public static String URL_CONFIANCA_EMAIL;
@@ -35,6 +37,7 @@ public class UrlConfig {
         URL_CONFIANCA_EMAIL = emailConfianca;
         URL_CONFIANCA_CONFAPP = confAppConfianca;
         URL_CONFIANCA_CACHEHOTEL = cacheHotel;
+        URL_CONFIANCA_CLUBE = clubeConfianca;
 
     }
 }
