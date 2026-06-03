@@ -90,6 +90,166 @@ public class HubCarroClient {
         }
     }
 
+    public List<ReservarCarroResponseDTO> reservar(ReservarCarroRequestDTO reservarCarroRequestDTO) {
+//        SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
+
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            HttpEntity<ReservarCarroRequestDTO> entity = new HttpEntity<>(reservarCarroRequestDTO, headers);
+
+            ResponseEntity<List<ReservarCarroResponseDTO>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_HUB + "api/carro/reservar",
+                            HttpMethod.POST,
+                            entity,
+                            new ParameterizedTypeReference<List<ReservarCarroResponseDTO>>() {}
+                    );
+
+            List<ReservarCarroResponseDTO> body = response.getBody();
+
+            System.out.println("body: " + body);
+
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                return body;
+            }
+            LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
+            return null;
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE,"Erro ao pesquisar disponibilidade de carros no HUB", e);
+            return null;
+        }
+    }
+
+    public List<ReservarCarroResponseDTO> consultarReserva(ConsultarReservaCarroRequestDTO consultarReservaCarroRequestDTO) {
+//        SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
+
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            HttpEntity<ConsultarReservaCarroRequestDTO> entity = new HttpEntity<>(consultarReservaCarroRequestDTO, headers);
+
+            ResponseEntity<List<ReservarCarroResponseDTO>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_HUB + "api/carro/consultarReserva",
+                            HttpMethod.POST,
+                            entity,
+                            new ParameterizedTypeReference<List<ReservarCarroResponseDTO>>() {}
+                    );
+
+            List<ReservarCarroResponseDTO> body = response.getBody();
+
+            System.out.println("body: " + body);
+
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                return body;
+            }
+            LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
+            return null;
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE,"Erro ao pesquisar disponibilidade de carros no HUB", e);
+            return null;
+        }
+    }
+
+    public List<CancelarReservaCarroResponseDTO> cancelarReserva(CancelarReservaCarroRequestDTO cancelarReservaCarroRequestDTO) {
+//        SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
+
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            HttpEntity<CancelarReservaCarroRequestDTO> entity = new HttpEntity<>(cancelarReservaCarroRequestDTO, headers);
+
+            ResponseEntity<List<CancelarReservaCarroResponseDTO>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_HUB + "api/carro/cancelarReserva",
+                            HttpMethod.POST,
+                            entity,
+                            new ParameterizedTypeReference<List<CancelarReservaCarroResponseDTO>>() {}
+                    );
+
+            List<CancelarReservaCarroResponseDTO> body = response.getBody();
+
+            System.out.println("body: " + body);
+
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                return body;
+            }
+            LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
+            return null;
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE,"Erro ao pesquisar disponibilidade de carros no HUB", e);
+            return null;
+        }
+    }
+
+    public List<FormasPagamentoCarroResponseDTO> obterFormasPagamento(FormasPagamentoCarroRequestDTO formasPagamentoCarroRequestDTO) {
+//        SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
+
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            HttpEntity<FormasPagamentoCarroRequestDTO> entity = new HttpEntity<>(formasPagamentoCarroRequestDTO, headers);
+
+            ResponseEntity<List<FormasPagamentoCarroResponseDTO>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_HUB + "api/carro/obterFormasPagamento",
+                            HttpMethod.POST,
+                            entity,
+                            new ParameterizedTypeReference<List<FormasPagamentoCarroResponseDTO>>() {}
+                    );
+
+            List<FormasPagamentoCarroResponseDTO> body = response.getBody();
+
+            System.out.println("body: " + body);
+
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                return body;
+            }
+            LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
+            return null;
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE,"Erro ao pesquisar disponibilidade de carros no HUB", e);
+            return null;
+        }
+    }
+
+    public List<EmitirCarroResponseDTO> emitir(EmitirCarroRequestDTO emitirCarroRequestDTO) {
+//        SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
+
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            HttpEntity<EmitirCarroRequestDTO> entity = new HttpEntity<>(emitirCarroRequestDTO, headers);
+
+            ResponseEntity<List<EmitirCarroResponseDTO>> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_HUB + "api/carro/emitir",
+                            HttpMethod.POST,
+                            entity,
+                            new ParameterizedTypeReference<List<EmitirCarroResponseDTO>>() {}
+                    );
+
+            List<EmitirCarroResponseDTO> body = response.getBody();
+
+            System.out.println("body: " + body);
+
+            if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                return body;
+            }
+            LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
+            return null;
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE,"Erro ao pesquisar disponibilidade de carros no HUB", e);
+            return null;
+        }
+    }
+
     private HttpHeaders defaultHeaders(String bearerToken) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
