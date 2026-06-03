@@ -14,7 +14,7 @@ import java.nio.charset.StandardCharsets;
 public class GeradorService {
 
     // Caminho do arquivo HTML na pasta resources
-    private static final String HTML_FILE_PATH = "templates/reservaAereo.html";
+  //  private static final String HTML_FILE_PATH = "templates/reservaAereo.html";
 
     // Remova o construtor do TemplateEngine
     // public SeuServicoDePDF(TemplateEngine htmlTemplateEngine) { ... }
@@ -39,7 +39,7 @@ public class GeradorService {
     /**
      * Carrega o arquivo HTML do classpath (pasta resources).
      */
-    private String loadHtmlTemplate(String filePath) throws IOException {
+  /*  private String loadHtmlTemplate(String filePath) throws IOException {
         ClassPathResource resource = new ClassPathResource(filePath);
         try (Reader reader = new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8)) {
             // Usa o utilitário do Spring para copiar o conteúdo do Reader para uma String
@@ -51,7 +51,7 @@ public class GeradorService {
      * Injeta dados do objeto aereoPDF no HTML.
      * ATENÇÃO: Essa é a parte mais complexa e que requer cuidado com sintaxe HTML.
      */
-    private String injectDynamicData(String rawHtml, ReservaAereoModelPDF aereoPDF) {
+  /*  private String injectDynamicData(String rawHtml, ReservaAereoModelPDF aereoPDF) {
 
         // Exemplo simples: você precisará de um sistema de marcadores (placeholders) no seu HTML
 
@@ -94,7 +94,7 @@ public class GeradorService {
         } catch (Exception e) {
             throw new IOException("Erro ao converter HTML para PDF: " + e.getMessage(), e);
         }
-    }
+    }*/
 }
 
 

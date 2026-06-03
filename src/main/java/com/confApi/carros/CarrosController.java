@@ -35,4 +35,33 @@ public class CarrosController {
         return resultado;
     }
 
+    @PostMapping("/reservar")
+    public List<ReservarCarroResponseDTO> efetuarReserva(@RequestBody ReservarCarroRequestDTO req) {
+        List<ReservarCarroResponseDTO> resultado = hubCarroClient.reservar(req);
+        return resultado;
+    }
+
+    @PostMapping("/consultarReserva")
+    public List<ReservarCarroResponseDTO> consultarReserva(@RequestBody ConsultarReservaCarroRequestDTO req) {
+        List<ReservarCarroResponseDTO> resultado = hubCarroClient.consultarReserva(req);
+        return resultado;
+    }
+
+    @PostMapping("/cancelarReserva")
+    public List<CancelarReservaCarroResponseDTO> cancelarReserva(@RequestBody CancelarReservaCarroRequestDTO req) {
+        List<CancelarReservaCarroResponseDTO> resultado = hubCarroClient.cancelarReserva(req);
+        return resultado;
+    }
+
+    @PostMapping("/obterFormasPagamento")
+    public List<FormasPagamentoCarroResponseDTO> obterFormasPagamento(@RequestBody FormasPagamentoCarroRequestDTO req) {
+        List<FormasPagamentoCarroResponseDTO> resultado = hubCarroClient.obterFormasPagamento(req);
+        return resultado;
+    }
+
+    @PostMapping("/emitir")
+    public List<EmitirCarroResponseDTO> obterFormasPagamento(@RequestBody EmitirCarroRequestDTO req) {
+        List<EmitirCarroResponseDTO> resultado = hubCarroClient.emitir(req);
+        return resultado;
+    }
 }
