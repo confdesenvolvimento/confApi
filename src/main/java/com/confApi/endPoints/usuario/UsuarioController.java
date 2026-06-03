@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 
 @RestController
-@RequestMapping("/api/clube/usuario")
+@RequestMapping("/api/usuario")
 public class UsuarioController {
 
     @Autowired
