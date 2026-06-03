@@ -1,10 +1,8 @@
-package com.confApi.db.confManager.usuario;
+package com.confApi.endPoints.usuario;
 
+import com.confApi.db.confManager.usuario.UsuarioService;
 import com.confApi.db.confManager.usuario.dto.AuthRequestDto;
 import com.confApi.db.confManager.usuario.dto.UsuarioDto;
-import com.confApi.db.confManager.usuario.dto.autenticar.UsuarioResponseDTO;
-import com.confApi.endPoints.usuario.UsuarioApi;
-import com.confApi.endPoints.usuario.UsuarioService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 
 @RestController
-@RequestMapping("/api/usuario")
+@RequestMapping("/api/clube/usuario")
 public class UsuarioController {
 
     @Autowired
