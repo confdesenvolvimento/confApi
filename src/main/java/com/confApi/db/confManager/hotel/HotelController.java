@@ -1,6 +1,5 @@
 package com.confApi.db.confManager.hotel;
 
-import com.confApi.geradorPdf.geradorAereoPDF.EnvioPdfService;
 import com.confApi.geradorPdf.aereo.EnvioReservaAereoPDF;
 import com.confApi.geradorPdf.aereo.GeradorAereoPDFModel;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,7 +13,7 @@ import java.io.IOException;
 @RequestMapping("/api/hotel")
 public class HotelController {
 
-    @PostMapping("/reservaAereo")
+   /* @PostMapping("/reservaAereo")
     public void geradorPdf2(@RequestBody GeradorAereoPDFModel geradorAereoPDFModel) throws IOException {
         System.out.println("getUsuarioConfDto :  "+geradorAereoPDFModel.getUsuarioConfDto());
         System.out.println("plano viagem :  "+geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
@@ -28,5 +27,5 @@ public class HotelController {
         System.out.println("reserva : "+envio.getReservaAereoModelPDF().getUsuarioCriacao().getLoginUsuario());
         System.out.println("reserva : "+envio.getReservaAereoModelPDF().getUsuarioCriacao().getNomeCompleto());
         new EnvioPdfService().envioPDF2(new EnvioReservaAereoPDF(geradorAereoPDFModel));
-    }
+    }*/
 }

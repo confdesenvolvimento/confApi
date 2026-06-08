@@ -1,12 +1,7 @@
 package com.confApi.geradorPdf;
 
 import com.confApi.geradorPdf.aereo.GeradorAereoPDF;
-import com.confApi.geradorPdf.aereo.ReservaAereoModelPDF;
-import com.confApi.geradorPdf.EnvioReservaAereoPDF.EnvioPlanoViagemReservaAereoPDF;
-import com.confApi.geradorPdf.geradorAereoPDF.EnvioPdfService;
-import com.confApi.geradorPdf.aereo.EnvioReservaAereoPDF;
 import com.confApi.geradorPdf.aereo.GeradorAereoPDFModel;
-import com.confApi.geradorPdf.geradorAereoPDF.GeradorReservaAereoPDFService;
 import com.confApi.geradorPdf.hotel.GeradorHotelPDFModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
@@ -22,20 +17,7 @@ import java.io.IOException;
 public class GeradorPDFController {
 
     @Autowired
-    private GeradorReservaAereoPDFService aereoPDFService;
-
-    @Autowired
     private GeradorPDFService geradorPDFService;
-/*
-    @PostMapping("/reservaAereo")
-    public void geradorPdf(@RequestBody GeradorAereoPDFModel geradorAereoPDFModel) throws IOException {
-        System.out.println("getUsuarioConfDto :  "+geradorAereoPDFModel.getUsuarioConfDto());
-        System.out.println("plano viagem :  "+geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
-
-       byte[] pdfBytes = aereoPDFService.gerarPdfReserva(new ReservaAereoModelPDF(geradorAereoPDFModel.getReservaAereoModel()));
-
-        new EnvioPdfService().envioPDF(new EnvioPlanoViagemReservaAereoPDF(geradorAereoPDFModel,pdfBytes));
-    }*/
 
     @PostMapping("/gerarAereoPDF")
     public ResponseEntity<byte[]> geradorAereoPdf(@RequestBody GeradorAereoPDFModel geradorAereoPDFModel) throws IOException {
