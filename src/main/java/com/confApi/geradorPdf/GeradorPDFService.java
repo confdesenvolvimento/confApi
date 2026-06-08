@@ -25,6 +25,11 @@ public class GeradorPDFService {
     @Autowired
     private UsuarioService usuarioService;
 
+    public byte[] gerarPopularAereoPDF(GeradorAereoPDFModel geradorAereoPDFModel) {
+        EnvioReservaAereoPDF envioReservaAereoPDF = new EnvioReservaAereoPDF(geradorAereoPDFModel);
+        return new GeradorPDFApi().gerarAereoPDF(envioReservaAereoPDF); // 👈 retorna o byte[]
+    }
+
     public void popularAereoPDF(GeradorAereoPDFModel geradorAereoPDFModel) {
         EnvioReservaAereoPDF envioReservaAereoPDF = new EnvioReservaAereoPDF(geradorAereoPDFModel);
         new GeradorPDFApi().envioAereoPDF(envioReservaAereoPDF);

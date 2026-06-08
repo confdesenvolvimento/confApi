@@ -15,6 +15,32 @@ public class GeradorPDFApi extends AbstractTransactionServiceApi implements Seri
 
     private final String urlAPI = "mail";
 
+    public byte[] gerarAereoPDF(EnvioReservaAereoPDF envioReservaPDF) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", "Bearer " + new ConfAppService().token());
+
+        HttpEntity<EnvioReservaAereoPDF> requestEntity = new HttpEntity<>(envioReservaPDF, headers);
+
+        try {
+            ResponseEntity<byte[]> responseEntity = new RestTemplate().exchange(
+                    UrlConfig.URL_CONFIANCA_EMAIL + urlAPI + "/gerar-pdf-reserva-aereo", // 👈 nova rota
+                    HttpMethod.POST,
+                    requestEntity,
+                    byte[].class // 👈 recebe byte[] direto
+            );
+
+            if (responseEntity.getStatusCode().is2xxSuccessful() && responseEntity.getBody() != null) {
+                return responseEntity.getBody(); // 👈 retorna o PDF
+            }
+
+        } catch (HttpClientErrorException ex) {
+            System.err.println("Erro ao gerar PDF: " + ex.getMessage());
+        }
+
+        return new byte[0]; // retorna vazio em caso de erro
+    }
+
     public void envioAereoPDF(EnvioReservaAereoPDF envioReservaPDF) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
