@@ -11,6 +11,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
@@ -75,9 +76,6 @@ public class HubCarroClient {
                     );
 
             List<SelecionarCarroResponseDTO> body = response.getBody();
-
-            System.out.println("body: " + body);
-
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 return body;
             }
@@ -90,7 +88,7 @@ public class HubCarroClient {
         }
     }
 
-    public List<ReservarCarroResponseDTO> reservar(ReservarCarroRequestDTO reservarCarroRequestDTO) {
+    public List<EmitirCarroResponseDTO> reservar(ReservarCarroRequestDTO reservarCarroRequestDTO) {
 //        SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
 
         try {
@@ -108,10 +106,13 @@ public class HubCarroClient {
 
             List<ReservarCarroResponseDTO> body = response.getBody();
 
-            System.out.println("body: " + body);
-
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
-                return body;
+                List<EmitirCarroResponseDTO> listResponse = new ArrayList<>();
+                for(ReservarCarroResponseDTO reserva : body) {
+                    EmitirCarroRequestDTO emitirCarroRequestDTO = new EmitirCarroRequestDTO(reserva, reservarCarroRequestDTO);
+                    listResponse.addAll(emitir(emitirCarroRequestDTO));
+                }
+                return listResponse;
             }
             LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
             return null;

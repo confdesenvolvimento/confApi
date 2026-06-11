@@ -36,9 +36,8 @@ public class CarrosController {
     }
 
     @PostMapping("/reservar")
-    public List<ReservarCarroResponseDTO> efetuarReserva(@RequestBody ReservarCarroRequestDTO req) {
-        List<ReservarCarroResponseDTO> resultado = hubCarroClient.reservar(req);
-        return resultado;
+    public List<EmitirCarroResponseDTO> efetuarReserva(@RequestBody ReservarCarroRequestDTO req) {
+        return hubCarroClient.reservar(req);
     }
 
     @PostMapping("/consultarReserva")
