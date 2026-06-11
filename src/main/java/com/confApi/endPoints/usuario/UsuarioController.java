@@ -18,7 +18,6 @@ public class UsuarioController {
 
     @PostMapping("/auth")
     public ResponseEntity<UsuarioDto> autenficarUsuario(@RequestBody AuthRequestDto requestDto) throws IOException {
-        System.out.println("chamou login "+requestDto);
         return ResponseEntity.ok().body(usuarioService.autenficarUsuarioAuth(requestDto).getBody());
     }
 
