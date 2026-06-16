@@ -1,7 +1,7 @@
 package com.confApi.db.confManager.passageiro;
 
 import com.confApi.db.confManager.assentoAereo.Assento;
-import com.confApi.db.confManager.faturas.dto.model.Bilhete;
+import com.confApi.db.confManager.bilhete.BilheteAereo;
 import com.confApi.db.confManager.reservaValor.ReservaValor;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -15,6 +15,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Passageiro implements Serializable {
 
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     private int codgPassageiro;
     @JsonIgnore
     private int codgReservaAereo;
@@ -31,7 +32,7 @@ public class Passageiro implements Serializable {
     private String idPassageiroCia;
     private Date dataNascimento;
     private List<ReservaValor> reservaValores;
-    private List<Bilhete> bilhetes;
+    private List<BilheteAereo> bilhetes;
     private List<SeguroSegurado> segurados;
 
     public Passageiro(com.confApi.hub.aereo.dto.Passageiro pass) {
@@ -62,11 +63,11 @@ public class Passageiro implements Serializable {
         this.bilhetes = null;
     }
 
-    public List<Bilhete> getBilhetes() {
+    public List<BilheteAereo> getBilhetes() {
         return bilhetes;
     }
 
-    public void setBilhetes(List<Bilhete> bilhetes) {
+    public void setBilhetes(List<BilheteAereo> bilhetes) {
         this.bilhetes = bilhetes;
     }
 

@@ -10,6 +10,7 @@ public class ParametrosPesquisa {
     private Ordenacao ordenacao;
     private TipoBagagem tipoBagagem;
     private TipoTarifa tarifa;
+
     public ParametrosPesquisa() {
     }
 
@@ -19,6 +20,8 @@ public class ParametrosPesquisa {
         this.tipoBagagem = tipoBagagem;
         this.tarifa = tarifa;
     }
+
+
 
     public Classe getClasse() {
         return classe;

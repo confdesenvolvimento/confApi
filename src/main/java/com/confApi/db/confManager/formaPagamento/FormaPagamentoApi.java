@@ -3,6 +3,8 @@ package com.confApi.db.confManager.formaPagamento;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
+import com.confApi.util.TelegramErrorAlert;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +28,9 @@ public class FormaPagamentoApi {
 
     private final RestTemplate restTemplate;
     private final ConfAppService confAppService;
+
+    @Autowired(required = false)
+    private TelegramErrorAlert telegramErrorAlert;
 
     public FormaPagamentoApi(RestTemplate restTemplate, ConfAppService confAppService) {
         this.restTemplate = restTemplate;
@@ -72,7 +77,14 @@ public class FormaPagamentoApi {
                             .orElse(formas.get(0)));
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Nao foi possivel consultar forma de pagamento por nome: " + nomeNormalizado, e);
+            alertarErro("Nao foi possivel consultar forma de pagamento por nome " + nomeNormalizado, e);
             return null;
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception e) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, e);
         }
     }
 

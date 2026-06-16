@@ -5,6 +5,7 @@ import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.aeroporto.DTO.AeroportoParamRq;
 import com.confApi.db.confManager.familia.FamiliaService;
+import com.confApi.util.TelegramErrorAlert;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +31,9 @@ public class AeroportoService {
     @Autowired
     private ConfAppService confAppService;
 
+    @Autowired(required = false)
+    private TelegramErrorAlert telegramErrorAlert;
+
     @Autowired
     public AeroportoService(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
@@ -42,8 +46,6 @@ public class AeroportoService {
     public List<Aeroporto> findAeroportoByParametros(AeroportoParamRq paramRq) {
 
         String url = UrlConfig.URL_CONFIANCA_MANAGER + "aeroporto/iataParam";
-        System.out.println("URL AEROPORTO PARAMETROS (POST): " + url);
-
         try {
             HttpHeaders headers = defaultHeaders();
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
@@ -63,6 +65,7 @@ public class AeroportoService {
 
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, "Erro ao consultar aeroportos por parâmetros", ex);
+            alertarErro("Erro ao consultar aeroportos por parametros", ex);
         }
 
         return new ArrayList<>();
@@ -74,8 +77,6 @@ public class AeroportoService {
         List<Aeroporto> aeroportos = new ArrayList<>();
 
         String url = UrlConfig.URL_CONFIANCA_MANAGER + "aeroporto"+"/iataPais/" + iataPais;
-
-        System.out.println("URL AEROPORTO POR PAIS: " + url);
 
         try {
             ResponseEntity<String> response = restTemplate.exchange(
@@ -94,6 +95,7 @@ public class AeroportoService {
 
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, "Erro ao consultar aeroportos por IATA do país: " + iataPais, ex);
+            alertarErro("Erro ao consultar aeroportos por IATA do pais " + iataPais, ex);
         }
 
         return aeroportos;
@@ -103,8 +105,6 @@ public class AeroportoService {
     public Aeroporto findAeroportoByIata(String iata) {
 
         String url = UrlConfig.URL_CONFIANCA_MANAGER + "aeroporto"+"/iata/" + iata;
-
-        System.out.println("URL AEROPORTO POR IATA: " + url);
 
         try {
             ResponseEntity<Aeroporto> response =
@@ -124,6 +124,7 @@ public class AeroportoService {
 
         } catch (Exception ex) {
             LOG.log(Level.SEVERE, "Erro ao consultar aeroporto por IATA", ex);
+            alertarErro("Erro ao consultar aeroporto por IATA " + iata, ex);
             return null;
         }
     }
@@ -139,12 +140,26 @@ public class AeroportoService {
                 headers.setBearerAuth(token.getToken());
             } else {
                 LOG.warning("Token de autenticação não encontrado no ConfAppService.");
+                alertarErro("Token de autenticacao nao encontrado no ConfAppService ao consultar aeroporto");
             }
         } catch (Exception ex) {
             LOG.log(Level.WARNING, "Falha ao obter token de autenticação do ConfAppService", ex);
+            alertarErro("Falha ao obter token de autenticacao do ConfAppService ao consultar aeroporto", ex);
         }
 
         return headers;
+    }
+
+    private void alertarErro(String mensagem) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem);
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception e) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, e);
+        }
     }
 
 }

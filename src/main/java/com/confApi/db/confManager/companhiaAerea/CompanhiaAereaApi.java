@@ -3,6 +3,8 @@ package com.confApi.db.confManager.companhiaAerea;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
+import com.confApi.util.TelegramErrorAlert;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +28,9 @@ public class CompanhiaAereaApi {
 
     private final RestTemplate restTemplate;
     private final ConfAppService confAppService;
+
+    @Autowired(required = false)
+    private TelegramErrorAlert telegramErrorAlert;
 
     public CompanhiaAereaApi(RestTemplate restTemplate, ConfAppService confAppService) {
         this.restTemplate = restTemplate;
@@ -66,7 +71,14 @@ public class CompanhiaAereaApi {
                     .orElse(companhias.get(0));
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Nao foi possivel consultar companhia aerea por IATA: " + normalizedIata, e);
+            alertarErro("Nao foi possivel consultar companhia aerea por IATA " + normalizedIata, e);
             return null;
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception e) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, e);
         }
     }
 

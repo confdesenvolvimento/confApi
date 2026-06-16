@@ -1,5 +1,10 @@
 package com.confApi.wooba.webhook;
 
+import com.confApi.db.confManager.reservaAereo.ReservaAereo;
+import com.confApi.util.TelegramErrorAlert;
+import com.confApi.wooba.sales.WoobaAirReservationSyncResult;
+import com.confApi.wooba.sales.WoobaAirReservationService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -15,12 +20,20 @@ import java.util.logging.Logger;
 public class WoobaWebhookService {
 
     private static final Logger LOG = Logger.getLogger(WoobaWebhookService.class.getName());
+    private final WoobaAirReservationService airReservationService;
+
+    @Autowired(required = false)
+    private TelegramErrorAlert telegramErrorAlert;
 
     private static final List<DateTimeFormatter> LAST_UPDATE_FORMATS = List.of(
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"),
             DateTimeFormatter.ISO_LOCAL_DATE_TIME,
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS")
     );
+
+    public WoobaWebhookService(WoobaAirReservationService airReservationService) {
+        this.airReservationService = airReservationService;
+    }
 
     public WoobaWebhookResponse processar(WoobaWebhookRequest request) {
         validarPayload(request);
@@ -34,6 +47,8 @@ public class WoobaWebhookService {
                     "Webhook Wooba recebido com tipo de transacao desconhecido. Payload: {0}",
                     request
             );
+            alertarErro("Webhook Wooba recebido com tipo de transacao desconhecido. UniqueId: "
+                    + request.getUniqueId() + ", TransactionType: " + request.getTransactionType());
             return WoobaWebhookResponse.ignored(request, "Tipo de transacao Wooba nao mapeado.");
         }
 
@@ -69,24 +84,39 @@ public class WoobaWebhookService {
     }
 
     private boolean isReservaAerea(WoobaWebhookRequest request, WoobaTransactionType transactionType) {
-        if (transactionType.isAirReservation()) {
+        if (transactionType.isAir()) {
             return true;
         }
 
         String uniqueId = request.getUniqueId();
-        return uniqueId != null && uniqueId.toUpperCase(Locale.ROOT).startsWith("AIR-");
+        if (uniqueId == null) {
+            return false;
+        }
+
+        String normalized = uniqueId.toUpperCase(Locale.ROOT);
+        return normalized.startsWith("AIR-") || normalized.startsWith("TKT-");
     }
 
     private void processarReservaAerea(WoobaWebhookRequest request) {
         LocalDateTime lastUpdate = parseLastUpdate(request.getLastUpdate());
+        WoobaAirReservationSyncResult syncResult = airReservationService.processarWebhook(request);
+        ReservaAereo reservaAereo = syncResult.getReserva();
 
         LOG.log(
                 Level.INFO,
-                "Webhook Wooba de reserva aerea recebido. UniqueId: {0}, Locator: {1}, Id: {2}, LastUpdate: {3}",
-                new Object[]{request.getUniqueId(), request.getLocator(), request.getId(), lastUpdate}
+                "Webhook Wooba de reserva aerea processado. UniqueId: {0}, Locator: {1}, Id: {2}, LastUpdate: {3}, Action: {4}, Created: {5}, Updated: {6}, Passageiros: {7}, Trechos: {8}",
+                new Object[]{
+                        request.getUniqueId(),
+                        request.getLocator(),
+                        request.getId(),
+                        lastUpdate,
+                        syncResult.getAction(),
+                        syncResult.isCreated(),
+                        syncResult.isUpdated(),
+                        reservaAereo != null && reservaAereo.getPassageiros() != null ? reservaAereo.getPassageiros().size() : 0,
+                        reservaAereo != null && reservaAereo.getTrechos() != null ? reservaAereo.getTrechos().size() : 0
+                }
         );
-
-        // Proxima etapa: buscar details na Wooba pelo TransactionUniqueId e persistir no Manager.
     }
 
     private LocalDateTime parseLastUpdate(String lastUpdate) {
@@ -110,5 +140,11 @@ public class WoobaWebhookService {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private void alertarErro(String mensagem) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem);
+        }
     }
 }

@@ -10,6 +10,8 @@ import com.confApi.db.confManager.reservaAereo.ReservaAereo;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.endPoints.recebimento.RecebimentoApi;
 import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
+import com.confApi.util.TelegramErrorAlert;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -30,10 +32,15 @@ import java.util.stream.Collectors;
 public class WoobaAirReservationSyncService {
 
     private static final Logger LOG = Logger.getLogger(WoobaAirReservationSyncService.class.getName());
+    private static final Integer STATUS_CANCELADO = 2;
+    private static final Integer STATUS_EMITIDO = 3;
 
     private final ReservaAereoApi reservaAereoApi;
     private final RecebimentoApi recebimentoApi;
     private final NotificacaoApi notificacaoApi;
+
+    @Autowired(required = false)
+    private TelegramErrorAlert telegramErrorAlert;
 
     public WoobaAirReservationSyncService(ReservaAereoApi reservaAereoApi,
                                           RecebimentoApi recebimentoApi,
@@ -47,6 +54,8 @@ public class WoobaAirReservationSyncService {
         String motivoValidacao = validarReserva(reservaWooba);
         if (motivoValidacao != null) {
             LOG.log(Level.WARNING, "Reserva Wooba nao sincronizada: {0}", motivoValidacao);
+            alertarErro("Reserva Wooba nao sincronizada. Localizador: "
+                    + safeLocalizador(reservaWooba) + ". Motivo: " + motivoValidacao);
             return WoobaAirReservationSyncResult.ignored(motivoValidacao, reservaWooba);
         }
 
@@ -73,18 +82,23 @@ public class WoobaAirReservationSyncService {
             result = WoobaAirReservationSyncResult.processed(reservaDb);
         }
 
-        boolean statusMudouParaEmitido = !Integer.valueOf(3).equals(valorStatus(reservaDb))
-                && Integer.valueOf(3).equals(valorStatus(reservaWooba));
+        boolean statusMudouParaEmitido = !STATUS_EMITIDO.equals(valorStatus(reservaDb))
+                && STATUS_EMITIDO.equals(valorStatus(reservaWooba));
 
         if (!novaReserva) {
             atualizarStatusReservaSeNecessario(reservaDb, reservaWooba, result);
         }
 
         sincronizarBilhetes(reservaDb, reservaWooba, bilhetesWooba, result);
-        sincronizarRecebimentos(reservaDb, recebimentosWooba, result);
+        sincronizarRecebimentos(
+                reservaDb,
+                recebimentosWooba,
+                STATUS_CANCELADO.equals(valorStatus(reservaWooba)),
+                result
+        );
 
         List<String> bilhetesEmitidosAlterados = bilhetesEmitidosAlterados(result, bilhetesWooba);
-        if (Integer.valueOf(3).equals(valorStatus(reservaWooba))
+        if (STATUS_EMITIDO.equals(valorStatus(reservaWooba))
                 && (statusMudouParaEmitido || !bilhetesEmitidosAlterados.isEmpty())) {
             notificarReservaEmitida(reservaDb, bilhetesEmitidosAlterados);
             result.setIssuedNotificationSent(true);
@@ -151,7 +165,7 @@ public class WoobaAirReservationSyncService {
             return;
         }
 
-        if (Integer.valueOf(2).equals(statusWooba)) {
+        if (STATUS_CANCELADO.equals(statusWooba)) {
             reservaAereoApi.cancelar(
                     reservaDb.getCodgReservaAereo(),
                     reservaWooba.getDataCancelamento(),
@@ -185,6 +199,8 @@ public class WoobaAirReservationSyncService {
             if (passageiroDb == null || passageiroDb.getCodgPassageiro() <= 0) {
                 LOG.log(Level.WARNING, "Passageiro nao localizado para sincronizar bilhete. Localizador: {0}, chavePax: {1}",
                         new Object[]{reservaDb.getLocalizador(), entry.getKey()});
+                alertarErro("Passageiro nao localizado para sincronizar bilhete. Localizador: "
+                        + reservaDb.getLocalizador() + ", chavePax: " + entry.getKey());
                 continue;
             }
 
@@ -220,7 +236,11 @@ public class WoobaAirReservationSyncService {
         ReservaAereo payload = new ReservaAereo();
         payload.setCodgReservaAereo(reservaDb.getCodgReservaAereo());
         payload.setStatus(reservaWooba.getStatus());
-        payload.setDataEmissao(reservaWooba.getDataEmissao());
+        payload.setDataEmissao(firstDate(
+                reservaWooba.getDataEmissao(),
+                primeiraDataEmissao(bilhetesPayload(passageirosPayload)),
+                reservaDb.getDataEmissao()
+        ));
         payload.setCodgUsuarioEmissao(codgUsuario(reservaWooba.getCodgUsuarioCriacao()));
         payload.setPassageiros(passageirosPayload);
 
@@ -236,9 +256,32 @@ public class WoobaAirReservationSyncService {
         bilhete.setCodgBilhete(bilheteDb == null ? null : bilheteDb.getCodgBilhete());
         bilhete.setNumrBilhete(bilheteWooba.getNumrBilhete());
         bilhete.setStatus(bilheteWooba.getStatus());
-        bilhete.setDataEmissao(firstDate(bilheteWooba.getDataEmissao(), reservaWooba.getDataEmissao(), reservaWooba.getDataCriacao(), new Date()));
+        bilhete.setDataEmissao(firstDate(
+                bilheteWooba.getDataEmissao(),
+                bilheteDb == null ? null : bilheteDb.getDataEmissao(),
+                reservaWooba.getDataEmissao(),
+                reservaWooba.getDataCriacao(),
+                new Date()
+        ));
         bilhete.setDataCancelamento(bilheteWooba.getDataCancelamento());
         return bilhete;
+    }
+
+    private List<BilheteAereo> bilhetesPayload(List<Passageiro> passageirosPayload) {
+        List<BilheteAereo> bilhetes = new ArrayList<>();
+        for (Passageiro passageiro : safeList(passageirosPayload)) {
+            bilhetes.addAll(safeList(passageiro.getBilhetes()));
+        }
+        return bilhetes;
+    }
+
+    private Date primeiraDataEmissao(List<BilheteAereo> bilhetes) {
+        for (BilheteAereo bilhete : safeList(bilhetes)) {
+            if (bilhete != null && bilhete.getDataEmissao() != null) {
+                return bilhete.getDataEmissao();
+            }
+        }
+        return null;
     }
 
     private boolean bilheteMudou(BilheteAereo bilheteDb, BilheteAereo bilheteWooba) {
@@ -249,15 +292,18 @@ public class WoobaAirReservationSyncService {
 
     private void sincronizarRecebimentos(ReservaAereo reservaDb,
                                          List<Recebimento> recebimentosWooba,
+                                         boolean reservaCancelada,
                                          WoobaAirReservationSyncResult result) {
-        if (recebimentosWooba == null || recebimentosWooba.isEmpty()
-                || reservaDb == null || reservaDb.getCodgReservaAereo() == null) {
+        if (reservaDb == null || reservaDb.getCodgReservaAereo() == null) {
             return;
         }
 
-        List<Recebimento> recebimentosDb = new ArrayList<>(safeList(reservaDb.getRecebimentos()));
-        if (recebimentosDb.isEmpty()) {
-            recebimentosDb.addAll(safeList(recebimentoApi.findByReservaAereo(reservaDb.getCodgReservaAereo())));
+        List<Recebimento> recebimentosDb = carregarRecebimentosDb(reservaDb);
+        if (recebimentosWooba == null || recebimentosWooba.isEmpty()) {
+            if (reservaCancelada) {
+                cancelarRecebimentosExistentes(reservaDb, recebimentosDb, result);
+            }
+            return;
         }
 
         int gravados = 0;
@@ -266,6 +312,8 @@ public class WoobaAirReservationSyncService {
             if (!recebimentoValidoParaPersistir(recebimentoWooba)) {
                 LOG.log(Level.WARNING, "Recebimento Wooba ignorado por falta de forma de pagamento resolvida. Localizador: {0}",
                         reservaDb.getLocalizador());
+                alertarErro("Recebimento Wooba ignorado por falta de forma de pagamento resolvida. Localizador: "
+                        + reservaDb.getLocalizador());
                 continue;
             }
 
@@ -284,6 +332,54 @@ public class WoobaAirReservationSyncService {
 
         result.setPagamentosGravados(gravados);
         result.setPagamentosAtualizados(atualizados);
+    }
+
+    private List<Recebimento> carregarRecebimentosDb(ReservaAereo reservaDb) {
+        List<Recebimento> recebimentosDb = new ArrayList<>(safeList(reservaDb.getRecebimentos()));
+        if (recebimentosDb.isEmpty()) {
+            recebimentosDb.addAll(safeList(recebimentoApi.findByReservaAereo(reservaDb.getCodgReservaAereo())));
+        }
+        return recebimentosDb;
+    }
+
+    private void cancelarRecebimentosExistentes(ReservaAereo reservaDb,
+                                                List<Recebimento> recebimentosDb,
+                                                WoobaAirReservationSyncResult result) {
+        int atualizados = 0;
+        for (Recebimento recebimentoDb : safeList(recebimentosDb)) {
+            if (recebimentoDb == null || recebimentoDb.getCodgRecebimento() == null) {
+                continue;
+            }
+
+            Double valorCancelado = valorCanceladoDoRecebimento(recebimentoDb);
+            if (Integer.valueOf(0).equals(recebimentoDb.getStatus())
+                    && sameDouble(recebimentoDb.getValrCancelado(), valorCancelado)) {
+                continue;
+            }
+
+            Recebimento payload = prepararRecebimentoParaCancelamento(recebimentoDb, reservaDb, valorCancelado);
+            recebimentoApi.atualizar(recebimentoDb.getCodgRecebimento(), payload);
+            atualizados++;
+        }
+
+        result.setPagamentosAtualizados(result.getPagamentosAtualizados() + atualizados);
+    }
+
+    private Recebimento prepararRecebimentoParaCancelamento(Recebimento recebimentoDb,
+                                                            ReservaAereo reservaDb,
+                                                            Double valorCancelado) {
+        recebimentoDb.setCodgReservaAereo(new ReservaAereo(reservaDb.getCodgReservaAereo()));
+        recebimentoDb.setStatus(0);
+        recebimentoDb.setValrCancelado(valorCancelado);
+        return recebimentoDb;
+    }
+
+    private Double valorCanceladoDoRecebimento(Recebimento recebimento) {
+        return firstDouble(
+                valorMaiorQueZero(recebimento.getValrRecebimento()),
+                valorMaiorQueZero(recebimento.getValrCancelado()),
+                0.0
+        );
     }
 
     private boolean recebimentoValidoParaPersistir(Recebimento recebimento) {
@@ -306,6 +402,12 @@ public class WoobaAirReservationSyncService {
         }
         if (recebimentoWooba.getCopiacolaPix() == null) {
             recebimentoWooba.setCopiacolaPix(recebimentoDb.getCopiacolaPix());
+        }
+        if (recebimentoWooba.getCodgTransacao() == null) {
+            recebimentoWooba.setCodgTransacao(recebimentoDb.getCodgTransacao());
+        }
+        if (recebimentoWooba.getOrderGatewayCartao() == null) {
+            recebimentoWooba.setOrderGatewayCartao(recebimentoDb.getOrderGatewayCartao());
         }
         return recebimentoWooba;
     }
@@ -346,6 +448,7 @@ public class WoobaAirReservationSyncService {
     private boolean recebimentoMudou(Recebimento recebimentoDb, Recebimento recebimentoWooba) {
         return !sameDouble(recebimentoDb.getValrRecebimento(), recebimentoWooba.getValrRecebimento())
                 || !Objects.equals(recebimentoDb.getStatus(), recebimentoWooba.getStatus())
+                || !sameDouble(recebimentoDb.getValrCancelado(), recebimentoWooba.getValrCancelado())
                 || !Objects.equals(formaPagamentoId(recebimentoDb.getCodgFormaPagto()), formaPagamentoId(recebimentoWooba.getCodgFormaPagto()))
                 || !sameTime(recebimentoDb.getDataRecebimento(), recebimentoWooba.getDataRecebimento())
                 || !sameString(recebimentoDb.getMensagem(), recebimentoWooba.getMensagem());
@@ -355,7 +458,7 @@ public class WoobaAirReservationSyncService {
         NotificacaoConfigDTO notificacao = notificacaoBase(reserva);
         notificacao.setTituloNotificacao("Reserva aerea criada");
         notificacao.setSubTituloNotificacao("Localizador " + reserva.getLocalizador());
-        notificacao.setDescricaoNotificacao("A reserva aerea " + reserva.getLocalizador() + " foi criada no Confianca Manager via Wooba.");
+        notificacao.setDescricaoNotificacao("A reserva aerea " + reserva.getLocalizador() + " criada com sucesso no portal do agente.");
         notificacaoApi.criarParaUsuario(notificacao);
     }
 
@@ -488,6 +591,22 @@ public class WoobaAirReservationSyncService {
         return null;
     }
 
+    private Double firstDouble(Double... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Double value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private Double valorMaiorQueZero(Double value) {
+        return value != null && value > 0 ? value : null;
+    }
+
     private boolean sameTime(Date left, Date right) {
         if (left == null && right == null) {
             return true;
@@ -522,5 +641,15 @@ public class WoobaAirReservationSyncService {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private String safeLocalizador(ReservaAereo reserva) {
+        return reserva == null ? null : reserva.getLocalizador();
+    }
+
+    private void alertarErro(String mensagem) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem);
+        }
     }
 }

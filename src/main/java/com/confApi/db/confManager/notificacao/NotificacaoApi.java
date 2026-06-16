@@ -3,6 +3,8 @@ package com.confApi.db.confManager.notificacao;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
+import com.confApi.util.TelegramErrorAlert;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -22,6 +24,9 @@ public class NotificacaoApi {
 
     private final RestTemplate restTemplate;
     private final ConfAppService confAppService;
+
+    @Autowired(required = false)
+    private TelegramErrorAlert telegramErrorAlert;
 
     public NotificacaoApi(RestTemplate restTemplate, ConfAppService confAppService) {
         this.restTemplate = restTemplate;
@@ -49,6 +54,13 @@ public class NotificacaoApi {
             );
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Nao foi possivel criar notificacao da reserva Wooba.", e);
+            alertarErro("Nao foi possivel criar notificacao da reserva Wooba", e);
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception e) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, e);
         }
     }
 

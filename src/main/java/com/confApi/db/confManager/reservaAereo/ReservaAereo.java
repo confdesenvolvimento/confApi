@@ -34,6 +34,7 @@ public class ReservaAereo implements Serializable {
     private Integer codgUsuarioEmissao;
     private Integer codgUsuarioCancelamento;
     private ReservaPacote codgReservaPacote;
+    private Integer fonte;
     private List<Trecho> trechos;
     private List<Passageiro> passageiros;
     private List<Recebimento> recebimentos;
@@ -60,6 +61,7 @@ public class ReservaAereo implements Serializable {
         this.passageiros = null;
         this.recebimentos = null;
         this.codgReservaPacote = obj.getReservaPacote();
+        this.fonte = null;
     }
 
 
@@ -102,6 +104,7 @@ public class ReservaAereo implements Serializable {
         sb.append(", codgAgencia=").append(codgAgencia);
         sb.append(", codgUsuarioEmissao=").append(codgUsuarioEmissao);
         sb.append(", codgUsuarioCancelamento=").append(codgUsuarioCancelamento);
+        sb.append(", fonte=").append(fonte);
         sb.append(", trechos=").append(trechos);
         sb.append(", passageiros=").append(passageiros);
         sb.append(", recebimentos=").append(recebimentos);
@@ -259,6 +262,14 @@ public class ReservaAereo implements Serializable {
 
     public void setCodgReservaPacote(ReservaPacote codgReservaPacote) {
         this.codgReservaPacote = codgReservaPacote;
+    }
+
+    public Integer getFonte() {
+        return fonte;
+    }
+
+    public void setFonte(Integer fonte) {
+        this.fonte = fonte;
     }
 
 }

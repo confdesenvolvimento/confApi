@@ -4,6 +4,8 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.recebimento.Recebimento;
+import com.confApi.util.TelegramErrorAlert;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +28,9 @@ public class RecebimentoApi {
 
     private final RestTemplate restTemplate;
     private final ConfAppService confAppService;
+
+    @Autowired(required = false)
+    private TelegramErrorAlert telegramErrorAlert;
 
     public RecebimentoApi(RestTemplate restTemplate, ConfAppService confAppService) {
         this.restTemplate = restTemplate;
@@ -56,6 +61,7 @@ public class RecebimentoApi {
             return response.getBody() == null ? Collections.emptyList() : response.getBody();
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Erro ao consultar recebimentos da reserva aerea: " + codgReservaAereo, e);
+            alertarErro("Erro ao consultar recebimentos da reserva aerea " + codgReservaAereo, e);
             return Collections.emptyList();
         }
     }
@@ -76,6 +82,7 @@ public class RecebimentoApi {
             );
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Erro ao gravar recebimento da reserva Wooba.", e);
+            alertarErro("Erro ao gravar recebimento da reserva Wooba", e);
             throw e;
         }
     }
@@ -97,7 +104,14 @@ public class RecebimentoApi {
             );
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Erro ao atualizar recebimento da reserva Wooba. Id: " + codgRecebimento, e);
+            alertarErro("Erro ao atualizar recebimento da reserva Wooba. Id " + codgRecebimento, e);
             throw e;
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception e) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, e);
         }
     }
 

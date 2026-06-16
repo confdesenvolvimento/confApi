@@ -50,4 +50,8 @@ public enum WoobaTransactionType {
     public boolean isAirReservation() {
         return this == AIR_RESERVATION;
     }
+
+    public boolean isAir() {
+        return this == AIR_RESERVATION || this == AIR_TICKET;
+    }
 }

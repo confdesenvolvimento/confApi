@@ -11,6 +11,7 @@ import com.confApi.db.confManager.reservaAereo.ReservaAereo;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.endPoints.recebimento.RecebimentoApi;
 import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -18,6 +19,8 @@ import java.util.Date;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -37,7 +40,7 @@ class WoobaAirReservationSyncServiceTest {
             new WoobaAirReservationSyncService(reservaAereoApi, recebimentoApi, notificacaoApi);
 
     @Test
-    void deveCriarReservaSincronizarBilhetePagamentoENotificar() {
+    void deveCriarReservaSincronizarBilhetePagamentoENotificar() throws Exception {
         ReservaAereo reservaWooba = reservaWooba("ABC123", 3);
 
         ReservaAereo reservaDb = reservaDb("ABC123", 3);
@@ -58,6 +61,9 @@ class WoobaAirReservationSyncServiceTest {
         verify(reservaAereoApi).criar(criacaoCaptor.capture());
         assertNull(criacaoCaptor.getValue().getRecebimentos());
         assertNull(criacaoCaptor.getValue().getPassageiros().get(0).getBilhetes());
+        String passageiroNovoJson = new ObjectMapper()
+                .writeValueAsString(criacaoCaptor.getValue().getPassageiros().get(0));
+        assertFalse(passageiroNovoJson.contains("\"codgPassageiro\":0"));
 
         verify(reservaAereoApi).atualizar(eq(999), any(ReservaAereo.class));
         verify(recebimentoApi).gravar(any(Recebimento.class));
@@ -91,6 +97,110 @@ class WoobaAirReservationSyncServiceTest {
         verify(reservaAereoApi).atualizar(eq(999), any(ReservaAereo.class));
         verify(recebimentoApi).atualizar(eq(88), any(Recebimento.class));
         verify(recebimentoApi, never()).gravar(any());
+    }
+
+    @Test
+    void deveCancelarReservaQuandoStatusForCancelado() {
+        ReservaAereo reservaWooba = reservaWooba("ABC123", 2);
+        reservaWooba.setDataCancelamento(new Date());
+        ReservaAereo reservaDb = reservaDb("ABC123", 1);
+
+        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+                .thenReturn(reservaDb, reservaDb);
+
+        service.sincronizar(reservaWooba);
+
+        verify(reservaAereoApi).cancelar(eq(999), any(Date.class), any(), eq(33));
+        verify(reservaAereoApi, never()).atualizarStatus(eq(999), eq(2));
+    }
+
+    @Test
+    void devePreservarDataEmissaoAoCancelarBilheteExistente() {
+        Date dataEmissaoOriginal = new Date(1760000000000L);
+        Date dataCancelamento = new Date(1761000000000L);
+        ReservaAereo reservaWooba = reservaWooba("ABC123", 2);
+        reservaWooba.setDataEmissao(null);
+        reservaWooba.setDataCancelamento(dataCancelamento);
+        BilheteAereo bilheteWooba = reservaWooba.getPassageiros().get(0).getBilhetes().get(0);
+        bilheteWooba.setStatus(0);
+        bilheteWooba.setDataEmissao(null);
+        bilheteWooba.setDataCancelamento(dataCancelamento);
+
+        ReservaAereo reservaDb = reservaDb("ABC123", 3);
+        reservaDb.setDataEmissao(null);
+        BilheteAereo bilheteDb = new BilheteAereo();
+        bilheteDb.setCodgBilhete(77);
+        bilheteDb.setNumrBilhete("1234567890");
+        bilheteDb.setStatus(1);
+        bilheteDb.setDataEmissao(dataEmissaoOriginal);
+        reservaDb.getPassageiros().get(0).setBilhetes(List.of(bilheteDb));
+
+        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+                .thenReturn(reservaDb, reservaDb);
+
+        service.sincronizar(reservaWooba);
+
+        ArgumentCaptor<ReservaAereo> payloadCaptor = ArgumentCaptor.forClass(ReservaAereo.class);
+        verify(reservaAereoApi).atualizar(eq(999), payloadCaptor.capture());
+        ReservaAereo payload = payloadCaptor.getValue();
+        assertEquals(dataEmissaoOriginal, payload.getDataEmissao());
+        assertNotNull(payload.getPassageiros());
+        assertEquals(dataEmissaoOriginal, payload.getPassageiros().get(0).getBilhetes().get(0).getDataEmissao());
+        assertEquals(dataCancelamento, payload.getPassageiros().get(0).getBilhetes().get(0).getDataCancelamento());
+    }
+
+    @Test
+    void deveAtualizarPagamentoComoCancelado() {
+        ReservaAereo reservaWooba = reservaWooba("ABC123", 2);
+        Recebimento recebimentoWooba = recebimento("1234567890", 0);
+        recebimentoWooba.setValrCancelado(1265.27);
+        reservaWooba.setRecebimentos(List.of(recebimentoWooba));
+
+        ReservaAereo reservaDb = reservaDb("ABC123", 3);
+        Recebimento recebimentoDb = recebimento("1234567890", 1);
+        recebimentoDb.setCodgRecebimento(88);
+        recebimentoDb.setValrCancelado(0.0);
+        reservaDb.setRecebimentos(List.of(recebimentoDb));
+
+        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+                .thenReturn(reservaDb, reservaDb);
+
+        service.sincronizar(reservaWooba);
+
+        ArgumentCaptor<Recebimento> recebimentoCaptor = ArgumentCaptor.forClass(Recebimento.class);
+        verify(recebimentoApi).atualizar(eq(88), recebimentoCaptor.capture());
+        Recebimento payload = recebimentoCaptor.getValue();
+        assertEquals(0, payload.getStatus());
+        assertEquals(1265.27, payload.getValrCancelado(), 0.001);
+        assertEquals(999, payload.getCodgReservaAereo().getCodgReservaAereo());
+    }
+
+    @Test
+    void deveCancelarRecebimentoExistenteQuandoReservaCanceladaVierSemPagamentos() {
+        ReservaAereo reservaWooba = reservaWooba("ABC123", 2);
+        reservaWooba.setRecebimentos(List.of());
+        reservaWooba.getPassageiros().get(0).setBilhetes(List.of());
+
+        ReservaAereo reservaDb = reservaDb("ABC123", 3);
+        reservaDb.setRecebimentos(null);
+        Recebimento recebimentoDb = recebimento("1234567890", 1);
+        recebimentoDb.setCodgRecebimento(88);
+        recebimentoDb.setValrRecebimento(854.64);
+        recebimentoDb.setValrCancelado(0.0);
+
+        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+                .thenReturn(reservaDb, reservaDb);
+        when(recebimentoApi.findByReservaAereo(999)).thenReturn(List.of(recebimentoDb));
+
+        WoobaAirReservationSyncResult result = service.sincronizar(reservaWooba);
+
+        assertEquals(1, result.getPagamentosAtualizados());
+        ArgumentCaptor<Recebimento> recebimentoCaptor = ArgumentCaptor.forClass(Recebimento.class);
+        verify(recebimentoApi).atualizar(eq(88), recebimentoCaptor.capture());
+        Recebimento payload = recebimentoCaptor.getValue();
+        assertEquals(0, payload.getStatus());
+        assertEquals(854.64, payload.getValrCancelado(), 0.001);
+        assertEquals(999, payload.getCodgReservaAereo().getCodgReservaAereo());
     }
 
     @Test

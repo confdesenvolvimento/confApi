@@ -7,6 +7,7 @@ import com.confApi.db.confManager.reservaAereo.ReservaAereo;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.db.confManager.usuario.dto.AuthRequestDto;
 import com.confApi.db.confManager.usuario.dto.UsuarioDto;
+import com.confApi.util.TelegramErrorAlert;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -16,12 +17,19 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Collections;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 @Service
 public class UsuarioApi {
 
+    private static final Logger LOG = Logger.getLogger(UsuarioApi.class.getName());
+
     @Autowired
     private ConfAppService confAppService;
+
+    @Autowired(required = false)
+    private TelegramErrorAlert telegramErrorAlert;
 
     private final RestTemplate restTemplate;
 
@@ -52,7 +60,8 @@ public class UsuarioApi {
             return response.getBody();
         } catch (Exception e) {
             Usuario erro = new Usuario();
-            System.out.println(e.getMessage());
+            LOG.log(Level.SEVERE, "Erro ao consultar usuario por login: " + loginUsuario, e);
+            alertarErro("Erro ao consultar usuario por login " + loginUsuario, e);
             return erro;
         }
     }
@@ -79,7 +88,8 @@ public class UsuarioApi {
             return response.getBody();
 
         } catch (Exception e) {
-            System.err.println(e.getMessage());
+            LOG.log(Level.SEVERE, "Erro ao consultar usuario Wooba por login: " + loginUsuario, e);
+            alertarErro("Erro ao consultar usuario Wooba por login " + loginUsuario, e);
             return e.getMessage();
         }
     }
@@ -109,10 +119,17 @@ public class UsuarioApi {
             return ResponseEntity.status(responseEntity.getStatusCode()).build();
 
         } catch (HttpClientErrorException ex) {
-            // log / tratamento
+            LOG.log(Level.SEVERE, "Erro ao autenticar usuario no Manager.", ex);
+            alertarErro("Erro ao autenticar usuario no Manager", ex);
             return ResponseEntity
                     .status(ex.getStatusCode())
                     .build();
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception e) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, e);
         }
     }
 

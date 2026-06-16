@@ -1,17 +1,28 @@
 package com.confApi.wooba.webhook;
 
+import com.confApi.db.confManager.reservaAereo.ReservaAereo;
+import com.confApi.wooba.sales.WoobaAirReservationSyncResult;
+import com.confApi.wooba.sales.WoobaAirReservationService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class WoobaWebhookServiceTest {
 
-    private final WoobaWebhookService service = new WoobaWebhookService();
+    private final WoobaAirReservationService airReservationService = mock(WoobaAirReservationService.class);
+    private final WoobaWebhookService service = new WoobaWebhookService(airReservationService);
 
     @Test
     void processarDeveAceitarReservaAerea() {
+        when(airReservationService.processarWebhook(any())).thenReturn(WoobaAirReservationSyncResult.processed(new ReservaAereo()));
+
         WoobaWebhookRequest request = new WoobaWebhookRequest();
         request.setApi("Travellink-ApiSales");
         request.setTransactionType(1);
@@ -27,6 +38,30 @@ class WoobaWebhookServiceTest {
         assertTrue(response.getAccepted());
         assertTrue(response.getAirReservation());
         assertEquals("AIR-DE9F11CB-8A50-4BF0-8AFD-FE010D8DB63C", response.getUniqueId());
+        verify(airReservationService).processarWebhook(request);
+    }
+
+    @Test
+    void processarDeveAceitarBilheteAereo() {
+        when(airReservationService.processarWebhook(any())).thenReturn(WoobaAirReservationSyncResult.processed(new ReservaAereo()));
+
+        WoobaWebhookRequest request = new WoobaWebhookRequest();
+        request.setApi("Travellink-ApiSales");
+        request.setTransactionType(100);
+        request.setTransactionTypeDescription("AirTicket");
+        request.setId(11264222L);
+        request.setUniqueId("TKT-E7FE7059-5DC0-4234-850C-668E99A67148");
+        request.setLocator("GXNHDJ");
+        request.setTicket("7242614288032");
+        request.setLastUpdate("2026-05-25T10:19:04.387");
+
+        WoobaWebhookResponse response = service.processar(request);
+
+        assertEquals("RECEIVED", response.getStatus());
+        assertTrue(response.getAccepted());
+        assertTrue(response.getAirReservation());
+        assertEquals("TKT-E7FE7059-5DC0-4234-850C-668E99A67148", response.getUniqueId());
+        verify(airReservationService).processarWebhook(request);
     }
 
     @Test
@@ -45,6 +80,7 @@ class WoobaWebhookServiceTest {
         assertEquals("IGNORED", response.getStatus());
         assertTrue(response.getAccepted());
         assertEquals(Boolean.FALSE, response.getAirReservation());
+        verify(airReservationService, never()).processarWebhook(any());
     }
 
     @Test
