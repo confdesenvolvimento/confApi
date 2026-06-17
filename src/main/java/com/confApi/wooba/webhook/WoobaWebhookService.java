@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -28,6 +29,9 @@ public class WoobaWebhookService {
 
     @Value("${wooba.webhook.trace.enabled:false}")
     private boolean traceEnabled;
+
+    @Value("${wooba.webhook.log.enabled:false}")
+    private boolean webhookLogEnabled;
 
     @Value("${wooba.webhook.sales.enabled:true}")
     private boolean salesWebhookEnabled = true;
@@ -71,11 +75,8 @@ public class WoobaWebhookService {
         }
 
         if (!isReservaAerea(request, transactionType.get())) {
-            LOG.log(
-                    Level.INFO,
-                    "Webhook Wooba recebido e ignorado por nao ser reserva aerea. Tipo: {0}, UniqueId: {1}",
-                    new Object[]{transactionType.get().getDescription(), request.getUniqueId()}
-            );
+            logInfo("Webhook Wooba recebido e ignorado por nao ser reserva aerea. Tipo: {0}, UniqueId: {1}",
+                    new Object[]{transactionType.get().getDescription(), request.getUniqueId()});
             alertarEvento("Webhook Wooba ignorado por nao ser aereo. " + request.resumo());
             return WoobaWebhookResponse.ignored(request, "Evento recebido, mas ainda nao processado para este produto.");
         }
@@ -123,9 +124,7 @@ public class WoobaWebhookService {
         WoobaAirReservationSyncResult syncResult = airReservationService.processarWebhook(request);
         ReservaAereo reservaAereo = syncResult.getReserva();
 
-        LOG.log(
-                Level.INFO,
-                "Webhook Wooba de reserva aerea processado. UniqueId: {0}, Locator: {1}, Id: {2}, LastUpdate: {3}, Action: {4}, Created: {5}, Updated: {6}, Passageiros: {7}, Trechos: {8}",
+        logInfo("Webhook Wooba de reserva aerea processado. UniqueId: {0}, Locator: {1}, Id: {2}, LastUpdate: {3}, Action: {4}, Created: {5}, Updated: {6}, Passageiros: {7}, Trechos: {8}",
                 new Object[]{
                         request.getUniqueId(),
                         request.getLocator(),
@@ -136,8 +135,7 @@ public class WoobaWebhookService {
                         syncResult.isUpdated(),
                         reservaAereo != null && reservaAereo.getPassageiros() != null ? reservaAereo.getPassageiros().size() : 0,
                         reservaAereo != null && reservaAereo.getTrechos() != null ? reservaAereo.getTrechos().size() : 0
-                }
-        );
+                });
         alertarEvento("Webhook Wooba aereo finalizado. " + request.resumo()
                 + ", Action=" + syncResult.getAction()
                 + ", Reason=" + safe(syncResult.getReason())
@@ -158,6 +156,12 @@ public class WoobaWebhookService {
         }
 
         String normalized = lastUpdate.trim();
+
+        try {
+            return OffsetDateTime.parse(normalized, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toLocalDateTime();
+        } catch (DateTimeParseException ignored) {
+            // Tenta os formatos sem timezone abaixo.
+        }
 
         for (DateTimeFormatter formatter : LAST_UPDATE_FORMATS) {
             try {
@@ -197,5 +201,11 @@ public class WoobaWebhookService {
 
     private String resumo(WoobaWebhookRequest request) {
         return request == null ? "Payload=null" : request.resumo();
+    }
+
+    private void logInfo(String mensagem, Object[] parametros) {
+        if (webhookLogEnabled) {
+            LOG.log(Level.INFO, mensagem, parametros);
+        }
     }
 }

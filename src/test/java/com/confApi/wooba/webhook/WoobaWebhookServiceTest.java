@@ -66,6 +66,28 @@ class WoobaWebhookServiceTest {
     }
 
     @Test
+    void processarDeveAceitarLastUpdateComOffsetEFractionLonga() {
+        when(airReservationService.processarWebhook(any())).thenReturn(WoobaAirReservationSyncResult.processed(new ReservaAereo()));
+
+        WoobaWebhookRequest request = new WoobaWebhookRequest();
+        request.setApi("Travellink-ApiSales");
+        request.setTransactionType(100);
+        request.setTransactionTypeDescription("AirTicket");
+        request.setId(11343766L);
+        request.setUniqueId("TKT-E91F63ED-1127-4D53-86B4-C2B41994763B");
+        request.setLocator("AVP5AG");
+        request.setTicket("0579293566723");
+        request.setLastUpdate("2026-06-17T11:43:24.8154967-03:00");
+
+        WoobaWebhookResponse response = service.processar(request);
+
+        assertEquals("RECEIVED", response.getStatus());
+        assertTrue(response.getAccepted());
+        assertTrue(response.getAirReservation());
+        verify(airReservationService).processarWebhook(request);
+    }
+
+    @Test
     void processarDeveIgnorarProdutoAindaNaoProcessado() {
         WoobaWebhookRequest request = new WoobaWebhookRequest();
         request.setApi("Travellink-ApiSales");

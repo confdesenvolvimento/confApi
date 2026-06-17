@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "wooba.sales")
 public class WoobaSalesProperties {
 
-    private String baseUrl = "https://sales.confianca.tur.br/Salesv1/api/v1/sales/";
+    private String baseUrl = "https://portaldoagente.com.br/TravellinkWebapi/api/v1/sales/";
     private String identifier ="api.sales.hub";
     private String password ="dzRV41P4r48Q";
     private String offset = "-03:00:00";

@@ -24,12 +24,16 @@ public class WoobaAirReservationService {
     }
 
     public ReservaAereo carregarReservaAerea(WoobaWebhookRequest request) {
+        return carregarReservaAerea(request, true);
+    }
+
+    public ReservaAereo carregarReservaAerea(WoobaWebhookRequest request, boolean consultarManager) {
         if (request == null || request.getUniqueId() == null || request.getUniqueId().trim().isEmpty()) {
             throw new IllegalArgumentException("Webhook Wooba sem UniqueId para buscar details.");
         }
 
         WoobaSalesDetailsResponse details = woobaSalesClient.details(request.getUniqueId());
-        return popularReservaAerea(details, request, true);
+        return popularReservaAerea(details, request, consultarManager);
     }
 
     public WoobaAirReservationSyncResult processarWebhook(WoobaWebhookRequest request) {

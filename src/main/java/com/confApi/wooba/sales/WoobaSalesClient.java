@@ -5,6 +5,9 @@ import com.confApi.wooba.sales.dto.WoobaSalesAccessCredentials;
 import com.confApi.wooba.sales.dto.WoobaSalesCompanyCredentials;
 import com.confApi.wooba.sales.dto.WoobaSalesDetailsRequest;
 import com.confApi.wooba.sales.dto.WoobaSalesDetailsResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -65,7 +68,8 @@ public class WoobaSalesClient {
         );
 
         HttpHeaders headers = headers();
-        rastrearRequestDetails(url, transactionUniqueId, headers);
+        String contexto = contextoRequestWooba(url, "UniqueId", transactionUniqueId, headers);
+        rastrear("Chamando Wooba Sales details. " + contexto);
 
         ResponseEntity<WoobaSalesDetailsResponse> response;
         try {
@@ -76,14 +80,14 @@ public class WoobaSalesClient {
                     WoobaSalesDetailsResponse.class
             );
         } catch (HttpStatusCodeException ex) {
-            rastrear("Wooba Sales details retornou erro HTTP. UniqueId=" + safe(transactionUniqueId)
+            alertarErro("Wooba Sales details retornou erro HTTP. " + contexto
                     + ", Status=" + ex.getRawStatusCode()
-                    + ", Body=" + limitar(ex.getResponseBodyAsString()));
+                    + ", Body=" + limitar(ex.getResponseBodyAsString()), ex);
             throw ex;
         } catch (Exception ex) {
-            rastrear("Wooba Sales details falhou antes de retornar resposta. UniqueId=" + safe(transactionUniqueId)
+            alertarErro("Wooba Sales details falhou antes de retornar resposta. " + contexto
                     + ", Erro=" + ex.getClass().getSimpleName()
-                    + " - " + safe(ex.getMessage()));
+                    + " - " + safe(ex.getMessage()), ex);
             throw ex;
         }
 
@@ -94,6 +98,65 @@ public class WoobaSalesClient {
 
         if (!body.isSuccess() || body.getTransaction() == null || body.getTransaction().isNull()) {
             throw new IllegalStateException("Wooba details nao retornou transacao valida para " + transactionUniqueId);
+        }
+
+        return body;
+    }
+
+    public JsonNode list(JsonNode request) {
+        validarConfiguracao();
+
+        String url = UriComponentsBuilder
+                .fromHttpUrl(normalizedBaseUrl())
+                .path("list")
+                .toUriString();
+
+        HttpHeaders headers = headers();
+        String contexto = contextoRequestWooba(url, "Endpoint", "sales/list", headers);
+        rastrear("Chamando Wooba Sales list. " + contexto);
+
+        ResponseEntity<JsonNode> response;
+        try {
+            response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    new HttpEntity<>(prepararListRequest(request), headers),
+                    JsonNode.class
+            );
+        } catch (HttpStatusCodeException ex) {
+            alertarErro("Wooba Sales list retornou erro HTTP. " + contexto
+                    + ", Status=" + ex.getRawStatusCode()
+                    + ", Body=" + limitar(ex.getResponseBodyAsString()), ex);
+            throw ex;
+        } catch (Exception ex) {
+            alertarErro("Wooba Sales list falhou antes de retornar resposta. " + contexto
+                    + ", Erro=" + ex.getClass().getSimpleName()
+                    + " - " + safe(ex.getMessage()), ex);
+            throw ex;
+        }
+
+        JsonNode body = response.getBody();
+        if (!response.getStatusCode().is2xxSuccessful() || body == null) {
+            throw new IllegalStateException("Wooba sales/list retornou resposta invalida.");
+        }
+
+        return body;
+    }
+
+    private JsonNode prepararListRequest(JsonNode request) {
+        ObjectNode body = request != null && request.isObject()
+                ? ((ObjectNode) request).deepCopy()
+                : JsonNodeFactory.instance.objectNode();
+
+        if (!body.hasNonNull("OffSet")) {
+            body.put("OffSet", properties.getOffset());
+        }
+
+        if (!body.hasNonNull("AccessCredentials")) {
+            ObjectNode accessCredentials = body.putObject("AccessCredentials");
+            ObjectNode company = accessCredentials.putObject("Company");
+            company.put("Identifier", properties.getIdentifier());
+            company.put("Password", properties.getPassword());
         }
 
         return body;
@@ -147,10 +210,10 @@ public class WoobaSalesClient {
         return value == null || value.trim().isEmpty();
     }
 
-    private void rastrearRequestDetails(String url, String transactionUniqueId, HttpHeaders headers) {
+    private String contextoRequestWooba(String url, String tipoReferencia, String referencia, HttpHeaders headers) {
         String developerAccessCode = headers.getFirst(properties.getDeveloperAccessCodeHeaderName());
-        rastrear("Chamando Wooba Sales details. Url=" + safe(url)
-                + ", UniqueId=" + safe(transactionUniqueId)
+        return "Url=" + safe(url)
+                + ", " + safe(tipoReferencia) + "=" + safe(referencia)
                 + ", Identifier=" + mascarar(properties.getIdentifier())
                 + ", PasswordConfigurado=" + booleano(!isBlank(properties.getPassword()))
                 + ", Offset=" + safe(properties.getOffset())
@@ -161,12 +224,18 @@ public class WoobaSalesClient {
                 + ", DeveloperAccessCodeOrigem=" + (isBlank(properties.getDeveloperAccessCode()) ? "GERADO" : "CONFIGURADO")
                 + ", DeveloperAccessCodeData=" + LocalDate.now().format(ACCESS_CODE_DATE_FORMAT)
                 + ", DeveloperAccessCodeTamanho=" + tamanho(developerAccessCode)
-                + ", DeveloperAccessCodeBytes=" + tamanhoBase64(developerAccessCode));
+                + ", DeveloperAccessCodeBytes=" + tamanhoBase64(developerAccessCode);
     }
 
     private void rastrear(String mensagem) {
         if (traceEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, "[TRACE] " + mensagem);
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception ex) {
+        if (telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, ex);
         }
     }
 
