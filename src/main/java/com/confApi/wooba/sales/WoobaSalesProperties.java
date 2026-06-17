@@ -11,7 +11,7 @@ public class WoobaSalesProperties {
     private String identifier ="api.sales.hub";
     private String password ="dzRV41P4r48Q";
     private String offset = "-03:00:00";
-    private String developerToken;
+    private String developerToken ="8c9e1803-c944-4d60-89c3-ac0f00f3e489";
     private String developerAccessCode;
     private String developerTokenHeaderName = "developer-token";
     private String developerAccessCodeHeaderName = "developer-access-code";
