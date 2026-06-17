@@ -49,6 +49,18 @@ public class WoobaWebhookResponse {
         );
     }
 
+    public static WoobaWebhookResponse disabled(WoobaWebhookRequest request, String message) {
+        return new WoobaWebhookResponse(
+                "DISABLED",
+                message,
+                true,
+                false,
+                request != null ? request.getUniqueId() : null,
+                request != null ? request.getLocator() : null,
+                request != null ? request.getTransactionTypeDescription() : null
+        );
+    }
+
     public static WoobaWebhookResponse invalid(String message) {
         return new WoobaWebhookResponse(
                 "INVALID",

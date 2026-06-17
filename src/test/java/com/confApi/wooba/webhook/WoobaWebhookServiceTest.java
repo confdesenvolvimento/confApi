@@ -4,6 +4,7 @@ import com.confApi.db.confManager.reservaAereo.ReservaAereo;
 import com.confApi.wooba.sales.WoobaAirReservationSyncResult;
 import com.confApi.wooba.sales.WoobaAirReservationService;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -80,6 +81,27 @@ class WoobaWebhookServiceTest {
         assertEquals("IGNORED", response.getStatus());
         assertTrue(response.getAccepted());
         assertEquals(Boolean.FALSE, response.getAirReservation());
+        verify(airReservationService, never()).processarWebhook(any());
+    }
+
+    @Test
+    void processarDeveIgnorarQuandoWebhookSalesEstiverDesabilitado() {
+        ReflectionTestUtils.setField(service, "salesWebhookEnabled", false);
+
+        WoobaWebhookRequest request = new WoobaWebhookRequest();
+        request.setApi("Travellink-ApiSales");
+        request.setTransactionType(1);
+        request.setTransactionTypeDescription("AirReservation");
+        request.setId(16164L);
+        request.setUniqueId("AIR-DE9F11CB-8A50-4BF0-8AFD-FE010D8DB63C");
+        request.setLocator("FYVGWW");
+
+        WoobaWebhookResponse response = service.processar(request);
+
+        assertEquals("DISABLED", response.getStatus());
+        assertTrue(response.getAccepted());
+        assertEquals(Boolean.FALSE, response.getAirReservation());
+        assertEquals("AIR-DE9F11CB-8A50-4BF0-8AFD-FE010D8DB63C", response.getUniqueId());
         verify(airReservationService, never()).processarWebhook(any());
     }
 

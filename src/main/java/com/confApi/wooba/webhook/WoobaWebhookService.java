@@ -29,6 +29,9 @@ public class WoobaWebhookService {
     @Value("${wooba.webhook.trace.enabled:false}")
     private boolean traceEnabled;
 
+    @Value("${wooba.webhook.sales.enabled:true}")
+    private boolean salesWebhookEnabled = true;
+
     private static final List<DateTimeFormatter> LAST_UPDATE_FORMATS = List.of(
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"),
             DateTimeFormatter.ISO_LOCAL_DATE_TIME,
@@ -40,6 +43,15 @@ public class WoobaWebhookService {
     }
 
     public WoobaWebhookResponse processar(WoobaWebhookRequest request) {
+        if (!salesWebhookEnabled) {
+            alertarEvento("Webhook Wooba /sales recebido, mas processamento esta desabilitado por parametro. "
+                    + resumo(request));
+            return WoobaWebhookResponse.disabled(
+                    request,
+                    "Webhook Wooba /sales recebido, mas processamento esta desabilitado por parametro."
+            );
+        }
+
         validarPayload(request);
         alertarEvento("Webhook Wooba payload validado. " + request.resumo());
 
@@ -181,5 +193,9 @@ public class WoobaWebhookService {
 
     private String safe(Object value) {
         return value == null ? "null" : value.toString();
+    }
+
+    private String resumo(WoobaWebhookRequest request) {
+        return request == null ? "Payload=null" : request.resumo();
     }
 }
