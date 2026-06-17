@@ -41,6 +41,15 @@ public class WoobaAirReservationService {
         return syncService.sincronizar(reservaAereo);
     }
 
+    public WoobaAirReservationSyncResult processarTransactionUniqueId(String transactionUniqueId) {
+        if (transactionUniqueId == null || transactionUniqueId.trim().isEmpty()) {
+            throw new IllegalArgumentException("UniqueId da transacao Wooba nao informado.");
+        }
+
+        WoobaSalesDetailsResponse details = woobaSalesClient.details(transactionUniqueId);
+        return processarDetails(details);
+    }
+
     public WoobaAirReservationSyncResult processarDetails(WoobaSalesDetailsResponse details) {
         ReservaAereo reservaAereo = popularReservaAerea(details, true);
         return syncService.sincronizar(reservaAereo);

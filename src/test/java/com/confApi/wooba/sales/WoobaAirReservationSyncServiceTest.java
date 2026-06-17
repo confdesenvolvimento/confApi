@@ -54,7 +54,7 @@ class WoobaAirReservationSyncServiceTest {
         assertTrue(result.isCreated());
         assertEquals(List.of("1234567890"), result.getBilhetesGravados());
         assertEquals(1, result.getPagamentosGravados());
-        assertTrue(result.isCreatedNotificationSent());
+        assertFalse(result.isCreatedNotificationSent());
         assertTrue(result.isIssuedNotificationSent());
 
         ArgumentCaptor<ReservaAereo> criacaoCaptor = ArgumentCaptor.forClass(ReservaAereo.class);
@@ -67,7 +67,7 @@ class WoobaAirReservationSyncServiceTest {
 
         verify(reservaAereoApi).atualizar(eq(999), any(ReservaAereo.class));
         verify(recebimentoApi).gravar(any(Recebimento.class));
-        verify(notificacaoApi, times(2)).criarParaUsuario(any());
+        verify(notificacaoApi, times(1)).criarParaUsuario(any());
     }
 
     @Test

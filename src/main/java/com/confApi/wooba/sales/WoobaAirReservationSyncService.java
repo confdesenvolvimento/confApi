@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 public class WoobaAirReservationSyncService {
 
     private static final Logger LOG = Logger.getLogger(WoobaAirReservationSyncService.class.getName());
+    private static final Integer STATUS_ATIVO = 1;
     private static final Integer STATUS_CANCELADO = 2;
     private static final Integer STATUS_EMITIDO = 3;
 
@@ -85,8 +86,10 @@ public class WoobaAirReservationSyncService {
             reservaDb = recarregarReserva(reservaDb, reservaWooba);
             result = WoobaAirReservationSyncResult.processed(reservaDb);
             result.setCreated(true);
-            notificarReservaCriada(reservaDb);
-            result.setCreatedNotificationSent(true);
+            if (STATUS_ATIVO.equals(valorStatus(reservaWooba))) {
+                notificarReservaCriada(reservaDb);
+                result.setCreatedNotificationSent(true);
+            }
         } else {
             result = WoobaAirReservationSyncResult.processed(reservaDb);
         }
