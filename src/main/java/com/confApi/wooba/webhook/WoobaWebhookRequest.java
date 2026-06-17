@@ -110,6 +110,25 @@ public class WoobaWebhookRequest {
         return Collections.unmodifiableMap(additionalFields);
     }
 
+    public String resumo() {
+        return "Api=" + safe(api)
+                + ", TransactionType=" + safe(transactionType)
+                + ", TransactionTypeDescription=" + safe(transactionTypeDescription)
+                + ", Id=" + safe(id)
+                + ", UniqueId=" + safe(uniqueId)
+                + ", Locator=" + safe(locator)
+                + ", Ticket=" + safe(ticket)
+                + ", LastUpdate=" + safe(lastUpdate);
+    }
+
+    private String safe(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        String text = value.toString();
+        return text.trim().isEmpty() ? "vazio" : text;
+    }
+
     @Override
     public String toString() {
         return "WoobaWebhookRequest{" +

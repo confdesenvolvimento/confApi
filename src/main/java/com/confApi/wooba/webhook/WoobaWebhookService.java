@@ -5,6 +5,7 @@ import com.confApi.util.TelegramErrorAlert;
 import com.confApi.wooba.sales.WoobaAirReservationSyncResult;
 import com.confApi.wooba.sales.WoobaAirReservationService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -25,6 +26,9 @@ public class WoobaWebhookService {
     @Autowired(required = false)
     private TelegramErrorAlert telegramErrorAlert;
 
+    @Value("${wooba.webhook.trace.enabled:false}")
+    private boolean traceEnabled;
+
     private static final List<DateTimeFormatter> LAST_UPDATE_FORMATS = List.of(
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"),
             DateTimeFormatter.ISO_LOCAL_DATE_TIME,
@@ -37,6 +41,7 @@ public class WoobaWebhookService {
 
     public WoobaWebhookResponse processar(WoobaWebhookRequest request) {
         validarPayload(request);
+        alertarEvento("Webhook Wooba payload validado. " + request.resumo());
 
         Optional<WoobaTransactionType> transactionType =
                 WoobaTransactionType.fromCode(request.getTransactionType());
@@ -49,6 +54,7 @@ public class WoobaWebhookService {
             );
             alertarErro("Webhook Wooba recebido com tipo de transacao desconhecido. UniqueId: "
                     + request.getUniqueId() + ", TransactionType: " + request.getTransactionType());
+            alertarEvento("Webhook Wooba ignorado por tipo desconhecido. " + request.resumo());
             return WoobaWebhookResponse.ignored(request, "Tipo de transacao Wooba nao mapeado.");
         }
 
@@ -58,6 +64,7 @@ public class WoobaWebhookService {
                     "Webhook Wooba recebido e ignorado por nao ser reserva aerea. Tipo: {0}, UniqueId: {1}",
                     new Object[]{transactionType.get().getDescription(), request.getUniqueId()}
             );
+            alertarEvento("Webhook Wooba ignorado por nao ser aereo. " + request.resumo());
             return WoobaWebhookResponse.ignored(request, "Evento recebido, mas ainda nao processado para este produto.");
         }
 
@@ -99,6 +106,8 @@ public class WoobaWebhookService {
 
     private void processarReservaAerea(WoobaWebhookRequest request) {
         LocalDateTime lastUpdate = parseLastUpdate(request.getLastUpdate());
+        alertarEvento("Webhook Wooba aereo iniciado. " + request.resumo()
+                + ", LastUpdateConvertido=" + lastUpdate);
         WoobaAirReservationSyncResult syncResult = airReservationService.processarWebhook(request);
         ReservaAereo reservaAereo = syncResult.getReserva();
 
@@ -117,6 +126,18 @@ public class WoobaWebhookService {
                         reservaAereo != null && reservaAereo.getTrechos() != null ? reservaAereo.getTrechos().size() : 0
                 }
         );
+        alertarEvento("Webhook Wooba aereo finalizado. " + request.resumo()
+                + ", Action=" + syncResult.getAction()
+                + ", Reason=" + safe(syncResult.getReason())
+                + ", Created=" + syncResult.isCreated()
+                + ", Updated=" + syncResult.isUpdated()
+                + ", CodgReservaAereo=" + (reservaAereo == null ? "null" : safe(reservaAereo.getCodgReservaAereo()))
+                + ", Passageiros=" + quantidade(reservaAereo == null ? null : reservaAereo.getPassageiros())
+                + ", Trechos=" + quantidade(reservaAereo == null ? null : reservaAereo.getTrechos())
+                + ", BilhetesGravados=" + syncResult.getBilhetesGravados().size()
+                + ", BilhetesAtualizados=" + syncResult.getBilhetesAtualizados().size()
+                + ", PagamentosGravados=" + syncResult.getPagamentosGravados()
+                + ", PagamentosAtualizados=" + syncResult.getPagamentosAtualizados());
     }
 
     private LocalDateTime parseLastUpdate(String lastUpdate) {
@@ -146,5 +167,19 @@ public class WoobaWebhookService {
         if (telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, mensagem);
         }
+    }
+
+    private void alertarEvento(String mensagem) {
+        if (traceEnabled && telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, "[TRACE] " + mensagem);
+        }
+    }
+
+    private int quantidade(List<?> values) {
+        return values == null ? 0 : values.size();
+    }
+
+    private String safe(Object value) {
+        return value == null ? "null" : value.toString();
     }
 }

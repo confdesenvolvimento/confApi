@@ -38,7 +38,27 @@ public class TelegramErrorAlert {
         if (e == null) {
             return mensagem;
         }
-        return mensagem + ": " + e.getMessage();
+        Throwable rootCause = rootCause(e);
+        StringBuilder detalhe = new StringBuilder(mensagem)
+                .append(": ")
+                .append(e.getClass().getSimpleName())
+                .append(" - ")
+                .append(e.getMessage());
+        if (rootCause != null && rootCause != e) {
+            detalhe.append(" | Causa raiz: ")
+                    .append(rootCause.getClass().getSimpleName())
+                    .append(" - ")
+                    .append(rootCause.getMessage());
+        }
+        return detalhe.toString();
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null && current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     private String classe(Object source) {

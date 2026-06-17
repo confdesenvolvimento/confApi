@@ -4,6 +4,7 @@ import com.confApi.wooba.sales.WoobaAirReservationService;
 import com.confApi.wooba.sales.WoobaAirReservationSyncResult;
 import com.confApi.wooba.sales.dto.WoobaSalesDetailsResponse;
 import com.confApi.util.TelegramErrorAlert;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,9 @@ public class WoobaWebhookController {
     private final WoobaAirReservationService airReservationService;
     private final TelegramErrorAlert telegramErrorAlert;
 
+    @Value("${wooba.webhook.trace.enabled:false}")
+    private boolean traceEnabled;
+
     public WoobaWebhookController(WoobaWebhookService woobaWebhookService,
                                   WoobaAirReservationService airReservationService,
                                   TelegramErrorAlert telegramErrorAlert) {
@@ -35,14 +39,20 @@ public class WoobaWebhookController {
     )
     public ResponseEntity<WoobaWebhookResponse> receberSales(@RequestBody WoobaWebhookRequest request) {
         try {
-            return ResponseEntity.ok(woobaWebhookService.processar(request));
+            rastrear("Webhook Wooba /sales recebido. " + resumo(request));
+            WoobaWebhookResponse response = woobaWebhookService.processar(request);
+            rastrear("Webhook Wooba /sales respondido com sucesso. "
+                    + resumo(request) + ", Status=" + response.getStatus()
+                    + ", Accepted=" + response.getAccepted()
+                    + ", AirReservation=" + response.getAirReservation());
+            return ResponseEntity.ok(response);
         } catch (IllegalArgumentException ex) {
-            telegramErrorAlert.enviar(this, "Payload invalido recebido no webhook Wooba /sales", ex);
+            telegramErrorAlert.enviar(this, "Payload invalido recebido no webhook Wooba /sales. " + resumo(request), ex);
             return ResponseEntity
                     .status(HttpStatus.BAD_REQUEST)
                     .body(WoobaWebhookResponse.invalid(ex.getMessage()));
         } catch (Exception ex) {
-            telegramErrorAlert.enviar(this, "Erro ao processar webhook Wooba /sales", ex);
+            telegramErrorAlert.enviar(this, "Erro ao processar webhook Wooba /sales. " + resumo(request), ex);
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(WoobaWebhookResponse.invalid("Erro interno ao processar webhook Wooba."));
@@ -56,7 +66,10 @@ public class WoobaWebhookController {
     )*/
     public ResponseEntity<?> sincronizarSalesDetails(@RequestBody WoobaSalesDetailsResponse details) {
         try {
+            rastrear("Webhook Wooba /sales/details recebido para teste.");
             WoobaAirReservationSyncResult result = airReservationService.processarDetails(details);
+            rastrear("Webhook Wooba /sales/details processado. Action="
+                    + result.getAction() + ", Created=" + result.isCreated() + ", Updated=" + result.isUpdated());
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException ex) {
             telegramErrorAlert.enviar(this, "Payload invalido recebido no webhook Wooba /sales/details", ex);
@@ -68,6 +81,16 @@ public class WoobaWebhookController {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(WoobaWebhookResponse.invalid("Erro interno ao processar details Wooba."));
+        }
+    }
+
+    private String resumo(WoobaWebhookRequest request) {
+        return request == null ? "Payload=null" : request.resumo();
+    }
+
+    private void rastrear(String mensagem) {
+        if (traceEnabled) {
+            telegramErrorAlert.enviar(this, "[TRACE] " + mensagem);
         }
     }
 }
