@@ -26,6 +26,188 @@ class WoobaAirReservationMapperTest {
     }
 
     @Test
+    void deveMarcarReservaParaIgnorarQuandoContextCustomerVierPreenchido() throws Exception {
+        JsonNode root = objectMapper.readTree("""
+                {
+                  "Transaction": {
+                    "Header": {
+                      "TransactionType": 1,
+                      "TransactionTypeDescription": "AirReservation",
+                      "UniqueId": "AIR-CUSTOMER",
+                      "Locator": "AVP5AG",
+                      "TransactionState": 2,
+                      "TransactionStateDescription": "Reserved"
+                    },
+                    "Context": {
+                      "Agency": {
+                        "Id": 3204
+                      },
+                      "Customer": {
+                        "Id": 13659,
+                        "Name": "TREVO OPERACIONAL"
+                      }
+                    },
+                    "User": {
+                      "Username": "cnf.cris"
+                    },
+                    "ProductDetail": {
+                      "AirReservationDetail": {
+                        "Airline": {
+                          "Code": "G3"
+                        }
+                      }
+                    }
+                  }
+                }
+                """);
+
+        WoobaSalesDetailsResponse details = new WoobaSalesDetailsResponse();
+        details.setSuccess(true);
+        details.setTransaction(root.path("Transaction"));
+
+        ReservaAereo reserva = mapper.toReservaAereo(details, null);
+
+        assertNotNull(reserva.getRegraReserva());
+        assertTrue(reserva.getRegraReserva().contains("WoobaCustomer=true"));
+        assertTrue(reserva.getRegraReserva().contains("WoobaCustomerId=13659"));
+        assertTrue(reserva.getRegraReserva().contains("WoobaCustomerName=TREVO OPERACIONAL"));
+    }
+
+    @Test
+    void naoDeveMarcarCustomerQuandoContextCustomerVierNull() throws Exception {
+        JsonNode root = objectMapper.readTree("""
+                {
+                  "Transaction": {
+                    "Header": {
+                      "TransactionType": 1,
+                      "TransactionTypeDescription": "AirReservation",
+                      "UniqueId": "AIR-SEM-CUSTOMER",
+                      "Locator": "AVP5AG",
+                      "TransactionState": 2,
+                      "TransactionStateDescription": "Reserved"
+                    },
+                    "Context": {
+                      "Agency": {
+                        "Id": 3204
+                      },
+                      "Customer": null
+                    },
+                    "User": {
+                      "Username": "cnf.cris"
+                    },
+                    "ProductDetail": {
+                      "AirReservationDetail": {
+                        "Airline": {
+                          "Code": "G3"
+                        }
+                      }
+                    }
+                  }
+                }
+                """);
+
+        WoobaSalesDetailsResponse details = new WoobaSalesDetailsResponse();
+        details.setSuccess(true);
+        details.setTransaction(root.path("Transaction"));
+
+        ReservaAereo reserva = mapper.toReservaAereo(details, null);
+
+        assertNotNull(reserva.getRegraReserva());
+        assertTrue(!reserva.getRegraReserva().contains("WoobaCustomer=true"));
+    }
+
+    @Test
+    void devePopularDatasDaReservaAtivaComLastUpdateComOffset() throws Exception {
+        JsonNode root = objectMapper.readTree("""
+                {
+                  "Transaction": {
+                    "Header": {
+                      "TransactionType": 1,
+                      "TransactionTypeDescription": "AirReservation",
+                      "UniqueId": "AIR-RESERVED",
+                      "Locator": "AVP5AG",
+                      "LastUpdate": "2026-06-17T11:43:24.8154967-03:00",
+                      "TransactionState": 2,
+                      "TransactionStateDescription": "Reserved"
+                    },
+                    "Context": {
+                      "Agency": {
+                        "Id": 3204
+                      },
+                      "Customer": null
+                    },
+                    "User": {
+                      "Username": "cnf.cris"
+                    },
+                    "ProductDetail": {
+                      "AirReservationDetail": {
+                        "Airline": {
+                          "Code": "G3"
+                        }
+                      }
+                    }
+                  }
+                }
+                """);
+
+        WoobaSalesDetailsResponse details = new WoobaSalesDetailsResponse();
+        details.setSuccess(true);
+        details.setTransaction(root.path("Transaction"));
+
+        ReservaAereo reserva = mapper.toReservaAereo(details, null);
+
+        assertEquals(1, reserva.getStatus());
+        assertNotNull(reserva.getDataCriacao());
+        assertNotNull(reserva.getDataLimiteEmissao());
+        assertNull(reserva.getDataEmissao());
+    }
+
+    @Test
+    void deveGarantirDatasObrigatoriasMesmoSemDatasDaWooba() throws Exception {
+        JsonNode root = objectMapper.readTree("""
+                {
+                  "Transaction": {
+                    "Header": {
+                      "TransactionType": 1,
+                      "TransactionTypeDescription": "AirReservation",
+                      "UniqueId": "AIR-SEM-DATAS",
+                      "Locator": "AVP5AG",
+                      "TransactionState": 2,
+                      "TransactionStateDescription": "Reserved"
+                    },
+                    "Context": {
+                      "Agency": {
+                        "Id": 3204
+                      },
+                      "Customer": null
+                    },
+                    "User": {
+                      "Username": "cnf.cris"
+                    },
+                    "ProductDetail": {
+                      "AirReservationDetail": {
+                        "Airline": {
+                          "Code": "G3"
+                        }
+                      }
+                    }
+                  }
+                }
+                """);
+
+        WoobaSalesDetailsResponse details = new WoobaSalesDetailsResponse();
+        details.setSuccess(true);
+        details.setTransaction(root.path("Transaction"));
+
+        ReservaAereo reserva = mapper.toReservaAereo(details, null);
+
+        assertEquals(1, reserva.getStatus());
+        assertNotNull(reserva.getDataCriacao());
+        assertNotNull(reserva.getDataLimiteEmissao());
+        assertNull(reserva.getDataEmissao());
+    }
+
+    @Test
     void deveManterDataEmissaoNoCancelamentoDeBilhete() throws Exception {
         JsonNode root = objectMapper.readTree("""
                 {

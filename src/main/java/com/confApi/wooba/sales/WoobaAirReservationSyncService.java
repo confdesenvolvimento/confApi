@@ -51,6 +51,15 @@ public class WoobaAirReservationSyncService {
     }
 
     public WoobaAirReservationSyncResult sincronizar(ReservaAereo reservaWooba) {
+        String motivoIgnorar = motivoIgnorar(reservaWooba);
+        if (motivoIgnorar != null) {
+            alertarErro("Reserva Wooba ignorada. Localizador: "
+                    + safeLocalizador(reservaWooba) + ". Motivo: " + motivoIgnorar);
+            return WoobaAirReservationSyncResult.ignored(motivoIgnorar, reservaWooba);
+        }
+
+        normalizarDatasObrigatorias(reservaWooba);
+
         String motivoValidacao = validarReserva(reservaWooba);
         if (motivoValidacao != null) {
             LOG.log(Level.WARNING, "Reserva Wooba nao sincronizada: {0}", motivoValidacao);
@@ -114,6 +123,23 @@ public class WoobaAirReservationSyncService {
         return result;
     }
 
+    private String motivoIgnorar(ReservaAereo reserva) {
+        if (reserva == null) {
+            return null;
+        }
+
+        String customer = regraValue(reserva.getRegraReserva(), "WoobaCustomer");
+        if ("true".equalsIgnoreCase(defaultString(customer))) {
+            String customerId = regraValue(reserva.getRegraReserva(), "WoobaCustomerId");
+            String customerName = regraValue(reserva.getRegraReserva(), "WoobaCustomerName");
+            return "Context.Customer informado pela Wooba. Reserva ignorada para nao gravar no banco."
+                    + (!isBlank(customerId) ? " CustomerId: " + customerId + "." : "")
+                    + (!isBlank(customerName) ? " CustomerName: " + customerName + "." : "");
+        }
+
+        return null;
+    }
+
     private String validarReserva(ReservaAereo reserva) {
         if (reserva == null) {
             return "Reserva aerea nao informada.";
@@ -131,6 +157,24 @@ public class WoobaAirReservationSyncService {
             return "Usuario nao localizado no Manager.";
         }
         return null;
+    }
+
+    private void normalizarDatasObrigatorias(ReservaAereo reserva) {
+        if (reserva == null) {
+            return;
+        }
+
+        Date agora = new Date();
+        if (reserva.getDataCriacao() == null) {
+            reserva.setDataCriacao(agora);
+        }
+        if (reserva.getDataLimiteEmissao() == null) {
+            reserva.setDataLimiteEmissao(firstDate(
+                    reserva.getDataEmissao(),
+                    reserva.getDataCriacao(),
+                    agora
+            ));
+        }
     }
 
     private ReservaAereo prepararReservaParaCriacao(ReservaAereo reservaWooba) {

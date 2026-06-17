@@ -71,6 +71,45 @@ class WoobaAirReservationSyncServiceTest {
     }
 
     @Test
+    void deveCriarReservaAtivaSemBilheteEPagamento() {
+        ReservaAereo reservaWooba = reservaWooba("ATV123", 1);
+        reservaWooba.setDataCriacao(null);
+        reservaWooba.setDataLimiteEmissao(null);
+        reservaWooba.setDataEmissao(null);
+        reservaWooba.getPassageiros().get(0).setBilhetes(List.of());
+        reservaWooba.setRecebimentos(List.of());
+
+        ReservaAereo reservaDb = reservaDb("ATV123", 1);
+        reservaDb.setDataEmissao(null);
+        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ATV123"), any(CompanhiaAerea.class)))
+                .thenReturn(null, reservaDb, reservaDb);
+        when(reservaAereoApi.criar(any())).thenReturn(reservaDb);
+
+        WoobaAirReservationSyncResult result = service.sincronizar(reservaWooba);
+
+        assertTrue(result.isCreated());
+        assertTrue(result.getBilhetesGravados().isEmpty());
+        assertEquals(0, result.getPagamentosGravados());
+        assertTrue(result.isCreatedNotificationSent());
+        assertFalse(result.isIssuedNotificationSent());
+
+        ArgumentCaptor<ReservaAereo> criacaoCaptor = ArgumentCaptor.forClass(ReservaAereo.class);
+        verify(reservaAereoApi).criar(criacaoCaptor.capture());
+        ReservaAereo payloadCriacao = criacaoCaptor.getValue();
+        assertEquals(1, payloadCriacao.getStatus());
+        assertNotNull(payloadCriacao.getDataCriacao());
+        assertNotNull(payloadCriacao.getDataLimiteEmissao());
+        assertNull(payloadCriacao.getDataEmissao());
+        assertNull(payloadCriacao.getRecebimentos());
+        assertNull(payloadCriacao.getPassageiros().get(0).getBilhetes());
+
+        verify(reservaAereoApi, never()).atualizar(any(), any());
+        verify(reservaAereoApi, never()).atualizarStatus(any(), any());
+        verify(recebimentoApi, never()).gravar(any());
+        verify(notificacaoApi, times(1)).criarParaUsuario(any());
+    }
+
+    @Test
     void deveAtualizarBilheteEPagamentoExistentes() {
         ReservaAereo reservaWooba = reservaWooba("ABC123", 3);
         ReservaAereo reservaDb = reservaDb("ABC123", 1);
@@ -213,6 +252,22 @@ class WoobaAirReservationSyncServiceTest {
         assertEquals("IGNORED", result.getAction());
         verify(reservaAereoApi, never()).criar(any());
         verify(reservaAereoApi, never()).atualizar(any(), any());
+    }
+
+    @Test
+    void deveIgnorarSemGravarQuandoContextCustomerVierPreenchido() {
+        ReservaAereo reserva = reservaWooba("AVP5AG", 1);
+        reserva.setRegraReserva("WoobaUniqueId=AIR-CUSTOMER; WoobaCustomer=true; WoobaCustomerId=13659; WoobaCustomerName=TREVO OPERACIONAL");
+
+        WoobaAirReservationSyncResult result = service.sincronizar(reserva);
+
+        assertEquals("IGNORED", result.getAction());
+        assertTrue(result.getReason().contains("Context.Customer informado"));
+        verify(reservaAereoApi, never()).findByLocalizadorCompanhia(any(), any(CompanhiaAerea.class));
+        verify(reservaAereoApi, never()).criar(any());
+        verify(reservaAereoApi, never()).atualizar(any(), any());
+        verify(recebimentoApi, never()).gravar(any());
+        verify(notificacaoApi, never()).criarParaUsuario(any());
     }
 
     private ReservaAereo reservaWooba(String localizador, Integer status) {

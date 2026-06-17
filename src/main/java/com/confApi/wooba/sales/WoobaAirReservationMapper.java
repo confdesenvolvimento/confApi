@@ -22,6 +22,7 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -68,7 +69,8 @@ public class WoobaAirReservationMapper {
         reserva.setDataCriacao(firstDate(
                 parseDate(text(productDetail, "InsertDate")),
                 lastUpdate,
-                webhook != null ? parseDate(webhook.getLastUpdate()) : null
+                webhook != null ? parseDate(webhook.getLastUpdate()) : null,
+                new Date()
         ));
         reserva.setDataLimiteEmissao(firstDate(
                 parseDate(text(airDetail, "Deadline")),
@@ -85,7 +87,7 @@ public class WoobaAirReservationMapper {
             reserva.setDescMotivoCancelamento(statusDescription);
         }
 
-        reserva.setRegraReserva(buildRegraReserva(header, airDetail, transaction.path("Links")));
+        reserva.setRegraReserva(buildRegraReserva(header, context, airDetail, transaction.path("Links")));
         reserva.setFonte(2);
         reserva.setCodgSistema(new Sistema(2));
         CompanhiaAerea companhiaReserva = mapCompanhiaAerea(airDetail);
@@ -727,15 +729,26 @@ public class WoobaAirReservationMapper {
         return false;
     }
 
-    private String buildRegraReserva(JsonNode header, JsonNode airDetail, JsonNode links) {
+    private String buildRegraReserva(JsonNode header, JsonNode context, JsonNode airDetail, JsonNode links) {
         StringBuilder regra = new StringBuilder();
         appendRegra(regra, "WoobaUniqueId", text(header, "UniqueId"));
         appendRegra(regra, "WoobaAirUniqueId", relatedAirUniqueId(links));
         appendRegra(regra, "WoobaTransactionType", text(header, "TransactionTypeDescription"));
         appendRegra(regra, "WoobaTransactionState", text(header, "TransactionStateDescription"));
         appendRegra(regra, "WoobaTicket", text(header, "Ticket"));
+        appendCustomerContext(regra, context.path("Customer"));
         appendRegra(regra, "Route", text(airDetail, "RouteDescription"));
         return regra.length() == 0 ? null : regra.toString();
+    }
+
+    private void appendCustomerContext(StringBuilder regra, JsonNode customerNode) {
+        if (customerNode == null || customerNode.isMissingNode() || customerNode.isNull()) {
+            return;
+        }
+
+        appendRegra(regra, "WoobaCustomer", "true");
+        appendRegra(regra, "WoobaCustomerId", text(customerNode, "Id"));
+        appendRegra(regra, "WoobaCustomerName", text(customerNode, "Name"));
     }
 
     private String relatedAirUniqueId(JsonNode links) {
@@ -839,6 +852,13 @@ public class WoobaAirReservationMapper {
         }
 
         String normalized = value.trim();
+
+        try {
+            OffsetDateTime parsed = OffsetDateTime.parse(normalized, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            return Date.from(parsed.toInstant());
+        } catch (DateTimeParseException ignored) {
+            // Tenta os formatos sem timezone abaixo.
+        }
 
         for (DateTimeFormatter formatter : DATE_TIME_FORMATS) {
             try {
