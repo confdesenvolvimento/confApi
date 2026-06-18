@@ -7,12 +7,15 @@ import com.confApi.db.confManager.reservaAereo.ReservaAereo;
 import com.confApi.db.confManager.usuario.Usuario;
 import com.confApi.db.confManager.usuario.dto.AuthRequestDto;
 import com.confApi.db.confManager.usuario.dto.UsuarioDto;
+import com.confApi.exception.RegraDeNegocioException;
+import com.confApi.exception.ServiceIndisponivelException;
 import com.confApi.util.TelegramErrorAlert;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -93,7 +96,7 @@ public class UsuarioApi {
             return e.getMessage();
         }
     }
-
+/*
     public ResponseEntity<UsuarioDto> autenficarUsuarioAuth(AuthRequestDto requestDto) {
 
         HttpHeaders headers = new HttpHeaders();
@@ -124,6 +127,34 @@ public class UsuarioApi {
             return ResponseEntity
                     .status(ex.getStatusCode())
                     .build();
+        }
+    }*/
+
+    public ResponseEntity<UsuarioDto> autenficarUsuarioAuth(AuthRequestDto requestDto) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", "Bearer " + new ConfAppService().token());
+        HttpEntity<AuthRequestDto> requestEntity = new HttpEntity<>(requestDto, headers);
+
+        try {
+            return new RestTemplate().exchange(
+                    UrlConfig.URL_CONFIANCA_MANAGER + "/usuario/auth",
+                    HttpMethod.POST,
+                    requestEntity,
+                    UsuarioDto.class
+            );
+
+        } catch (HttpClientErrorException ex) {
+            // 4xx — credencial inválida, não encontrado, etc
+            LOG.log(Level.SEVERE, "Erro ao autenticar usuario no Manager.", ex);
+            alertarErro("Erro 4xx ao autenticar usuario no Manager", ex);
+            throw new RegraDeNegocioException(ex.getStatusCode().value(), ex.getMessage());
+
+        } catch (ResourceAccessException ex) {
+            // Manager fora do ar
+            LOG.log(Level.SEVERE, "Manager indisponível: " + UrlConfig.URL_CONFIANCA_MANAGER, ex);
+            alertarErro("⚠️ Manager FORA DO AR - autenticação indisponível", ex);
+            throw new ServiceIndisponivelException("Serviço de autenticação indisponível. Tente novamente.");
         }
     }
 
