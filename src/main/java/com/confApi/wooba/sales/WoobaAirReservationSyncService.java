@@ -12,6 +12,7 @@ import com.confApi.endPoints.recebimento.RecebimentoApi;
 import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.util.TelegramErrorAlert;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -42,6 +43,9 @@ public class WoobaAirReservationSyncService {
 
     @Autowired(required = false)
     private TelegramErrorAlert telegramErrorAlert;
+
+    @Value("${wooba.telegram.enabled:true}")
+    private boolean telegramEnabled = true;
 
     public WoobaAirReservationSyncService(ReservaAereoApi reservaAereoApi,
                                           RecebimentoApi recebimentoApi,
@@ -695,7 +699,7 @@ public class WoobaAirReservationSyncService {
     }
 
     private void alertarErro(String mensagem) {
-        if (telegramErrorAlert != null) {
+        if (telegramEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, mensagem);
         }
     }

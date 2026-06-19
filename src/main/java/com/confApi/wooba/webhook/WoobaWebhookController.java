@@ -24,6 +24,9 @@ public class WoobaWebhookController {
     @Value("${wooba.webhook.trace.enabled:false}")
     private boolean traceEnabled;
 
+    @Value("${wooba.telegram.enabled:true}")
+    private boolean telegramEnabled = true;
+
     public WoobaWebhookController(WoobaWebhookService woobaWebhookService,
                                   WoobaAirReservationService airReservationService,
                                   TelegramErrorAlert telegramErrorAlert) {
@@ -47,12 +50,12 @@ public class WoobaWebhookController {
                     + ", AirReservation=" + response.getAirReservation());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException ex) {
-            telegramErrorAlert.enviar(this, "Payload invalido recebido no webhook Wooba /sales. " + resumo(request), ex);
+            alertarErro("Payload invalido recebido no webhook Wooba /sales. " + resumo(request), ex);
             return ResponseEntity
                     .status(HttpStatus.BAD_REQUEST)
                     .body(WoobaWebhookResponse.invalid(ex.getMessage()));
         } catch (Exception ex) {
-            telegramErrorAlert.enviar(this, "Erro ao processar webhook Wooba /sales. " + resumo(request), ex);
+            alertarErro("Erro ao processar webhook Wooba /sales. " + resumo(request), ex);
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(WoobaWebhookResponse.invalid("Erro interno ao processar webhook Wooba."));
@@ -72,12 +75,12 @@ public class WoobaWebhookController {
                     + result.getAction() + ", Created=" + result.isCreated() + ", Updated=" + result.isUpdated());
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException ex) {
-            telegramErrorAlert.enviar(this, "Payload invalido recebido no webhook Wooba /sales/details", ex);
+            alertarErro("Payload invalido recebido no webhook Wooba /sales/details", ex);
             return ResponseEntity
                     .status(HttpStatus.BAD_REQUEST)
                     .body(WoobaWebhookResponse.invalid(ex.getMessage()));
         } catch (Exception ex) {
-            telegramErrorAlert.enviar(this, "Erro ao processar webhook Wooba /sales/details", ex);
+            alertarErro("Erro ao processar webhook Wooba /sales/details", ex);
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(WoobaWebhookResponse.invalid("Erro interno ao processar details Wooba."));
@@ -89,8 +92,14 @@ public class WoobaWebhookController {
     }
 
     private void rastrear(String mensagem) {
-        if (traceEnabled) {
+        if (telegramEnabled && traceEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, "[TRACE] " + mensagem);
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception ex) {
+        if (telegramEnabled && telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, ex);
         }
     }
 }

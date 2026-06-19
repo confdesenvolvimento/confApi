@@ -40,6 +40,9 @@ public class WoobaSalesClient {
     @Value("${wooba.webhook.trace.enabled:false}")
     private boolean traceEnabled;
 
+    @Value("${wooba.telegram.enabled:true}")
+    private boolean telegramEnabled = true;
+
     public WoobaSalesClient(RestTemplate restTemplate,
                             WoobaSalesProperties properties,
                             WoobaDeveloperAccessCodeGenerator developerAccessCodeGenerator) {
@@ -228,13 +231,13 @@ public class WoobaSalesClient {
     }
 
     private void rastrear(String mensagem) {
-        if (traceEnabled && telegramErrorAlert != null) {
+        if (telegramEnabled && traceEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, "[TRACE] " + mensagem);
         }
     }
 
     private void alertarErro(String mensagem, Exception ex) {
-        if (telegramErrorAlert != null) {
+        if (telegramEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, mensagem, ex);
         }
     }

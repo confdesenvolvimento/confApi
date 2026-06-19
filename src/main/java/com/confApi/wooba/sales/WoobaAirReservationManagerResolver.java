@@ -16,6 +16,7 @@ import com.confApi.endPoints.agencia.AgenciaApi;
 import com.confApi.endPoints.usuario.UsuarioApi;
 import com.confApi.util.TelegramErrorAlert;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -38,6 +39,9 @@ public class WoobaAirReservationManagerResolver {
 
     @Autowired(required = false)
     private TelegramErrorAlert telegramErrorAlert;
+
+    @Value("${wooba.telegram.enabled:true}")
+    private boolean telegramEnabled = true;
 
     public WoobaAirReservationManagerResolver(AgenciaApi agenciaApi,
                                               UsuarioApi usuarioApi,
@@ -248,7 +252,7 @@ public class WoobaAirReservationManagerResolver {
     }
 
     private void alertarErro(String mensagem) {
-        if (telegramErrorAlert != null) {
+        if (telegramEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, mensagem);
         }
     }

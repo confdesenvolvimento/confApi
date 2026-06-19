@@ -30,6 +30,9 @@ public class WoobaWebhookService {
     @Value("${wooba.webhook.trace.enabled:false}")
     private boolean traceEnabled;
 
+    @Value("${wooba.telegram.enabled:true}")
+    private boolean telegramEnabled = true;
+
     @Value("${wooba.webhook.log.enabled:false}")
     private boolean webhookLogEnabled;
 
@@ -180,13 +183,13 @@ public class WoobaWebhookService {
     }
 
     private void alertarErro(String mensagem) {
-        if (telegramErrorAlert != null) {
+        if (telegramEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, mensagem);
         }
     }
 
     private void alertarEvento(String mensagem) {
-        if (traceEnabled && telegramErrorAlert != null) {
+        if (telegramEnabled && traceEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, "[TRACE] " + mensagem);
         }
     }

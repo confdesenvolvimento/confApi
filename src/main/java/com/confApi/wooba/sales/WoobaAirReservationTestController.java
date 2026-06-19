@@ -7,6 +7,7 @@ import com.confApi.wooba.webhook.WoobaWebhookRequest;
 import com.confApi.wooba.webhook.WoobaWebhookResponse;
 import com.confApi.wooba.webhook.WoobaWebhookService;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +30,9 @@ public class WoobaAirReservationTestController {
     private final WoobaSalesClient woobaSalesClient;
     private final TelegramErrorAlert telegramErrorAlert;
 
+    @Value("${wooba.telegram.enabled:true}")
+    private boolean telegramEnabled = true;
+
     public WoobaAirReservationTestController(WoobaAirReservationService airReservationService,
                                              WoobaWebhookService woobaWebhookService,
                                              WoobaSalesClient woobaSalesClient,
@@ -46,10 +50,10 @@ public class WoobaAirReservationTestController {
             ReservaAereo reservaAereo = airReservationService.popularReservaAerea(details, consultarManager);
             return ResponseEntity.ok(reservaAereo);
         } catch (IllegalArgumentException e) {
-            telegramErrorAlert.enviar(this, "Payload invalido no teste de popular reserva aerea Wooba", e);
+            alertarErro("Payload invalido no teste de popular reserva aerea Wooba", e);
             return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
         } catch (Exception e) {
-            telegramErrorAlert.enviar(this, "Erro no teste de popular reserva aerea Wooba", e);
+            alertarErro("Erro no teste de popular reserva aerea Wooba", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("erro", "Erro interno ao popular reserva aerea Wooba."));
         }
     }
@@ -74,10 +78,10 @@ public class WoobaAirReservationTestController {
             response.put("reservaAereo", reservaAereo);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            telegramErrorAlert.enviar(this, "Payload invalido no teste de webhook Wooba /sales", e);
+            alertarErro("Payload invalido no teste de webhook Wooba /sales", e);
             return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
         } catch (Exception e) {
-            telegramErrorAlert.enviar(this, "Erro no teste de webhook Wooba /sales", e);
+            alertarErro("Erro no teste de webhook Wooba /sales", e);
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("erro", e.getMessage() == null ? "Erro interno ao simular webhook Wooba /sales." : e.getMessage()));
@@ -89,13 +93,19 @@ public class WoobaAirReservationTestController {
         try {
             return ResponseEntity.ok(woobaSalesClient.list(request));
         } catch (IllegalArgumentException e) {
-            telegramErrorAlert.enviar(this, "Payload invalido no teste Wooba sales/list", e);
+            alertarErro("Payload invalido no teste Wooba sales/list", e);
             return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
         } catch (Exception e) {
-            telegramErrorAlert.enviar(this, "Erro no teste Wooba sales/list", e);
+            alertarErro("Erro no teste Wooba sales/list", e);
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("erro", e.getMessage() == null ? "Erro interno ao chamar Wooba sales/list." : e.getMessage()));
+        }
+    }
+
+    private void alertarErro(String mensagem, Exception e) {
+        if (telegramEnabled && telegramErrorAlert != null) {
+            telegramErrorAlert.enviar(this, mensagem, e);
         }
     }
 }

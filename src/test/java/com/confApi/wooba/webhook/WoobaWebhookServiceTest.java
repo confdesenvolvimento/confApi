@@ -1,6 +1,7 @@
 package com.confApi.wooba.webhook;
 
 import com.confApi.db.confManager.reservaAereo.ReservaAereo;
+import com.confApi.util.TelegramErrorAlert;
 import com.confApi.wooba.sales.WoobaAirReservationSyncResult;
 import com.confApi.wooba.sales.WoobaAirReservationService;
 import org.junit.jupiter.api.Test;
@@ -104,6 +105,25 @@ class WoobaWebhookServiceTest {
         assertTrue(response.getAccepted());
         assertEquals(Boolean.FALSE, response.getAirReservation());
         verify(airReservationService, never()).processarWebhook(any());
+    }
+
+    @Test
+    void naoDeveEnviarTelegramQuandoIntegracaoWoobaEstiverComTelegramDesabilitado() {
+        TelegramErrorAlert telegramErrorAlert = mock(TelegramErrorAlert.class);
+        ReflectionTestUtils.setField(service, "telegramErrorAlert", telegramErrorAlert);
+        ReflectionTestUtils.setField(service, "telegramEnabled", false);
+
+        WoobaWebhookRequest request = new WoobaWebhookRequest();
+        request.setApi("Travellink-ApiSales");
+        request.setTransactionType(999);
+        request.setTransactionTypeDescription("ProdutoNaoMapeado");
+        request.setUniqueId("XXX-123");
+
+        WoobaWebhookResponse response = service.processar(request);
+
+        assertEquals("IGNORED", response.getStatus());
+        verify(telegramErrorAlert, never()).enviar(any(Object.class), any(String.class));
+        verify(telegramErrorAlert, never()).enviar(any(Object.class), any(String.class), any(Exception.class));
     }
 
     @Test

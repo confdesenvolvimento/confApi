@@ -48,6 +48,9 @@ public class WoobaReservedAirReservationPollingService {
     @Autowired(required = false)
     private TelegramErrorAlert telegramErrorAlert;
 
+    @Value("${wooba.telegram.enabled:true}")
+    private boolean telegramEnabled = true;
+
     public WoobaReservedAirReservationPollingService(WoobaSalesClient woobaSalesClient,
                                                      WoobaSalesProperties properties,
                                                      WoobaAirReservationService airReservationService,
@@ -315,7 +318,7 @@ public class WoobaReservedAirReservationPollingService {
     }
 
     private void alertarErro(String mensagem, Exception ex) {
-        if (telegramErrorAlert == null) {
+        if (!telegramEnabled || telegramErrorAlert == null) {
             return;
         }
         if (ex == null) {
@@ -326,7 +329,7 @@ public class WoobaReservedAirReservationPollingService {
     }
 
     private void rastrear(String mensagem) {
-        if (traceEnabled && telegramErrorAlert != null) {
+        if (telegramEnabled && traceEnabled && telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, "[TRACE] " + mensagem);
         }
     }
