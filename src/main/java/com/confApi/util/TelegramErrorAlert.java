@@ -4,6 +4,8 @@ import com.confApi.hub.telegram.TelegramService;
 import com.confApi.hub.telegram.dto.MensagemRequest;
 import org.springframework.stereotype.Service;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -26,7 +28,7 @@ public class TelegramErrorAlert {
             MensagemRequest msg = new MensagemRequest(mensagemComErro(mensagem, e));
             msg.setMetodo(metodoChamador());
             msg.setClasse(classe(source));
-            msg.setProjeto("CONFAPI");
+            msg.setProjeto("CONFAPI : " + getServerName());
 
             telegramService.enviarLogDeErros(msg);
         } catch (Exception telegramException) {
@@ -81,5 +83,13 @@ public class TelegramErrorAlert {
             }
         }
         return "desconhecido";
+    }
+
+    private String getServerName() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            return "desconhecido";
+        }
     }
 }

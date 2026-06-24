@@ -8,7 +8,7 @@ import java.io.Serializable;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/clube/agencia")
+@RequestMapping("/api/agencia")
 public class AgenciaController implements Serializable {
 
     @Autowired
