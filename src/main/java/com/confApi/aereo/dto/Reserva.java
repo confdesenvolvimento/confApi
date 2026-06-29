@@ -1,5 +1,6 @@
 package com.confApi.aereo.dto;
 
+import com.confApi.aereo.dto.regrasAereas.RegrasAereasReservaResponse;
 import com.confApi.hub.aereo.dto.Contato;
 import com.confApi.hub.aereo.dto.Passageiro;
 import com.confApi.hub.aereo.dto.TrechoReserva;
@@ -25,4 +26,5 @@ public class Reserva {
     private String status;
     private List<TrechoReserva> viagens;
     private ValorReserva valorReserva;
+    private RegrasAereasReservaResponse regrasAereas;
 }

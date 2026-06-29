@@ -16,11 +16,13 @@ import java.util.List;
 @RequestMapping("/v1/aereo")
 public class AereoController {
     private final AereoService service;
+    private final AereoRegrasReservaService regrasReservaService;
     @Autowired
     private AereoClient aereoClient;
 
-    public AereoController(AereoService service) {
+    public AereoController(AereoService service, AereoRegrasReservaService regrasReservaService) {
         this.service = service;
+        this.regrasReservaService = regrasReservaService;
     }
 
     @PostMapping("/pesquisar")
@@ -44,7 +46,7 @@ public class AereoController {
     @PostMapping("/carregarReserva")
     public ConsultarLocalizadorResponse carregaReserva(@RequestBody ConsultarLocalizadorRequest req) {
         ConsultarLocalizadorResponse result = aereoClient.carregarReserva(req);
-        return result;
+        return regrasReservaService.enriquecer(result);
     }
 
     @PostMapping("/emitir")

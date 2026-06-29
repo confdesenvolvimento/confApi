@@ -35,7 +35,7 @@ public class FamiliaCompanhia implements Serializable {
         }
         sb.append("\n");
 
-        sb.append(" | Rota: ").append(tipoRota != null && tipoRota == 1 ? "Nacional" : "Internacional");
+        sb.append(" | Rota: ").append(rotuloTipoRota());
         sb.append("\n\n");
 
         if (familiaInformacoes != null && !familiaInformacoes.isEmpty()) {
@@ -58,5 +58,21 @@ public class FamiliaCompanhia implements Serializable {
         }
 
         return sb.toString();
+    }
+
+    private String rotuloTipoRota() {
+        if (tipoRota == null) {
+            return "N/I";
+        }
+        if (tipoRota == 0) {
+            return "Ambos";
+        }
+        if (tipoRota == 1) {
+            return "Nacional";
+        }
+        if (tipoRota == 2) {
+            return "Internacional";
+        }
+        return "N/I";
     }
 }

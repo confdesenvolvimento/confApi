@@ -246,6 +246,7 @@ public class ChatService {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        List<String> keywords = Optional.ofNullable(req.keywords()).orElseGet(ArrayList::new);
         /*
 *   - "limites"
             - "faturas"
@@ -256,7 +257,7 @@ public class ChatService {
 * */
 
 
-        if (keyword.equals("alertas") && !req.keywords().contains(keyword)) {
+        if (keyword.equals("alertas") && !keywords.contains(keyword)) {
             List<AlertaTarifaDTO> alertaTarifaDTOList = alertaTarifaService.listarPorUsuario(req.codgUsuario().intValue());
             AlertaTarifaIAResponse alertaTarifaIAResponse = new AlertaTarifaIAResponse();
             alertaTarifaIAResponse.getTarifas().addAll(alertaTarifaDTOList);
@@ -264,42 +265,42 @@ public class ChatService {
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + alertaTarifaIAResponse.toString()));
         }
 
-        if (keyword.equals("desconhecido") && !req.keywords().contains(keyword)) {
+        if (keyword.equals("desconhecido") && !keywords.contains(keyword)) {
             List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
             for (ChatMemoria chtMemoria : chatMemorias) {
                 System.out.println("Memoria: " + chtMemoria.getText());
                 messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
             }
         }
-        if (keyword.equals("limites") && !req.keywords().contains(keyword)) {
+        if (keyword.equals("limites") && !keywords.contains(keyword)) {
             /*Consultar limites de credito*/
             System.out.println("Limite Erp: " + req.idErp());
             Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
 
         }
-        if (keyword.equals("faturas") && !req.keywords().contains(keyword)) {
+        if (keyword.equals("faturas") && !keywords.contains(keyword)) {
             /* Consultar Faturas*/
             // montarMensagemFaturas(req);
             messages.add(montarMensagemFaturas(req));
         }
 
-        if (keyword.equals("boletos") && !req.keywords().contains(keyword)) {
+        if (keyword.equals("boletos") && !keywords.contains(keyword)) {
             /* Consultar Boletos*/
             messages.add(montarMensagemFaturasBoleto(req));
             // montarMensagemFaturasBoleto(req);
         }
-        if (keyword.equals("checkin") && !req.keywords().contains(keyword)) {
+        if (keyword.equals("checkin") && !keywords.contains(keyword)) {
 
             /*Consultar Checkin proximos 72 horas*/
             messages.add(buscarCheckinsProximos(req));
         }
-        if (keyword.equals("ultimas_vendas") && !req.keywords().contains(keyword)) {
+        if (keyword.equals("ultimas_vendas") && !keywords.contains(keyword)) {
 
             /*Consultar Ultimas Vendas*/
             messages.add(listarUltimasVendas(req));
         }
-        if (keyword.contains("familias") && !req.keywords().contains(keyword)) {
+        if (keyword.contains("familias") && !keywords.contains(keyword)) {
             String[] partes = keyword.split(";");
 
             if (partes.length >= 2 && !partes[1].trim().isEmpty()) {
@@ -309,9 +310,9 @@ public class ChatService {
             }
         }
 
-        req.keywords().removeIf(Objects::isNull);
-        if (!req.keywords().contains(keyword)) {
-            req.keywords().add(keyword);
+        keywords.removeIf(Objects::isNull);
+        if (!keywords.contains(keyword)) {
+            keywords.add(keyword);
         }
     }
 
@@ -749,7 +750,7 @@ Formato esperado:
                 - "checkin"
                 - "ultimas_vendas"
                 - "familias"
-                 - "alertas"
+                - "alertas"
 
                 Exemplos:
                 - Pergunta: "Quais são meus limites de crédito?" → Resposta: "limites"
