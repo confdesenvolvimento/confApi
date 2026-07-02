@@ -14,11 +14,11 @@ public class UsuarioClubeService {
     @Autowired
     private UsuarioClubeApi usuarioClubeApi;
 
-    public Page<Usuario> findAllPage(int page, int size, String nome) {
+    public Page<UsuarioClube> findAllPage(int page, int size, String nome) {
         return usuarioClubeApi.findAllPage(page, size, nome);
     }
 
-    public List<Usuario> listaParams(Usuario usuario) {
+    public List<UsuarioClube> listaParams(UsuarioClube usuario) {
         return usuarioClubeApi.listaParams(usuario);
     }
 }

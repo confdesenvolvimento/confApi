@@ -12,7 +12,7 @@ import java.util.Date;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class Usuario {
+public class UsuarioClube {
 
     private Integer codgUsuario;
     private String nomeUsuario;

@@ -4,11 +4,9 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.AbstractTransactionServiceApi;
-import com.confApi.db.clube.usuario.Usuario;
+import com.confApi.db.clube.usuario.UsuarioClube;
 import com.confApi.db.clube.usuario.dto.AgenciaDTO;
 import com.confApi.db.clube.usuario.dto.UnidadeDTO;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.data.domain.Page;
@@ -21,8 +19,6 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 @Service
 public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Serializable {
@@ -36,7 +32,7 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
         this.restTemplate = restTemplate;
     }
     /*ta pronto*/
-    public Usuario create(Usuario usuario) {
+    public UsuarioClube create(UsuarioClube usuario) {
         try {
             ConfAppResp token = confAppService.token();
 
@@ -45,27 +41,27 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
                     .path("/usuario")
                     .toUriString();
 
-            System.out.println("url: " + url);
+          //  System.out.println("url: " + url);
 
             HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<Usuario> entity = new HttpEntity<>(usuario, headers);
+            HttpEntity<UsuarioClube> entity = new HttpEntity<>(usuario, headers);
 
-            ResponseEntity<Usuario> response = restTemplate.exchange(
+            ResponseEntity<UsuarioClube> response = restTemplate.exchange(
                     url,
                     HttpMethod.POST,
                     entity,
-                    Usuario.class
+                    UsuarioClube.class
             );
 
             return response.getBody();
 
         } catch (Exception e) {
             e.printStackTrace();
-            return new Usuario();
+            return new UsuarioClube();
         }
     }
     /*ta pronto*/
-    public Page<Usuario> findAllPage(int page, int size, String nome) {
+    public Page<UsuarioClube> findAllPage(int page, int size, String nome) {
         try {
             ConfAppResp token = confAppService.token();
 
@@ -80,16 +76,16 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
             }
 
             String url = builder.toUriString();
-            System.out.println("url: " + url);
+           // System.out.println("url: " + url);
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);
 
-            ResponseEntity<RestPageResponse<Usuario>> response = restTemplate.exchange(
+            ResponseEntity<RestPageResponse<UsuarioClube>> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
                     entity,
-                    new ParameterizedTypeReference<RestPageResponse<Usuario>>() {}
+                    new ParameterizedTypeReference<RestPageResponse<UsuarioClube>>() {}
             );
 
             return response.getBody();
@@ -100,7 +96,7 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
         }
     }
     /*ta pronto*/
-    public List<Usuario> listaParams(Usuario usuario) {
+    public List<UsuarioClube> listaParams(UsuarioClube usuario) {
         try {
             ConfAppResp token = confAppService.token();
 
@@ -110,13 +106,13 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
                     .toUriString();
 
             HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<Usuario> entity = new HttpEntity<>(usuario, headers);
+            HttpEntity<UsuarioClube> entity = new HttpEntity<>(usuario, headers);
 
-            ResponseEntity<List<Usuario>> response = restTemplate.exchange(
+            ResponseEntity<List<UsuarioClube>> response = restTemplate.exchange(
                     url,
                     HttpMethod.POST,
                     entity,
-                    new ParameterizedTypeReference<List<Usuario>>() {}
+                    new ParameterizedTypeReference<List<UsuarioClube>>() {}
             );
 
             return response.getBody();
@@ -128,7 +124,7 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
     }
 
     /*ta pronto*/
-    public Usuario update(Integer id, Usuario usuario) {
+    public UsuarioClube update(Integer id, UsuarioClube usuario) {
         try {
             ConfAppResp token = confAppService.token();
 
@@ -137,28 +133,28 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
                     .path("/usuario/" + id)
                     .toUriString();
 
-            System.out.println("url: " + url);
+          //  System.out.println("url: " + url);
 
             HttpHeaders headers = defaultHeaders(token.getToken());
-            HttpEntity<Usuario> entity = new HttpEntity<>(usuario, headers);
+            HttpEntity<UsuarioClube> entity = new HttpEntity<>(usuario, headers);
 
-            ResponseEntity<Usuario> response = restTemplate.exchange(
+            ResponseEntity<UsuarioClube> response = restTemplate.exchange(
                     url,
                     HttpMethod.PUT,
                     entity,
-                    Usuario.class
+                    UsuarioClube.class
             );
 
             return response.getBody();
 
         } catch (Exception e) {
             e.printStackTrace();
-            return new Usuario();
+            return new UsuarioClube();
         }
     }
 
     /*ta pronto*/
-    public List<Usuario> getAll() {
+    public List<UsuarioClube> getAll() {
         try {
             ConfAppResp token = confAppService.token();
 
@@ -170,11 +166,11 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);
 
-            ResponseEntity<List<Usuario>> response = restTemplate.exchange(
+            ResponseEntity<List<UsuarioClube>> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
                     entity,
-                    new ParameterizedTypeReference<List<Usuario>>() {}
+                    new ParameterizedTypeReference<List<UsuarioClube>>() {}
             );
 
             return response.getBody();
@@ -186,7 +182,7 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
     }
 
     /*ta pronto*/
-    public Usuario consultaUsuarioExiste(String loginUsuario) {
+    public UsuarioClube consultaUsuarioExiste(String loginUsuario) {
         try {
             ConfAppResp token = confAppService.token();
 
@@ -198,22 +194,22 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(headers);
 
-            ResponseEntity<Usuario> response = restTemplate.exchange(
+            ResponseEntity<UsuarioClube> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
                     entity,
-                    Usuario.class
+                    UsuarioClube.class
             );
 
             return response.getBody();
 
         } catch (Exception e) {
             System.err.println(e.getMessage());
-            return new Usuario();
+            return new UsuarioClube();
         }
     }
     /*ta pronto*/
-    public Usuario consultaUsuarioIDExiste(int idUsuarioManger) {
+    public UsuarioClube consultaUsuarioIDExiste(int idUsuarioManger) {
         try {
             ConfAppResp token = confAppService.token();
 
@@ -221,22 +217,22 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_CLUBE)
                     .path("/usuario/consultaUsuarioIDExiste/" + idUsuarioManger)
                     .toUriString();
-            System.out.println("aki : "+url);
+          //  System.out.println("aki : "+url);
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);
 
-            ResponseEntity<Usuario> response = restTemplate.exchange(
+            ResponseEntity<UsuarioClube> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
                     entity,
-                    Usuario.class
+                    UsuarioClube.class
             );
 
             return response.getBody();
 
         } catch (Exception e) {
             e.printStackTrace();
-            return new Usuario();
+            return new UsuarioClube();
         }
     }
 

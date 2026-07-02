@@ -14,6 +14,7 @@ public class ConheceClubeController {
 
     @GetMapping("/consulta/{id}")
     public ResponseEntity<?> consulta(@PathVariable Integer id) {
+       // System.out.println("Conheça clube : "+id);
         return ResponseEntity.ok(conheceClubeApi.consulta(id));
     }
 
