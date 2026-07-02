@@ -10,12 +10,20 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -26,6 +34,10 @@ public class AeroportoService {
 
     private static final Logger LOG = Logger.getLogger(AeroportoService.class.getName());
     private final RestTemplate restTemplate;
+    private static final Duration TTL_AEROPORTOS_NACIONAIS = Duration.ofHours(6);
+
+    private volatile Set<String> iatasNacionaisCache = Collections.emptySet();
+    private volatile Instant iatasNacionaisAtualizadoEm = Instant.EPOCH;
     private final ObjectMapper mapper;
 
     @Autowired
@@ -102,6 +114,63 @@ public class AeroportoService {
     }
 
 
+    public Set<String> findIatasAeroportosNacionais() {
+        if (!cacheIatasNacionaisExpirado()) {
+            return iatasNacionaisCache;
+        }
+
+        synchronized (this) {
+            if (!cacheIatasNacionaisExpirado()) {
+                return iatasNacionaisCache;
+            }
+            return atualizarIatasAeroportosNacionais();
+        }
+    }
+
+    private boolean cacheIatasNacionaisExpirado() {
+        return iatasNacionaisCache.isEmpty()
+                || Instant.now().isAfter(iatasNacionaisAtualizadoEm.plus(TTL_AEROPORTOS_NACIONAIS));
+    }
+
+    private Set<String> atualizarIatasAeroportosNacionais() {
+        String url = UriComponentsBuilder
+                .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                .pathSegment("aeroporto", "nacionais", "iatas")
+                .toUriString();
+
+        try {
+            ResponseEntity<Set<String>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(defaultHeaders()),
+                    new ParameterizedTypeReference<Set<String>>() {}
+            );
+
+            Set<String> body = response.getBody();
+            if (body == null || body.isEmpty()) {
+                return iatasNacionaisCache;
+            }
+
+            iatasNacionaisCache = body.stream()
+                    .map(this::normalizarIata)
+                    .filter(iata -> !iata.isEmpty())
+                    .collect(Collectors.toCollection(HashSet::new));
+            iatasNacionaisAtualizadoEm = Instant.now();
+            return iatasNacionaisCache;
+        } catch (Exception ex) {
+            if (!iatasNacionaisCache.isEmpty()) {
+                LOG.log(Level.WARNING, "Erro ao atualizar aeroportos nacionais; usando cache local anterior.", ex);
+                return iatasNacionaisCache;
+            }
+            LOG.log(Level.SEVERE, "Erro ao consultar aeroportos nacionais", ex);
+            alertarErro("Erro ao consultar aeroportos nacionais", ex);
+            return Collections.emptySet();
+        }
+    }
+
+    private String normalizarIata(String iata) {
+        return iata == null ? "" : iata.trim().toUpperCase(Locale.ROOT);
+    }
     public Aeroporto findAeroportoByIata(String iata) {
 
         String url = UrlConfig.URL_CONFIANCA_MANAGER + "aeroporto"+"/iata/" + iata;

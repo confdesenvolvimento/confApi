@@ -1,6 +1,8 @@
 package com.confApi.aereo;
 
 import com.confApi.aereo.dto.*;
+import com.confApi.aereo.dto.regrasAereas.AereoRegrasFamiliaRequest;
+import com.confApi.aereo.dto.regrasAereas.RegrasAereasReservaResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -44,6 +46,11 @@ public class AereoControllerV2 {
     public ConsultarLocalizadorResponse carregaReserva(@RequestBody ConsultarLocalizadorRequest req) {
         ConsultarLocalizadorResponse result = aereoClient.carregarReserva(req);
         return regrasReservaService.enriquecer(result);
+    }
+
+    @PostMapping("/obterInformacoesDaFamilia")
+    public RegrasAereasReservaResponse obterInformacoesDaFamilia(@RequestBody AereoRegrasFamiliaRequest req) {
+        return regrasReservaService.consultarRegrasFamilia(req);
     }
 
     @PostMapping("/emitir")

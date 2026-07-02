@@ -4,7 +4,9 @@ import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
 import com.confApi.aereo.dto.Reserva;
 import com.confApi.aereo.dto.ValorBase;
 import com.confApi.aereo.dto.ValorReserva;
+import com.confApi.aereo.dto.regrasAereas.AereoRegrasFamiliaRequest;
 import com.confApi.aereo.dto.regrasAereas.RegrasAereasReservaResponse;
+import com.confApi.db.confManager.aeroporto.AeroportoService;
 import com.confApi.db.confManager.regraAereaAlteracao.RegraAereaAlteracaoManagerService;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaRequest;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
@@ -22,7 +24,6 @@ import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,25 +44,20 @@ public class AereoRegrasReservaService {
             "NO_SHOW"
     );
 
-    private static final Set<String> AEROPORTOS_BRASIL = new HashSet<>(Arrays.asList(
-            "AJU", "BEL", "BPS", "BSB", "CGB", "CGR", "CNF", "CPV", "CWB", "CXJ",
-            "FLN", "FOR", "GIG", "GRU", "GYN", "IGU", "IOS", "JDO", "JOI", "JPA",
-            "LDB", "MAO", "MCZ", "MGF", "NAT", "NVT", "PMW", "POA", "PNZ", "PVH",
-            "RAO", "RBR", "REC", "SDU", "SLZ", "SSA", "THE", "UDI", "VCP", "VIX",
-            "AFL", "ATM", "BRA", "CAW", "CFB", "CMG", "FEN", "IMP", "IPN", "JTC",
-            "MAB", "MCP", "OPS", "PET", "PPB", "RIA", "STM", "SJP", "TFF", "XAP"
-    ));
 
     private final RegraAereaReembolsoManagerService reembolsoManagerService;
     private final RegraAereaAlteracaoManagerService alteracaoManagerService;
     private final FamiliaService familiaService;
+    private final AeroportoService aeroportoService;
 
     public AereoRegrasReservaService(RegraAereaReembolsoManagerService reembolsoManagerService,
                                      RegraAereaAlteracaoManagerService alteracaoManagerService,
-                                     FamiliaService familiaService) {
+                                     FamiliaService familiaService,
+                                     AeroportoService aeroportoService) {
         this.reembolsoManagerService = reembolsoManagerService;
         this.alteracaoManagerService = alteracaoManagerService;
         this.familiaService = familiaService;
+        this.aeroportoService = aeroportoService;
     }
 
     public ConsultarLocalizadorResponse enriquecer(ConsultarLocalizadorResponse response) {
@@ -76,13 +72,29 @@ public class AereoRegrasReservaService {
         return response;
     }
 
-    private RegrasAereasReservaResponse montarRegrasReserva(Reserva reserva) {
-        RegrasAereasReservaResponse regras = new RegrasAereasReservaResponse();
-        RegraAereaReembolsoConsultaRequest baseRequest = montarRequestBase(reserva);
+    public RegrasAereasReservaResponse consultarRegrasFamilia(AereoRegrasFamiliaRequest request) {
+        return consultarRegras(
+                montarRequestBase(request),
+                "Nao foi possivel identificar companhia, familia, classe ou mercado para consultar regra da tarifa.",
+                "tarifa selecionada"
+        );
+    }
 
+    private RegrasAereasReservaResponse montarRegrasReserva(Reserva reserva) {
+        return consultarRegras(
+                montarRequestBase(reserva),
+                "Nao foi possivel identificar companhia, familia, classe ou voo para consultar regra de reembolso.",
+                "reserva carregada"
+        );
+    }
+
+    private RegrasAereasReservaResponse consultarRegras(RegraAereaReembolsoConsultaRequest baseRequest,
+                                                        String mensagemDadosInsuficientes,
+                                                        String contextoMensagem) {
+        RegrasAereasReservaResponse regras = new RegrasAereasReservaResponse();
         if (baseRequest == null) {
             regras.setStatus("DADOS_INSUFICIENTES");
-            regras.setMensagem("Nao foi possivel identificar companhia, familia, classe ou voo para consultar regra de reembolso.");
+            regras.setMensagem(mensagemDadosInsuficientes);
             return regras;
         }
 
@@ -110,7 +122,7 @@ public class AereoRegrasReservaService {
         regras.setReembolso(escolherPrincipalReembolso(regras.getReembolsos()));
         regras.setAlteracao(escolherPrincipalAlteracao(regras.getAlteracoes()));
         regras.setStatus(resolverStatus(regras.getReembolsos(), regras.getAlteracoes()));
-        regras.setMensagem(resolverMensagem(regras));
+        regras.setMensagem(resolverMensagem(regras, contextoMensagem));
         return regras;
     }
 
@@ -138,6 +150,40 @@ public class AereoRegrasReservaService {
         request.setQuantidadePassageiros(reserva.getPassageiros() == null ? 1 : Math.max(reserva.getPassageiros().size(), 1));
         request.setQuantidadeTrechos(Math.max(contarVoos(reserva), 1));
         preencherValores(request, reserva.getValorReserva());
+        return request;
+    }
+
+    private RegraAereaReembolsoConsultaRequest montarRequestBase(AereoRegrasFamiliaRequest dados) {
+        if (dados == null) {
+            return null;
+        }
+
+        String companhia = resolverCompanhia(dados.getCompanhia(), dados.getNomeCompanhia());
+        if (!temValor(companhia)) {
+            return null;
+        }
+
+        RegraAereaReembolsoConsultaRequest request = new RegraAereaReembolsoConsultaRequest();
+        request.setCompanhia(companhia);
+        request.setCodgFamiliaCompanhia(dados.getCodgFamiliaCompanhia());
+        request.setMercado(primeiroValor(dados.getMercado(), resolverMercado(dados)));
+        request.setCabine(primeiroValor(dados.getCabine()));
+        request.setFamiliaTarifaria(primeiroValor(dados.getFamiliaTarifaria(), dados.getCodigoTarifario()));
+        request.setCodigoTarifario(primeiroValor(dados.getCodigoTarifario(), dados.getFamiliaTarifaria()));
+        request.setClasseReserva(primeiroValor(dados.getClasseReserva(), primeiraLetra(dados.getCodigoTarifario())));
+        request.setSistemaOrigem(dados.getSistemaOrigem());
+        request.setValorTarifa(dados.getValorTarifa());
+        request.setValorTaxaEmbarque(dados.getValorTaxaEmbarque());
+        request.setValorTaxaDu(dados.getValorTaxaDu());
+        request.setValorRav(dados.getValorRav());
+        request.setValorRc(dados.getValorRc());
+        request.setValorTaxaAssento(dados.getValorTaxaAssento());
+        request.setValorTaxaBagagem(dados.getValorTaxaBagagem());
+        request.setValorOutrasTaxas(dados.getValorOutrasTaxas());
+        request.setQuantidadePassageiros(dados.getQuantidadePassageiros() == null ? 1 : Math.max(dados.getQuantidadePassageiros(), 1));
+        request.setQuantidadeTrechos(dados.getQuantidadeTrechos() == null ? 1 : Math.max(dados.getQuantidadeTrechos(), 1));
+
+        aplicarDadosFamiliaCompanhia(request, resolverFamiliaCompanhia(request));
         return request;
     }
 
@@ -256,6 +302,10 @@ public class AereoRegrasReservaService {
             descricao = companhia.getDescricao();
         }
 
+        return resolverCompanhia(codigo, descricao);
+    }
+
+    private String resolverCompanhia(String codigo, String descricao) {
         String chave = primeiroValor(codigo, descricao);
         if (!temValor(chave)) {
             return null;
@@ -280,6 +330,11 @@ public class AereoRegrasReservaService {
             return null;
         }
 
+        Set<String> aeroportosBrasil = aeroportoService.findIatasAeroportosNacionais();
+        if (aeroportosBrasil.isEmpty()) {
+            return null;
+        }
+
         boolean encontrouAeroporto = false;
         for (TrechoReserva trecho : reserva.getViagens()) {
             if (trecho == null) {
@@ -289,19 +344,53 @@ public class AereoRegrasReservaService {
             String destino = trecho.getDestino() == null ? null : trecho.getDestino().getCodigoIata();
             if (temValor(origem)) {
                 encontrouAeroporto = true;
-                if (!AEROPORTOS_BRASIL.contains(origem.toUpperCase(Locale.ROOT))) {
+                if (!aeroportosBrasil.contains(normalizarIata(origem))) {
                     return "INTERNACIONAL";
                 }
             }
             if (temValor(destino)) {
                 encontrouAeroporto = true;
-                if (!AEROPORTOS_BRASIL.contains(destino.toUpperCase(Locale.ROOT))) {
+                if (!aeroportosBrasil.contains(normalizarIata(destino))) {
                     return "INTERNACIONAL";
                 }
             }
         }
 
         return encontrouAeroporto ? "NACIONAL" : null;
+    }
+
+    private String resolverMercado(AereoRegrasFamiliaRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        boolean encontrouAeroporto = false;
+        String origem = request.getOrigemIata();
+        String destino = request.getDestinoIata();
+
+        Set<String> aeroportosBrasil = aeroportoService.findIatasAeroportosNacionais();
+        if (aeroportosBrasil.isEmpty()) {
+            return null;
+        }
+
+        if (temValor(origem)) {
+            encontrouAeroporto = true;
+            if (!aeroportosBrasil.contains(normalizarIata(origem))) {
+                return "INTERNACIONAL";
+            }
+        }
+        if (temValor(destino)) {
+            encontrouAeroporto = true;
+            if (!aeroportosBrasil.contains(normalizarIata(destino))) {
+                return "INTERNACIONAL";
+            }
+        }
+
+        return encontrouAeroporto ? "NACIONAL" : null;
+    }
+
+    private String normalizarIata(String iata) {
+        return iata == null ? "" : iata.trim().toUpperCase(Locale.ROOT);
     }
 
     private RegraAereaReembolsoConsultaRequest copiar(RegraAereaReembolsoConsultaRequest origem) {
@@ -424,15 +513,15 @@ public class AereoRegrasReservaService {
                 && !"ERRO_CONSULTA".equalsIgnoreCase(response.getStatus());
     }
 
-    private String resolverMensagem(RegrasAereasReservaResponse regras) {
+    private String resolverMensagem(RegrasAereasReservaResponse regras, String contextoMensagem) {
         if ("CONSULTADO".equals(regras.getStatus())) {
-            return "Regras de reembolso e alteracao/remarcacao consultadas conforme os dados da reserva.";
+            return "Regras de reembolso e alteracao/remarcacao consultadas conforme os dados da " + contextoMensagem + ".";
         }
         if ("NAO_ENCONTRADO".equals(regras.getStatus())) {
-            return "Nao encontrei regra compativel com a reserva carregada.";
+            return "Nao encontrei regra compativel com os dados da " + contextoMensagem + ".";
         }
         if ("ERRO_CONSULTA".equals(regras.getStatus())) {
-            return "A reserva foi carregada, mas houve falha ao consultar regras aereas.";
+            return "Houve falha ao consultar regras aereas para a " + contextoMensagem + ".";
         }
         return "Regras aereas nao consultadas.";
     }
@@ -637,3 +726,4 @@ public class AereoRegrasReservaService {
         }
     }
 }
+
