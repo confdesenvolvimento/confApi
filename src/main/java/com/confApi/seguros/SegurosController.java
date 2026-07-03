@@ -103,7 +103,7 @@ public class  SegurosController {
         }
         SeguroReservaDTO  response =  service.carregarReserva(req.getLocalizador());
 
-        System.out.println("response:: " + response);
+       // System.out.println("response:: " + response);
         return response;
     }
 
@@ -116,9 +116,9 @@ public class  SegurosController {
     @PostMapping("/cancelarReserva")
     public SeguroReservaDTO cancelarReserva(@RequestBody CancelamentoRequestDTO req) {
 
-        System.out.println("req:: " + req);
+      //  System.out.println("req:: " + req);
         List<SeguroReservaDTO> resultado = hubSeguroClient.cancelarReserva(req);
-        System.out.println("resultado:: " + resultado);
+      //  System.out.println("resultado:: " + resultado);
         if(resultado != null && !resultado.isEmpty()){
             service.cancelarReserva(req);
             return service.carregarReserva(req.getOperacao());

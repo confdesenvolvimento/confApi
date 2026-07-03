@@ -36,9 +36,9 @@ public class GeradorPDFService {
     }
 
     public void popularHotelPDF(GeradorHotelPDFModel geradorHotelPDFModel) {
-        System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getUsuarioConfDto());
+      //  System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getUsuarioConfDto());
         EnvioReservaHotelPDF envioReservaHotelPDF = new EnvioReservaHotelPDF(geradorHotelPDFModel);
-        System.out.println("reserva : "+envioReservaHotelPDF.getReservaHotelModelPDF().getLocalizador());
+      //  System.out.println("reserva : "+envioReservaHotelPDF.getReservaHotelModelPDF().getLocalizador());
         new GeradorPDFApi().envioHotelPDF(envioReservaHotelPDF);
     }
 
@@ -46,7 +46,7 @@ public class GeradorPDFService {
 
         UsuarioResponse usuarioResponse = usuarioService.consultarUsuario(geradorAereoPDF.getUsuarioLogin());
         usuarioResponse.setAgencia(new Agencia(geradorAereoPDF.getAgenciaCodg()));
-        System.out.println("usuarioResponse : "+usuarioResponse);
+       // System.out.println("usuarioResponse : "+usuarioResponse);
 
         ReservaAereoResponse reservaAereoResponse = reservaAereoService.consultarLocalizador(
                 new ReservaAereoConsultarLocalizadorRequest(geradorAereoPDF, usuarioResponse.getAgencia())

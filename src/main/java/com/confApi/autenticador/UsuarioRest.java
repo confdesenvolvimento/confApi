@@ -49,9 +49,9 @@ public class UsuarioRest {
 
     @PostMapping("/auth2")
     public ConfAppResp autenticar2(@RequestBody CredenciaisDTO credencial) {
-        System.out.println(credencial.getLogin());
+       // System.out.println(credencial.getLogin());
         ConfAppResp tokenResp = new ConfAppService().token();
-        System.out.println(tokenResp);
+       // System.out.println(tokenResp);
         return tokenResp;
     }
 

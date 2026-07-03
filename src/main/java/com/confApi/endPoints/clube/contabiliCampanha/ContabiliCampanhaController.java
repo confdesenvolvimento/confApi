@@ -37,8 +37,8 @@ public class ContabiliCampanhaController {
 
     @GetMapping("/ranking")
     public List<ContabiliCampanha> getRanking(@RequestParam Integer codgCampanha) {
-        System.out.println("ranking "+codgCampanha);
-        System.out.println("r : "+contabiliCampanhaService.getRanking(codgCampanha));
+       // System.out.println("ranking "+codgCampanha);
+       // System.out.println("r : "+contabiliCampanhaService.getRanking(codgCampanha));
         return contabiliCampanhaService.getRanking(codgCampanha);
     }
 

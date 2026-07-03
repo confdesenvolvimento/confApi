@@ -58,7 +58,7 @@ public class CartaoUsuarioCiaApi extends AbstractTransactionServiceApi implement
                     .path("api/cartaoUsuarioCia/AllById/" + id)
                     .toUriString();
 
-            System.out.println("url: " + url);
+          //  System.out.println("url: " + url);
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);

@@ -35,7 +35,7 @@ public class BeneficioCartaoUsuarioApi implements Serializable {
                     .path("api/beneficioCartaoUsuario/verificaBeneficio/cartaoUsuario/" + cartaoUsuarioId + "/beneficio/" + beneficioId)
                     .toUriString();
 
-            System.out.println("url: " + url);
+          //  System.out.println("url: " + url);
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);

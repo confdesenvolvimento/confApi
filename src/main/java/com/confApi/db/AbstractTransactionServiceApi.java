@@ -27,7 +27,7 @@ public class AbstractTransactionServiceApi {
                     .header("Authorization", "Bearer " + new ConfAppService().token())
                     .POST(HttpRequest.BodyPublishers.ofString(requestData, StandardCharsets.UTF_8))
                     .build();
-            System.err.println("Bearer: "+new ConfAppService().token());
+            //System.err.println("Bearer: "+new ConfAppService().token());
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             responseBody = response.body();
 

@@ -19,8 +19,8 @@ public class BeneficioTransacaoCartaoController {
 
     @GetMapping("/transacaoUsuarioExtrato/cartaoUsuario/{cartaoUsuarioId}")
     public List<BeneficioTransacaoCartao> getAllByTransacaoUsuarioExtrato(@PathVariable int cartaoUsuarioId) {
-        System.out.println("1 : "+cartaoUsuarioId);
-        System.out.println("2 : "+beneficioTransacaoCartaoService.getAllByTransacaoUsuarioExtrato(cartaoUsuarioId).size());
+      //  System.out.println("1 : "+cartaoUsuarioId);
+      //  System.out.println("2 : "+beneficioTransacaoCartaoService.getAllByTransacaoUsuarioExtrato(cartaoUsuarioId).size());
         return beneficioTransacaoCartaoService.getAllByTransacaoUsuarioExtrato(cartaoUsuarioId);
     }
 }

@@ -109,13 +109,13 @@ public class ContabiliCampanhaApi extends AbstractTransactionServiceApi implemen
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_CLUBE)
                     .path("/contabilCampanha/ranking")
                     .queryParam("codgCampanha", codgCampanha).toUriString();
-            System.out.println("url ranking: " + url); // 👈 veja o que está saindo
+           // System.out.println("url ranking: " + url); // 👈 veja o que está saindo
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);
             ResponseEntity<List<ContabiliCampanha>> response = restTemplate.exchange(
                     url, HttpMethod.GET, entity,
                     new ParameterizedTypeReference<List<ContabiliCampanha>>() {});
-            System.out.println("res : "+response.getBody());
+           // System.out.println("res : "+response.getBody());
             return response.getBody();
         } catch (HttpClientErrorException.NotFound e) {
             System.out.println("Sem ranking para campanha: " + codgCampanha);

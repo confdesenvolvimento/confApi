@@ -35,7 +35,7 @@ public class QuemParticipaApi extends AbstractTransactionServiceApi implements S
                     .path("/api/quemParticipa/consulta")
                     .toUriString();
 
-            System.out.println("url: " + url);
+           // System.out.println("url: " + url);
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);

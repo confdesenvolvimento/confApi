@@ -48,13 +48,13 @@ public class HotelSearchService {
         // 2) buscar markup por unidade/produto (Manager)
         //Double mkp = markupService.findByCodProdutoValue(req.getIdentificacaoAgenciaModel().getCodgProduto());
         Double mkp = markupService.findVlrMarkup(req.getIdentificacaoAgenciaModel());
-        System.out.println("Olha o produto ai: " + req.getIdentificacaoAgenciaModel().getCodgProduto() + " " + mkp);
+       // System.out.println("Olha o produto ai: " + req.getIdentificacaoAgenciaModel().getCodgProduto() + " " + mkp);
 
         // 3) aplicar comissao extra + markup + prazos
         List<Cambio> cambioList = cambioService.findUltimoCambio();
-        System.out.println("Olha o cambioList ai: " + cambioList.size());
+       // System.out.println("Olha o cambioList ai: " + cambioList.size());
         for (Cambio cambio : cambioList) {
-        System.out.println("cambio: " + cambio.getMoeda().getSigla() + " - "+cambio.getValorCotacao());
+       // System.out.println("cambio: " + cambio.getMoeda().getSigla() + " - "+cambio.getValorCotacao());
 
         }
 

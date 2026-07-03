@@ -1,6 +1,7 @@
 package com.confApi.endPoints.clube.cartaoUsuarioCia;
 
 import com.confApi.db.clube.cartaoUsuarioCia.CartaoUsuarioCia;
+import com.confApi.db.clube.cartaoUsuarioCia.CartaoUsuarioCiaDetalheDTO;
 import com.confApi.db.clube.cartaoUsuarioCia.CartaoUsuarioCiaService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,18 +18,33 @@ public class CartaoUsuarioCiaController {
 
     @Autowired
     private CartaoUsuarioCiaService cartaoUsuarioCiaService;
-
+/*
     @GetMapping("/AllByCartaoUsuario/{id}")
     public ResponseEntity<List<CartaoUsuarioCia>> getAllByUsuario(@PathVariable int id) {
         System.out.println("cartaoUsuarioCia : "+id);
+        System.out.println("cartaoUsuarioCia : "+cartaoUsuarioCiaService.findAllByUsuario(id));
         return cartaoUsuarioCiaService.findAllByUsuario(id);
+    }*/
+
+    @GetMapping("/lista/{id}")
+    public List<CartaoUsuarioCia> findAllByCartaoUsuario(@PathVariable int id) {
+        System.out.println("get lista : "+id);
+        //System.out.println("lista : "+cartaoUsuarioCiaService.lista(id));
+        return cartaoUsuarioCiaService.lista(id);
     }
 
+/*
     @GetMapping("/cartaoUsuario/AllById/{id}")
     public CartaoUsuarioCia getAllById(@PathVariable int id) {
-        System.out.println("------AllById------ : "+id);
-        System.out.println("cartaoUsuarioCia : "+id);
-        System.out.println("cartaoUsuarioCia : "+cartaoUsuarioCiaService.getAllById(id));
+       // System.out.println("------AllById------ : "+id);
+      //  System.out.println("cartaoUsuarioCia : "+id);
+      //  System.out.println("cartaoUsuarioCia : "+cartaoUsuarioCiaService.getAllById(id));
         return cartaoUsuarioCiaService.getAllById(id);
+    }*/
+
+    @GetMapping("/cartaoUsuarioById/{id}")
+    public CartaoUsuarioCiaDetalheDTO cartaoUsuarioById(@PathVariable int id) {
+        return cartaoUsuarioCiaService.cartaoUsuarioById(id);
     }
+
 }

@@ -12,6 +12,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.data.domain.Page;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -217,6 +218,37 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_CLUBE)
                     .path("/usuario/consultaUsuarioIDExiste/" + idUsuarioManger)
                     .toUriString();
+
+            System.out.println("url consultaUsuarioIDExiste: " + url); // 👈
+            System.out.println("idUsuarioManger: " + idUsuarioManger); // 👈
+
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            HttpEntity<Void> entity = new HttpEntity<>(null, headers);
+
+            ResponseEntity<UsuarioClube> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, UsuarioClube.class);
+
+            System.out.println("response: " + response.getBody()); // 👈
+
+            return response.getBody();
+
+        } catch (HttpClientErrorException.NotFound e) {
+            System.out.println("usuario nao encontrado: " + idUsuarioManger); // 👈
+            return new UsuarioClube();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new UsuarioClube();
+        }
+    }
+
+   /* public UsuarioClube consultaUsuarioIDExiste(int idUsuarioManger) {
+        try {
+            ConfAppResp token = confAppService.token();
+
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(UrlConfig.URL_CONFIANCA_CLUBE)
+                    .path("/usuario/consultaUsuarioIDExiste/" + idUsuarioManger)
+                    .toUriString();
           //  System.out.println("aki : "+url);
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);
@@ -234,7 +266,7 @@ public class UsuarioClubeApi extends AbstractTransactionServiceApi implements Se
             e.printStackTrace();
             return new UsuarioClube();
         }
-    }
+    }*/
 
     /*ta pronto*/
     public List<UnidadeDTO> getDistinctUnidades() {

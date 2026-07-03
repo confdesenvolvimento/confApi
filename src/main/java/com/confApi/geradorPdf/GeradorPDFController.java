@@ -21,10 +21,10 @@ public class GeradorPDFController {
 
     @PostMapping("/gerarAereoPDF")
     public ResponseEntity<byte[]> geradorAereoPdf(@RequestBody GeradorAereoPDFModel geradorAereoPDFModel) throws IOException {
-        System.out.println("geradorAereoPdf");
-        System.out.println("getUsuarioConfDto :  " + geradorAereoPDFModel.getUsuarioConfDto());
-        System.out.println("plano viagem :  " + geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
-        System.out.println("reserva :  " + geradorAereoPDFModel.getReservaAereoModel().getUsuarioCriacao2().getCodigoWooba());
+       // System.out.println("geradorAereoPdf");
+      //  System.out.println("getUsuarioConfDto :  " + geradorAereoPDFModel.getUsuarioConfDto());
+       // System.out.println("plano viagem :  " + geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
+       // System.out.println("reserva :  " + geradorAereoPDFModel.getReservaAereoModel().getUsuarioCriacao2().getCodigoWooba());
 
         byte[] pdfBytes = geradorPDFService.gerarPopularAereoPDF(geradorAereoPDFModel);
 
@@ -42,16 +42,16 @@ public class GeradorPDFController {
 
     @PostMapping("/reservaAereo")
     public void geradorPdf2(@RequestBody GeradorAereoPDFModel geradorAereoPDFModel) throws IOException {
-        System.out.println("getUsuarioConfDto :  "+geradorAereoPDFModel.getUsuarioConfDto());
-        System.out.println("plano viagem :  "+geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
-        System.out.println("reserva :  "+geradorAereoPDFModel.getReservaAereoModel().getUsuarioCriacao2().getCodigoWooba());
+      //  System.out.println("getUsuarioConfDto :  "+geradorAereoPDFModel.getUsuarioConfDto());
+      //  System.out.println("plano viagem :  "+geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
+      //  System.out.println("reserva :  "+geradorAereoPDFModel.getReservaAereoModel().getUsuarioCriacao2().getCodigoWooba());
         geradorPDFService.popularAereoPDF(geradorAereoPDFModel);
     }
 
     @PostMapping("/reservaHotel")
     public void geradorHotelPdf(@RequestBody GeradorHotelPDFModel geradorHotelPDFModel)  {
-        System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getUsuarioConfDto());
-        System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getReservaHotelModel().getCodgAgencia());
+       // System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getUsuarioConfDto());
+      //  System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getReservaHotelModel().getCodgAgencia());
         geradorPDFService.popularHotelPDF(geradorHotelPDFModel);
     }
 

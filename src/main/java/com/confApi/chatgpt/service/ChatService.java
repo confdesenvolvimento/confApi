@@ -261,20 +261,20 @@ public class ChatService {
             List<AlertaTarifaDTO> alertaTarifaDTOList = alertaTarifaService.listarPorUsuario(req.codgUsuario().intValue());
             AlertaTarifaIAResponse alertaTarifaIAResponse = new AlertaTarifaIAResponse();
             alertaTarifaIAResponse.getTarifas().addAll(alertaTarifaDTOList);
-            System.out.println("AlertaTarifaDTO: " + alertaTarifaIAResponse.toString());
+           // System.out.println("AlertaTarifaDTO: " + alertaTarifaIAResponse.toString());
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + alertaTarifaIAResponse.toString()));
         }
 
         if (keyword.equals("desconhecido") && !keywords.contains(keyword)) {
             List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
             for (ChatMemoria chtMemoria : chatMemorias) {
-                System.out.println("Memoria: " + chtMemoria.getText());
+             //   System.out.println("Memoria: " + chtMemoria.getText());
                 messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
             }
         }
         if (keyword.equals("limites") && !keywords.contains(keyword)) {
             /*Consultar limites de credito*/
-            System.out.println("Limite Erp: " + req.idErp());
+           // System.out.println("Limite Erp: " + req.idErp());
             Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
 
@@ -306,7 +306,7 @@ public class ChatService {
             if (partes.length >= 2 && !partes[1].trim().isEmpty()) {
                 messages.add(listarFamilias(req, partes[1].trim()));
             } else {
-                System.out.println("Keyword em formato inválido para familias: " + keyword);
+               // System.out.println("Keyword em formato inválido para familias: " + keyword);
             }
         }
 
@@ -393,10 +393,10 @@ public class ChatService {
             // 4) Serializa o OBJETO (não toString)
             resultadoJson = mapper.writeValueAsString(fResponse);
 
-            System.out.println("[buscarCheckinsProximos] itens convertidos: " + fResponse.getReservaCheckInIA().size());
+           // System.out.println("[buscarCheckinsProximos] itens convertidos: " + fResponse.getReservaCheckInIA().size());
 
         } catch (Exception e) {
-            System.out.println("[buscarCheckinsProximos] Erro ao montar resposta" + e);
+         //   System.out.println("[buscarCheckinsProximos] Erro ao montar resposta" + e);
             // fallback mínimo para não quebrar o fluxo
             resultadoJson = "{\"reservaCheckInIA\":[]}";
         }

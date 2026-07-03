@@ -39,7 +39,7 @@ public class BeneficioTransacaoCartaoApi implements Serializable {
                     .path("api/beneficioTransacaoCartao/transacaoUsuarioExtrato/cartaoUsuario/" + cartaoUsuarioId)
                     .toUriString();
 
-            System.out.println("url: " + url);
+           // System.out.println("url: " + url);
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(null, headers);

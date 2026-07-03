@@ -14,4 +14,5 @@ public class BeneficioCartao implements Serializable {
     private String nomeBeneficio;
     private Integer statusBeneficio;
     private CartaoCia cartaoCia;
+    private Boolean utilizado = false;
 }

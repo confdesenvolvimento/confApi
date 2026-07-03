@@ -39,7 +39,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 UserDetails usuario = usuarioService.loadUserByUsername(loginUsuario);
 
                 // 🔍 DEBUG (remova depois)
-                System.out.println("JWT USER: " + usuario.getUsername());
+               // System.out.println("JWT USER: " + usuario.getUsername());
                 usuario.getAuthorities().forEach(a -> System.out.println("JWT AUTH: " + a.getAuthority()));
 
                 UsernamePasswordAuthenticationToken auth =
