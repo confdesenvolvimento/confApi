@@ -1,6 +1,7 @@
 package com.confApi.db.confManager.recebimento;
 
 import com.confApi.db.confManager.bandeira.Bandeira;
+import com.confApi.db.confManager.carro.CarroReserva;
 import com.confApi.db.confManager.formaPagamento.FormaPagamento;
 import com.confApi.db.confManager.gatewayCartao.GatewayCartao;
 import com.confApi.db.confManager.reservaAereo.ReservaAereo;
@@ -48,6 +49,7 @@ public class Recebimento implements Serializable {
     private String copiacolaPix;
     private ReservaPacote codgReservaPacote;
     private SeguroReserva codgReservaSeguro;
+    private CarroReserva codgReservaCarro;
 
     public Recebimento(RecebimentoModel recebimentoModel) {
         this.codgRecebimento = recebimentoModel.getCodgRecebimento() != null ? recebimentoModel.getCodgRecebimento() : null;
@@ -80,6 +82,7 @@ public class Recebimento implements Serializable {
         this.copiacolaPix = null;
         this.codgReservaPacote = null;
         this.codgReservaSeguro = null;
+        this.codgReservaCarro = null;
     }
 
     public Recebimento() {
@@ -340,6 +343,14 @@ public class Recebimento implements Serializable {
         this.codgReservaSeguro = codgReservaSeguro;
     }
 
+    public CarroReserva getCodgReservaCarro() {
+        return codgReservaCarro;
+    }
+
+    public void setCodgReservaCarro(CarroReserva codgReservaCarro) {
+        this.codgReservaCarro = codgReservaCarro;
+    }
+
     @Override
     public String toString() {
         return "Recebimento{" +
@@ -371,6 +382,7 @@ public class Recebimento implements Serializable {
                 ", copiacolaPix='" + copiacolaPix + '\'' +
                 ", codgReservaPacote=" + codgReservaPacote +
                 ", codgReservaSeguro=" + codgReservaSeguro +
+                ",getCodgReservaCarro=" + codgReservaCarro +
                 '}';
     }
 }

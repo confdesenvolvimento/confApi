@@ -1,12 +1,11 @@
 package com.confApi.carros;
 
 import com.confApi.carros.dto.*;
+import com.confApi.db.confManager.carro.CarroReserva;
+import com.confApi.db.confManager.carro.CarroReservaService;
 import com.confApi.hub.carro.HubCarroClient;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -18,6 +17,9 @@ public class CarrosController {
 
     @Autowired
     private HubCarroClient hubCarroClient;
+
+    @Autowired
+    private CarroReservaService carroReservaService;
 
     public CarrosController(CarrosService service) {
         this.service = service;
@@ -36,20 +38,18 @@ public class CarrosController {
     }
 
     @PostMapping("/reservar")
-    public List<EmitirCarroResponseDTO> efetuarReserva(@RequestBody ReservarCarroRequestDTO req) {
-        return hubCarroClient.reservar(req);
+    public CarroReservaOperacaoResponseDTO efetuarReserva(@RequestBody CarroCompraModel req) {
+        return carroReservaService.reservar(req);
     }
 
     @PostMapping("/consultarReserva")
-    public List<ReservarCarroResponseDTO> consultarReserva(@RequestBody ConsultarReservaCarroRequestDTO req) {
-        List<ReservarCarroResponseDTO> resultado = hubCarroClient.consultarReserva(req);
-        return resultado;
+    public CarroReservaOperacaoResponseDTO consultarReserva(@RequestBody ConsultarReservaCarroRequestDTO req) {
+        return carroReservaService.consultarReserva(req);
     }
 
     @PostMapping("/cancelarReserva")
-    public List<CancelarReservaCarroResponseDTO> cancelarReserva(@RequestBody CancelarReservaCarroRequestDTO req) {
-        List<CancelarReservaCarroResponseDTO> resultado = hubCarroClient.cancelarReserva(req);
-        return resultado;
+    public List<CancelarReservaCarroResponseDTO> cancelarReserva(@RequestBody CancelarCarroModel req) {
+        return carroReservaService.cancelarReserva(req);
     }
 
     @PostMapping("/obterFormasPagamento")
@@ -62,5 +62,10 @@ public class CarrosController {
     public List<EmitirCarroResponseDTO> obterFormasPagamento(@RequestBody EmitirCarroRequestDTO req) {
         List<EmitirCarroResponseDTO> resultado = hubCarroClient.emitir(req);
         return resultado;
+    }
+
+    @GetMapping("/findAllReservas")
+    public List<CarroReserva> findAllReservas() {
+        return carroReservaService.findAllReservas();
     }
 }

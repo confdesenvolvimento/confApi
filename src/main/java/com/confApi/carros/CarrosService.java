@@ -1,6 +1,6 @@
 package com.confApi.carros;
 
-import com.confApi.db.confManager.carro.reserva.CarroReservaService;
+import com.confApi.db.confManager.carro.CarroReservaService;
 import com.confApi.db.confManager.historicoReserva.HistoricoReservaService;
 import org.springframework.stereotype.Service;
 

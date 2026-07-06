@@ -1,21 +1,18 @@
 package com.confApi.recebimento;
 
+import com.confApi.carros.dto.CarroCompraModel;
+import com.confApi.carros.dto.SistemaCarroHub;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.recebimento.Recebimento;
-import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import com.confApi.seguros.dto.SeguroCompraModel;
-import com.confApi.seguros.dto.SeguroViagemPesquisaDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Collections;
-import java.util.Optional;
-import java.util.logging.Level;
 
 @Service
 public class RecebimentoService {
@@ -55,6 +52,66 @@ public class RecebimentoService {
             return null;
 
         }
+    }
+
+    public Recebimento criarRecebimento(CarroCompraModel req) {
+        if (req == null || req.getRecebimento() == null) {
+            return null;
+        }
+
+        Recebimento recebimento = new Recebimento(req.getRecebimento());
+        System.out.println("recebimento.getCodgReservaCarro():: "+ recebimento.getCodgReservaCarro());
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        String sistemaNome = resolverSistemaNomeCarro(req);
+
+        try {
+            ConfAppResp token = confAppService.token();
+
+            if (token != null && token.getToken() != null) {
+                headers.setBearerAuth(token.getToken());
+            }
+
+            HttpEntity<Recebimento> requestEntity =
+                    new HttpEntity<>(recebimento, headers);
+
+            ResponseEntity<Recebimento> response =
+                    restTemplate.exchange(
+                            UrlConfig.URL_CONFIANCA_MANAGER
+                                    + "recebimento/"
+                                    + sistemaNome
+                                    + "?autorizacao=false",
+                            HttpMethod.POST,
+                            requestEntity,
+                            Recebimento.class
+                    );
+
+            return response.getBody();
+
+        } catch (Exception ex) {
+            System.out.println("ERRO AO CRIAR RECEBIMENTO CARRO: " + ex.getMessage());
+            return null;
+        }
+    }
+
+
+    private String resolverSistemaNomeCarro(CarroCompraModel req) {
+        if (req == null
+                || req.getReservaCarro() == null
+                || req.getReservaCarro().getSistema() == null) {
+            return "MB";
+        }
+
+        SistemaCarroHub sistema = req.getReservaCarro().getSistema();
+
+        if (sistema.getNome() != null && !sistema.getNome().trim().isEmpty()) {
+            return sistema.getNome().trim();
+        }
+
+        return "MB";
     }
 
     public Recebimento cancelarRecebimento(Recebimento recebimento) {
