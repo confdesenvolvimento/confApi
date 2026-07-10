@@ -40,8 +40,6 @@ public class UsuarioService {
     }
 
     public ResponseEntity<UsuarioDto> autenficarUsuarioAuth(@RequestBody AuthRequestDto requestDto) throws IOException {
-        System.out.println("chamou login "+requestDto);
-        System.out.println("aki login "+usuarioApi.autenficarUsuarioAuth(requestDto).getBody());
         return ResponseEntity.ok().body(usuarioApi.autenficarUsuarioAuth(requestDto).getBody());
     }
 }
