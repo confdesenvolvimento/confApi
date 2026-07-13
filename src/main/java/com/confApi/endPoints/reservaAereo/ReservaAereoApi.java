@@ -18,11 +18,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
+import java.time.ZoneId;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -30,6 +34,8 @@ import java.util.logging.Logger;
 public class ReservaAereoApi {
 
     private static final Logger LOG = Logger.getLogger(ReservaAereoApi.class.getName());
+    private static final ZoneId DEFAULT_ZONE = ZoneId.of("America/Cuiaba");
+    private static final int DIAS_ULTIMAS_RESERVAS = 10;
 
     @Autowired
     private ConfAppService confAppService;
@@ -138,6 +144,61 @@ public class ReservaAereoApi {
                 .filter(reserva -> mesmaCompanhia(reserva.getCodgCompanhiaAerea(), companhiaAerea))
                 .findFirst()
                 .orElse(null);
+    }
+
+    public List<ReservaAereo> consultarReservasUsuario(Integer codgUsuario, Integer codgAgencia, String localizador) {
+        if (codgUsuario == null) {
+            return Collections.emptyList();
+        }
+
+        try {
+            ConfAppResp token = confAppService.token();
+            Date fim = ajustarHorario(new Date(), 23, 59, 59, 999);
+            Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone(DEFAULT_ZONE));
+            calendar.setTime(fim);
+            calendar.add(Calendar.DAY_OF_MONTH, -(DIAS_ULTIMAS_RESERVAS - 1));
+            Date inicio = ajustarHorario(calendar.getTime(), 0, 0, 0, 0);
+            UriComponentsBuilder builder = UriComponentsBuilder
+                    .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                    .path("/reservaAereo/consultarReservas/localizador")
+                    .queryParam("codgUsuario", codgUsuario)
+                    .queryParam("inicio", inicio)
+                    .queryParam("fim", fim)
+                    .queryParam("filtroMinhasReservas", Boolean.TRUE)
+                    .queryParam("filtroMinhaAgencia", Boolean.TRUE);
+
+            if (codgAgencia != null) {
+                builder.queryParam("codgAgencia", codgAgencia);
+            }
+            if (localizador != null && !localizador.isBlank()) {
+                builder.queryParam("localizador", localizador.trim());
+            }
+
+            URI url = builder.build().encode().toUri();
+            ResponseEntity<List<ReservaAereo>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(defaultHeaders(token.getToken())),
+                    new ParameterizedTypeReference<List<ReservaAereo>>() {
+                    }
+            );
+
+            return response.getBody() == null ? Collections.emptyList() : response.getBody();
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Erro ao consultar reservas aereas do usuario no Manager: " + codgUsuario, e);
+            alertarErro("Erro ao consultar reservas aereas do usuario " + codgUsuario, e);
+            return Collections.emptyList();
+        }
+    }
+
+    private Date ajustarHorario(Date data, int hora, int minuto, int segundo, int milissegundo) {
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone(DEFAULT_ZONE));
+        cal.setTime(data);
+        cal.set(Calendar.HOUR_OF_DAY, hora);
+        cal.set(Calendar.MINUTE, minuto);
+        cal.set(Calendar.SECOND, segundo);
+        cal.set(Calendar.MILLISECOND, milissegundo);
+        return cal.getTime();
     }
 
     public ReservaAereo criar(ReservaAereo reservaAereo) {
@@ -274,4 +335,3 @@ public class ReservaAereoApi {
         return headers;
     }
 }
-

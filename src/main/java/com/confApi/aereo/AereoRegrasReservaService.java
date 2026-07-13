@@ -223,6 +223,8 @@ public class AereoRegrasReservaService {
                 origem.getValorTaxaBagagem(),
                 origem.getValorOutrasTaxas()
         ));
+        destino.setQuantidadePassageiros(origem.getQuantidadePassageiros());
+        destino.setQuantidadeTrechos(origem.getQuantidadeTrechos());
         return destino;
     }
 
@@ -502,6 +504,8 @@ public class AereoRegrasReservaService {
         destino.setValorTarifa(origem.getValorTarifa());
         destino.setValorNovaTarifa(origem.getValorNovaTarifa());
         destino.setValorTotalReserva(origem.getValorTotalReserva());
+        destino.setQuantidadePassageiros(origem.getQuantidadePassageiros());
+        destino.setQuantidadeTrechos(origem.getQuantidadeTrechos());
         return destino;
     }
 

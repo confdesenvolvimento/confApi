@@ -1,0 +1,377 @@
+package com.confApi.chatconfianca.service;
+
+import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
+import com.confApi.chatconfianca.dto.enums.DistribuicaoDepartamento;
+import com.confApi.chatconfianca.dto.enums.PapelAtendente;
+import com.confApi.chatconfianca.dto.enums.PrioridadeConversa;
+import com.confApi.chatconfianca.dto.enums.StatusAtendente;
+import com.confApi.chatconfianca.dto.enums.StatusConversa;
+import com.confApi.chatconfianca.dto.enums.StatusFila;
+import com.confApi.chatconfianca.dto.enums.StatusMensagem;
+import com.confApi.chatconfianca.dto.enums.VisibilidadeMensagem;
+import com.confApi.chatconfianca.dto.model.AtendimentoAvaliacao;
+import com.confApi.chatconfianca.dto.model.AtendenteStatus;
+import com.confApi.chatconfianca.dto.model.Conversa;
+import com.confApi.chatconfianca.dto.model.ConversaParticipante;
+import com.confApi.chatconfianca.dto.model.DepartamentoAtendente;
+import com.confApi.chatconfianca.dto.model.DepartamentoUnidade;
+import com.confApi.chatconfianca.dto.model.FilaAtendimento;
+import com.confApi.chatconfianca.dto.model.Mensagem;
+import com.confApi.chatconfianca.dto.model.RefAgencia;
+import com.confApi.chatconfianca.dto.model.RefUnidade;
+import com.confApi.chatconfianca.dto.model.RefUsuario;
+import com.confApi.chatconfianca.dto.request.AbrirConversaRequest;
+import com.confApi.chatconfianca.dto.request.AssumirAtendimentoRequest;
+import com.confApi.chatconfianca.dto.request.AvaliarAtendimentoRequest;
+import com.confApi.chatconfianca.dto.request.EncerrarConversaRequest;
+import com.confApi.chatconfianca.dto.request.EnviarMensagemRequest;
+import com.confApi.exception.RegraDeNegocioException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.invocation.InvocationOnMock;
+import org.springframework.core.ParameterizedTypeReference;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+@SuppressWarnings({"unchecked", "rawtypes"})
+class ChatConfiancaServiceTest {
+
+    private static final Integer SOLICITANTE = 101;
+    private static final Integer ATENDENTE = 202;
+    private static final Integer CODG_AGENCIA = 501;
+    private static final Integer CODG_UNIDADE = 1;
+    private static final Long DEPARTAMENTO_UNIDADE_ID = 100L;
+    private static final Long CONVERSA_ID = 10L;
+    private static final Long FILA_ID = 20L;
+
+    private final ChatConfiancaManagerClient manager = mock(ChatConfiancaManagerClient.class);
+    private final ChatConfiancaConfigService configService = mock(ChatConfiancaConfigService.class);
+    private ChatConfiancaService service;
+    private Fixture fixture;
+
+    @BeforeEach
+    void setUp() {
+        fixture = new Fixture();
+        service = new ChatConfiancaService(manager, configService);
+
+        when(configService.sincronizarUsuarioReferencia(anyInt()))
+                .thenAnswer(invocation -> usuario((Integer) invocation.getArgument(0)));
+        when(configService.buscarAtendenteStatus(ATENDENTE)).thenReturn(statusOnline());
+        when(configService.salvarAtendenteStatus(any(AtendenteStatus.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(manager.get(anyString(), any(Class.class))).thenAnswer(this::responderGet);
+        when(manager.getList(anyString(), any(ParameterizedTypeReference.class))).thenAnswer(this::responderGetList);
+        when(manager.post(anyString(), any(), any(Class.class))).thenAnswer(this::responderPost);
+    }
+
+    @Test
+    void fluxoPrincipalDeveAbrirAssumirEnviarEncerrarEAvaliar() {
+        AbrirConversaRequest abrir = new AbrirConversaRequest();
+        abrir.setCodgUsuario(SOLICITANTE);
+        abrir.setDepartamentoUnidadeId(DEPARTAMENTO_UNIDADE_ID);
+        abrir.setAssunto("Problema com tarifa");
+        abrir.setDescricaoInicial("Preciso de ajuda.");
+        abrir.setPrioridade(PrioridadeConversa.NORMAL);
+
+        Conversa aberta = service.abrirConversa(abrir);
+
+        assertEquals(CONVERSA_ID, aberta.getId());
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, aberta.getStatus());
+        assertEquals(SOLICITANTE, aberta.getSolicitanteCodgUsuario());
+
+        AssumirAtendimentoRequest assumir = new AssumirAtendimentoRequest();
+        assumir.setFilaId(FILA_ID);
+        assumir.setCodgAtendente(ATENDENTE);
+
+        Conversa assumida = service.assumirAtendimento(assumir);
+
+        assertEquals(StatusConversa.EM_ATENDIMENTO, assumida.getStatus());
+        assertEquals(ATENDENTE, assumida.getAtendenteResponsavelCodgUsuario());
+        assertEquals(StatusFila.EM_ATENDIMENTO, fixture.fila.getStatus());
+
+        EnviarMensagemRequest mensagemRequest = new EnviarMensagemRequest();
+        mensagemRequest.setConversaId(CONVERSA_ID);
+        mensagemRequest.setCodgUsuario(ATENDENTE);
+        mensagemRequest.setConteudo("Ola, estou verificando.");
+
+        Mensagem mensagem = service.enviarMensagem(mensagemRequest);
+
+        assertEquals(CONVERSA_ID, mensagem.getConversaId());
+        assertEquals(ATENDENTE, mensagem.getRemetenteCodgUsuario());
+        assertEquals(StatusMensagem.ENVIADA, mensagem.getStatus());
+        assertEquals(VisibilidadeMensagem.PUBLICA, mensagem.getVisibilidade());
+
+        EncerrarConversaRequest encerrar = new EncerrarConversaRequest();
+        encerrar.setConversaId(CONVERSA_ID);
+        encerrar.setCodgUsuario(ATENDENTE);
+        encerrar.setCategoria("Resolvido");
+        encerrar.setMotivo("Tarifa explicada ao cliente.");
+
+        Conversa encerrada = service.encerrarConversa(encerrar);
+
+        assertEquals(StatusConversa.ENCERRADA, encerrada.getStatus());
+        assertEquals(ATENDENTE, encerrada.getEncerradoPorCodgUsuario());
+        assertEquals("Resolvido - Tarifa explicada ao cliente.", encerrada.getMotivoEncerramento());
+
+        AvaliarAtendimentoRequest avaliar = new AvaliarAtendimentoRequest();
+        avaliar.setConversaId(CONVERSA_ID);
+        avaliar.setCodgUsuarioAvaliador(SOLICITANTE);
+        avaliar.setNota(5);
+        avaliar.setComentario("Atendimento muito bom.");
+
+        AtendimentoAvaliacao avaliacao = service.avaliarAtendimento(avaliar);
+
+        assertNotNull(avaliacao.getId());
+        assertEquals(CONVERSA_ID, avaliacao.getConversaId());
+        assertEquals(SOLICITANTE, avaliacao.getCodgUsuarioAvaliador());
+        assertEquals(5, avaliacao.getNota());
+        assertEquals("Atendimento muito bom.", avaliacao.getComentario());
+    }
+
+    @Test
+    void avaliarAtendimentoNaoPermiteDuplicidade() {
+        fixture.conversa = conversaEncerrada();
+        fixture.solicitanteParticipante = true;
+        fixture.avaliacao = new AtendimentoAvaliacao();
+        fixture.avaliacao.setId(99L);
+        fixture.avaliacao.setConversaId(CONVERSA_ID);
+        fixture.avaliacao.setCodgUsuarioAvaliador(SOLICITANTE);
+        fixture.avaliacao.setNota(4);
+
+        AvaliarAtendimentoRequest request = new AvaliarAtendimentoRequest();
+        request.setConversaId(CONVERSA_ID);
+        request.setCodgUsuarioAvaliador(SOLICITANTE);
+        request.setNota(5);
+
+        RegraDeNegocioException ex = assertThrows(RegraDeNegocioException.class,
+                () -> service.avaliarAtendimento(request));
+
+        assertEquals(409, ex.getStatus());
+        assertEquals("Esta conversa ja foi avaliada por este usuario.", ex.getMessage());
+    }
+
+    private Object responderGet(InvocationOnMock invocation) {
+        String path = invocation.getArgument(0);
+        if (path.equals("chat-confianca/consultas/usuarios/" + SOLICITANTE)) {
+            return fixture.solicitante;
+        }
+        if (path.equals("chat-confianca/consultas/usuarios/" + ATENDENTE)) {
+            return fixture.atendente;
+        }
+        if (path.equals("chat-confianca/consultas/agencias/" + CODG_AGENCIA)) {
+            return fixture.agencia;
+        }
+        if (path.equals("chat-confianca/consultas/unidades/" + CODG_UNIDADE)) {
+            return fixture.unidade;
+        }
+        if (path.equals("chat-confianca/consultas/conversas/" + CONVERSA_ID)) {
+            return fixture.conversa;
+        }
+        if (path.equals("chat-confianca/persistencia/filas/" + FILA_ID)) {
+            return fixture.fila;
+        }
+        if (path.equals("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/fila")) {
+            return fixture.fila;
+        }
+        if (path.equals("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/avaliacoes/" + SOLICITANTE)) {
+            return fixture.avaliacao;
+        }
+        if (path.equals("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/participantes/" + SOLICITANTE + "/exists")) {
+            return fixture.solicitanteParticipante;
+        }
+        if (path.equals("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/participantes/" + ATENDENTE + "/exists")) {
+            return fixture.atendenteParticipante;
+        }
+        return null;
+    }
+
+    private Object responderGetList(InvocationOnMock invocation) {
+        String path = invocation.getArgument(0);
+        if (path.equals("chat-confianca/consultas/departamentos-disponiveis/agencia/" + CODG_AGENCIA)) {
+            return Collections.singletonList(fixture.departamentoUnidade);
+        }
+        if (path.equals("chat-confianca/consultas/departamento-unidades/" + DEPARTAMENTO_UNIDADE_ID + "/filas")) {
+            return Collections.emptyList();
+        }
+        if (path.equals("chat-confianca/consultas/atendentes/" + ATENDENTE + "/departamentos")) {
+            return Collections.singletonList(fixture.vinculoAtendente);
+        }
+        if (path.startsWith("chat-confianca/consultas/usuarios/" + ATENDENTE + "/perfis")) {
+            return Collections.singletonList("ATENDENTE");
+        }
+        return Collections.emptyList();
+    }
+
+    private Object responderPost(InvocationOnMock invocation) {
+        String path = invocation.getArgument(0);
+        Object body = invocation.getArgument(1);
+
+        if (path.equals("chat-confianca/persistencia/conversas")) {
+            Conversa conversa = (Conversa) body;
+            if (conversa.getId() == null) {
+                conversa.setId(CONVERSA_ID);
+            }
+            fixture.conversa = conversa;
+            return conversa;
+        }
+        if (path.equals("chat-confianca/persistencia/filas")) {
+            FilaAtendimento fila = (FilaAtendimento) body;
+            if (fila.getId() == null) {
+                fila.setId(FILA_ID);
+            }
+            fixture.fila = fila;
+            return fila;
+        }
+        if (path.equals("chat-confianca/persistencia/conversa-participantes")) {
+            ConversaParticipante participante = (ConversaParticipante) body;
+            if (ATENDENTE.equals(participante.getCodgUsuario())) {
+                fixture.atendenteParticipante = true;
+            }
+            if (SOLICITANTE.equals(participante.getCodgUsuario())) {
+                fixture.solicitanteParticipante = true;
+            }
+            return participante;
+        }
+        if (path.equals("chat-confianca/persistencia/mensagens")) {
+            Mensagem mensagem = (Mensagem) body;
+            if (mensagem.getId() == null) {
+                mensagem.setId(fixture.proximaMensagemId++);
+            }
+            fixture.mensagens.add(mensagem);
+            return mensagem;
+        }
+        if (path.equals("chat-confianca/persistencia/atendimento-avaliacoes")) {
+            AtendimentoAvaliacao avaliacao = (AtendimentoAvaliacao) body;
+            avaliacao.setId(30L);
+            fixture.avaliacao = avaliacao;
+            return avaliacao;
+        }
+        return body;
+    }
+
+    private RefUsuario usuario(Integer codgUsuario) {
+        if (SOLICITANTE.equals(codgUsuario)) {
+            return fixture.solicitante;
+        }
+        if (ATENDENTE.equals(codgUsuario)) {
+            return fixture.atendente;
+        }
+        return null;
+    }
+
+    private Conversa conversaEncerrada() {
+        Conversa conversa = new Conversa();
+        conversa.setId(CONVERSA_ID);
+        conversa.setDepartamentoUnidadeId(DEPARTAMENTO_UNIDADE_ID);
+        conversa.setCodgUnidade(CODG_UNIDADE);
+        conversa.setCodgAgencia(CODG_AGENCIA);
+        conversa.setSolicitanteCodgUsuario(SOLICITANTE);
+        conversa.setAtendenteResponsavelCodgUsuario(ATENDENTE);
+        conversa.setAssunto("Problema com tarifa");
+        conversa.setStatus(StatusConversa.ENCERRADA);
+        conversa.setPrioridade(PrioridadeConversa.NORMAL);
+        return conversa;
+    }
+
+    private AtendenteStatus statusOnline() {
+        AtendenteStatus status = new AtendenteStatus();
+        status.setCodgUsuario(ATENDENTE);
+        status.setStatus(StatusAtendente.ONLINE);
+        status.setAtendimentosAtivos(0);
+        return status;
+    }
+
+    private static final class Fixture {
+        private final RefUsuario solicitante = solicitante();
+        private final RefUsuario atendente = atendente();
+        private final RefAgencia agencia = agencia();
+        private final RefUnidade unidade = unidade();
+        private final DepartamentoUnidade departamentoUnidade = departamentoUnidade();
+        private final DepartamentoAtendente vinculoAtendente = vinculoAtendente();
+        private Conversa conversa;
+        private FilaAtendimento fila;
+        private AtendimentoAvaliacao avaliacao;
+        private boolean solicitanteParticipante;
+        private boolean atendenteParticipante;
+        private long proximaMensagemId = 1000L;
+        private final List<Mensagem> mensagens = new ArrayList<>();
+    }
+
+    private static RefUsuario solicitante() {
+        RefUsuario usuario = new RefUsuario();
+        usuario.setCodgUsuario(SOLICITANTE);
+        usuario.setCodgAgencia(CODG_AGENCIA);
+        usuario.setNomeCompleto("Cliente Teste");
+        usuario.setAtivoChat(true);
+        usuario.setStatus(1);
+        return usuario;
+    }
+
+    private static RefUsuario atendente() {
+        RefUsuario usuario = new RefUsuario();
+        usuario.setCodgUsuario(ATENDENTE);
+        usuario.setCodgUnidade(CODG_UNIDADE);
+        usuario.setNomeCompleto("Atendente Teste");
+        usuario.setAtivoChat(true);
+        usuario.setStatus(1);
+        return usuario;
+    }
+
+    private static RefAgencia agencia() {
+        RefAgencia agencia = new RefAgencia();
+        agencia.setCodgAgencia(CODG_AGENCIA);
+        agencia.setCodgUnidade(CODG_UNIDADE);
+        agencia.setNomeAgencia("Agencia Teste");
+        agencia.setAtivoChat(true);
+        agencia.setStatus(1);
+        return agencia;
+    }
+
+    private static RefUnidade unidade() {
+        RefUnidade unidade = new RefUnidade();
+        unidade.setCodgUnidade(CODG_UNIDADE);
+        unidade.setNomeUnidade("Unidade Teste");
+        unidade.setAtivoChat(true);
+        unidade.setStatus(1);
+        return unidade;
+    }
+
+    private static DepartamentoUnidade departamentoUnidade() {
+        DepartamentoUnidade departamento = new DepartamentoUnidade();
+        departamento.setId(DEPARTAMENTO_UNIDADE_ID);
+        departamento.setDepartamentoId(1L);
+        departamento.setCodgUnidade(CODG_UNIDADE);
+        departamento.setNomeExibicao("Suporte");
+        departamento.setPermiteChamadoAgencia(true);
+        departamento.setPermiteChamadoInterno(false);
+        departamento.setExigeAssunto(true);
+        departamento.setDistribuicao(DistribuicaoDepartamento.MANUAL);
+        departamento.setLimiteChatsPorAtendente(3);
+        departamento.setAtivo(true);
+        return departamento;
+    }
+
+    private static DepartamentoAtendente vinculoAtendente() {
+        DepartamentoAtendente vinculo = new DepartamentoAtendente();
+        vinculo.setId(1L);
+        vinculo.setDepartamentoUnidadeId(DEPARTAMENTO_UNIDADE_ID);
+        vinculo.setCodgUsuario(ATENDENTE);
+        vinculo.setPapel(PapelAtendente.ATENDENTE);
+        vinculo.setRecebeChamados(true);
+        vinculo.setPrioridadeDistribuicao(1);
+        vinculo.setLimiteChatsSimultaneos(3);
+        vinculo.setAtivo(true);
+        return vinculo;
+    }
+}

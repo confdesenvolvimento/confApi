@@ -34,18 +34,24 @@ public class ConversationController {
     @PostMapping(value = "/chat", produces = MediaType.APPLICATION_JSON_VALUE)
     public ChatResponseDTO chat(@Valid @RequestBody ConversationRequestDTO req) throws IOException {
         List<ChatMessageDTO> messages = new ArrayList<>();
+        List<ChatMessageDTO> history = req.history() == null ? new ArrayList<>() : req.history();
+        List<String> keywords = req.keywords() == null ? new ArrayList<>() : req.keywords();
 
-        if (req.history().isEmpty()) {
+        if (history.isEmpty()) {
             String sys = profiles.systemPrompt("confia", req.codgAgencia(), req.codgUsuario());
             ChatMessageDTO system = new ChatMessageDTO("system", sys);
             messages.add(system);
         }
 
-        if (req.history() != null && !req.history().isEmpty()) {
-            messages.addAll(req.history());
+        if (!history.isEmpty()) {
+            messages.addAll(history);
         }
 
-        chatService.actionApis(messages, req);
+        int firstActionMessageIndex = messages.size();
+        keywords = chatService.actionApis(messages, req);
+        List<ChatActionDTO> actions = chatService.extrairAcoesDisponiveis(
+                messages.subList(firstActionMessageIndex, messages.size())
+        );
 
         messages.add(new ChatMessageDTO("user", req.input()));
 
@@ -57,7 +63,7 @@ public class ConversationController {
         List<ToolDefinition> tools = new ArrayList<>();
 
         String tipoConsulta = chatService.identificarTipoConsultaViagem(req.input());
-
+        //Aqui é para identificar se é busca de aereo ou hotel
         if ("aereo".equals(tipoConsulta)) {
             tools.add(ToolSchemas.searchFlights());
         } else if ("hotel".equals(tipoConsulta)) {
@@ -72,18 +78,26 @@ public class ConversationController {
                 metadata
         );
 
-        ChatResponseDTO charResp = chatService.chat(chatReq, req.keywords(), messages);
+        ChatResponseDTO charResp = chatService.chat(chatReq, keywords, messages);
 
-        if (req.keywords() != null && !req.keywords().isEmpty()) {
-            req.keywords().removeIf(Objects::isNull);
-            for (String kw : req.keywords()) {
+        if (keywords != null && !keywords.isEmpty() && charResp.keywords() != null) {
+            keywords.removeIf(Objects::isNull);
+            for (String kw : keywords) {
                 if (!charResp.keywords().contains(kw)) {
                     charResp.keywords().add(kw);
                 }
             }
         }
 
-        return charResp;
+        return new ChatResponseDTO(
+                charResp.id(),
+                charResp.content(),
+                charResp.toolCalls(),
+                charResp.audio(),
+                charResp.keywords(),
+                charResp.history(),
+                actions
+        );
     }
 
 

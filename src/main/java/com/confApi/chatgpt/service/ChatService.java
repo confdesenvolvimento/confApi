@@ -1,6 +1,12 @@
 package com.confApi.chatgpt.service;
 
 
+import com.confApi.aereo.AereoClient;
+import com.confApi.aereo.AereoRegrasReservaService;
+import com.confApi.aereo.dto.ConsultarLocalizadorRequest;
+import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
+import com.confApi.aereo.dto.Reserva;
+import com.confApi.aereo.dto.regrasAereas.RegrasAereasReservaResponse;
 import com.confApi.chatgpt.config.ChatHistoryUtil;
 import com.confApi.chatgpt.config.OpenAIProperties;
 import com.confApi.chatgpt.dto.*;
@@ -10,27 +16,34 @@ import com.confApi.db.confManager.alertaTarifa.dto.AlertaTarifaDTO;
 import com.confApi.db.confManager.alertaTarifa.dto.ia.AlertaTarifaIAResponse;
 import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.chatMemoria.dto.ChatMemoria;
+import com.confApi.db.confManager.agencia.dto.Agencia;
+import com.confApi.db.confManager.aeroporto.Aeroporto;
+import com.confApi.db.confManager.companhiaAerea.CompanhiaAerea;
 import com.confApi.db.confManager.familia.FamiliaService;
 import com.confApi.db.confManager.familia.dto.FamiliaCompanhia;
 import com.confApi.db.confManager.familia.dto.ia.FamiliaIAResponse;
+import com.confApi.db.confManager.passageiro.Passageiro;
+import com.confApi.db.confManager.reservaAereo.ReservaAereo;
+import com.confApi.db.confManager.trecho.Trecho;
+import com.confApi.db.confManager.usuario.Usuario;
+import com.confApi.db.confManager.voo.Voo;
 import com.confApi.db.wooba.checkin.CheckinService;
 import com.confApi.db.wooba.checkin.dto.Checkin72Horas;
 import com.confApi.db.wooba.checkin.dto.CheckinRQ;
 import com.confApi.db.wooba.checkin.dto.ia.CheckinIAResponse;
 import com.confApi.db.wooba.checkin.dto.ia.ReservaCheckInIA;
-import com.confApi.db.wooba.vendas.TurVendasService;
-import com.confApi.db.wooba.vendas.dto.RQConsultaVendasDto;
-import com.confApi.db.wooba.vendas.dto.VendaAereaExibicaoResponse;
-import com.confApi.db.wooba.vendas.dto.VendasAereasExibicao;
-import com.confApi.db.wooba.vendas.dto.VendasAereasExibicaoIA;
 import com.confApi.db.confManager.faturas.FaturasService;
 import com.confApi.db.confManager.faturas.dto.FaturaIA;
 import com.confApi.db.confManager.faturas.dto.FaturaSicaRQ;
 import com.confApi.db.confManager.faturas.dto.FaturaSicaRS;
 import com.confApi.db.confManager.faturas.dto.model.FaturaResponseIA;
+import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
+import com.confApi.db.confManager.regraAereaReembolso.dto.RegraAereaReembolsoConsultaResponse;
+import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.hub.limites.LimitesService;
 import com.confApi.hub.limites.dto.Disponibilidade;
 import com.confApi.hub.limites.dto.LimiteCreditoRQ;
+import com.confApi.model.IdentificacaoAgenciaModel;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -46,11 +59,18 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 // ChatService.java
 @Service
 @RequiredArgsConstructor
 public class ChatService {
+    private static final int LIMITE_ULTIMAS_RESERVAS_AEREAS = 10;
+    private static final int LIMITE_PASSAGEIROS_RESUMO = 5;
+    private static final int LIMITE_TRECHOS_RESUMO = 4;
+    private static final int LIMITE_VOOS_RESUMO = 8;
+
     private final OkHttpClient client;
     private final OpenAIProperties props;
     private final ToolRouter tools;
@@ -59,9 +79,11 @@ public class ChatService {
     private final LimitesService limitesService;
     private final FaturasService faturasService;
     private final CheckinService checkinService;
-    private final TurVendasService turVendasService;
     private final FamiliaService familiaService;
     private final AlertaTarifaService alertaTarifaService;
+    private final ReservaAereoApi reservaAereoApi;
+    private final AereoClient aereoClient;
+    private final AereoRegrasReservaService regrasReservaService;
 
 
     private final ObjectMapper mapper = new ObjectMapper()
@@ -177,7 +199,7 @@ public class ChatService {
         if (!collectedToolCalls.isEmpty()) {
             ToolCallDTO lastTool = collectedToolCalls.get(collectedToolCalls.size() - 1);
 
-            if ("search_hotels".equals(lastTool.name())) {
+            if ("search_hotels".equals(lastTool.name()) || "search_flights".equals(lastTool.name())) {
                 assistantContentFinal = om.writeValueAsString(lastTool.arguments());
             }
         }
@@ -187,7 +209,7 @@ public class ChatService {
                 assistantContentFinal,
                 collectedToolCalls,
                 null,
-                keywords,
+                keywords == null ? new ArrayList<>() : keywords,
                 updatedHistory
         );
     }
@@ -239,20 +261,35 @@ public class ChatService {
         });
     }
 
-    public void actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req) {
-        String keyword = "desconhecido";
-        try {
-            keyword = conversationAgentIA(req.input());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+    public List<String> actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req) {
+        String keyword = inferirKeywordOperacional(req.input());
+        if (keyword == null) {
+            keyword = "desconhecido";
+            try {
+                keyword = conversationAgentIA(req.input());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
         List<String> keywords = Optional.ofNullable(req.keywords()).orElseGet(ArrayList::new);
+        String localizadorReserva = null;
+        boolean contextoReservaAerea = keywords.contains("reserva_aerea_detalhes") || keywords.contains("reserva_aerea_regras");
+        if (deveTentarCarregarReservaAerea(req.input(), keyword) || contextoReservaAerea) {
+            localizadorReserva = extrairLocalizador(req.input());
+            if (localizadorReserva != null && "desconhecido".equals(keyword)) {
+                keyword = keywords.contains("reserva_aerea_regras") ? "reserva_aerea_regras" : "reserva_aerea_detalhes";
+            } else if (localizadorReserva != null && "reserva_aerea_detalhes".equals(keyword)) {
+                keyword = "reserva_aerea_detalhes";
+            }
+        }
         /*
 *   - "limites"
             - "faturas"
             - "boletos"
             - "checkin"
             - "ultimas_vendas"
+            - "ultimas_reservas_aereas"
+            - "reserva_aerea_detalhes"
             - "familias"
 * */
 
@@ -295,10 +332,17 @@ public class ChatService {
             /*Consultar Checkin proximos 72 horas*/
             messages.add(buscarCheckinsProximos(req));
         }
-        if (keyword.equals("ultimas_vendas") && !keywords.contains(keyword)) {
-
-            /*Consultar Ultimas Vendas*/
+        System.out.println("keyword "+keyword);
+        if ((keyword.equals("ultimas_reservas_aereas") || keyword.equals("ultimas_vendas")) && !keywords.contains(keyword)) {
+            System.out.println("Entrou nas reservas");
+            /*Consultar ultimas reservas aereas do usuario*/
             messages.add(listarUltimasVendas(req));
+        }
+        if ("reserva_aerea_detalhes".equals(keyword) && (localizadorReserva != null || !keywords.contains(keyword))) {
+            messages.add(carregarDadosReservaAerea(req, localizadorReserva));
+        }
+        if ("reserva_aerea_regras".equals(keyword) && (localizadorReserva != null || !keywords.contains(keyword))) {
+            messages.add(carregarReservaAereaComRegras(req, localizadorReserva));
         }
         if (keyword.contains("familias") && !keywords.contains(keyword)) {
             String[] partes = keyword.split(";");
@@ -314,6 +358,1079 @@ public class ChatService {
         if (!keywords.contains(keyword)) {
             keywords.add(keyword);
         }
+        return keywords;
+    }
+
+    public List<ChatActionDTO> extrairAcoesDisponiveis(List<ChatMessageDTO> messages) {
+        List<ChatActionDTO> actions = new ArrayList<>();
+        Set<String> adicionadas = new HashSet<>();
+        if (messages == null) {
+            return actions;
+        }
+
+        for (ChatMessageDTO message : messages) {
+            if (message == null || !"system".equals(message.role()) || message.content() == null) {
+                continue;
+            }
+            JsonNode root = extrairJsonDadoSistema(message.content());
+            if (root == null) {
+                continue;
+            }
+
+            String localizadorConsultado = root.path("localizadorConsultado").asText(null);
+            String localizadorContexto = root.path("localizadorContexto").asText(localizadorConsultado);
+            adicionarChatActions(actions, adicionadas, root.path("acoesDisponiveis"), localizadorContexto);
+
+            JsonNode reservas = root.path("reservas");
+            if (!reservas.isArray()) {
+                continue;
+            }
+
+            for (JsonNode reserva : reservas) {
+                String localizador = reserva.path("localizador").asText(localizadorConsultado);
+                adicionarChatActions(actions, adicionadas, reserva.path("acoesDisponiveis"), localizador);
+            }
+        }
+
+        return actions;
+    }
+
+    private void adicionarChatActions(List<ChatActionDTO> actions, Set<String> adicionadas, JsonNode acoes, String localizador) {
+        if (acoes == null || !acoes.isArray()) {
+            return;
+        }
+
+        for (JsonNode acao : acoes) {
+            ChatActionDTO action = montarChatActionDTO(acao, localizador);
+            if (action == null) {
+                continue;
+            }
+            String chave = action.code() + "|" + action.localizador();
+            if (adicionadas.add(chave)) {
+                actions.add(action);
+            }
+        }
+    }
+
+    private ChatActionDTO montarChatActionDTO(JsonNode acao, String localizador) {
+        if (acao == null || acao.isMissingNode()) {
+            return null;
+        }
+
+        String code = acao.path("codigo").asText(null);
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+
+        String label = acao.path("titulo").asText(code);
+        String description = acao.path("descricao").asText("");
+        Boolean requiresConfirmation = booleanNode(acao, "precisaConfirmacao");
+        Boolean requiresRules = booleanNode(acao, "exigeConsultaRegras");
+        Boolean sensitive = booleanNode(acao, "operacaoSensivel");
+        String prompt = montarPromptAcaoChat(code, label, localizador, requiresConfirmation, requiresRules, sensitive);
+
+        return new ChatActionDTO(
+                code,
+                label,
+                description,
+                localizador,
+                requiresConfirmation,
+                requiresRules,
+                sensitive,
+                prompt
+        );
+    }
+
+    private Boolean booleanNode(JsonNode node, String field) {
+        return node != null && node.has(field) ? node.path(field).asBoolean(false) : false;
+    }
+
+    private String montarPromptAcaoChat(String code, String label, String localizador,
+                                        Boolean requiresConfirmation, Boolean requiresRules, Boolean sensitive) {
+        String loc = localizador == null || localizador.isBlank() ? "" : " " + localizador;
+        String prompt = switch (code) {
+            case "consultar_regras" ->
+                    "Consulte as regras, multas, reembolso, cancelamento e alteracao/remarcacao da reserva" + loc + ".";
+            case "abrir_reserva" ->
+                    "Abrir a reserva" + loc + " no sistema.";
+            case "preparar_emissao" ->
+                    "Quero preparar a emissao da reserva" + loc + ". Confira os dados e me diga o que falta antes de emitir.";
+            case "consultar_bilhetes" ->
+                    "Mostre os bilhetes e e-tickets da reserva" + loc + ".";
+            case "preparar_reenvio_voucher" ->
+                    "Quero preparar o reenvio do voucher ou e-ticket da reserva" + loc + ".";
+            case "consultar_assentos" ->
+                    "Consulte os assentos disponiveis da reserva" + loc + ".";
+            case "consultar_checkin" ->
+                    "Consulte a possibilidade de check-in da reserva" + loc + ".";
+            case "preparar_cancelamento" ->
+                    "Quero preparar o cancelamento da reserva" + loc + ". Consulte as regras antes.";
+            case "preparar_reembolso" ->
+                    "Quero preparar o reembolso da reserva" + loc + ". Consulte as regras antes.";
+            case "preparar_alteracao" ->
+                    "Quero preparar a alteracao ou remarcacao da reserva" + loc + ". Consulte as regras antes.";
+            default ->
+                    label + " da reserva" + loc + ".";
+        };
+
+        if (Boolean.TRUE.equals(sensitive) || Boolean.TRUE.equals(requiresConfirmation)) {
+            prompt += " Nao execute a operacao ainda; apenas prepare, explique os impactos e peca minha confirmacao explicita.";
+        }
+        if (Boolean.TRUE.equals(requiresRules)) {
+            prompt += " Se ainda nao houver regras carregadas, consulte as regras primeiro.";
+        }
+        return prompt;
+    }
+
+    private JsonNode extrairJsonDadoSistema(String content) {
+        int inicio = content.indexOf('{');
+        if (inicio < 0) {
+            return null;
+        }
+
+        int fim = localizarFimObjetoJson(content, inicio);
+        if (fim <= inicio) {
+            return null;
+        }
+
+        try {
+            return mapper.readTree(content.substring(inicio, fim + 1));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private int localizarFimObjetoJson(String text, int inicio) {
+        int profundidade = 0;
+        boolean emString = false;
+        boolean escape = false;
+
+        for (int i = inicio; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (c == '\\') {
+                escape = true;
+                continue;
+            }
+            if (c == '"') {
+                emString = !emString;
+                continue;
+            }
+            if (emString) {
+                continue;
+            }
+            if (c == '{') {
+                profundidade++;
+            } else if (c == '}') {
+                profundidade--;
+                if (profundidade == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private String inferirKeywordOperacional(String input) {
+        String normalizado = normalizarTexto(input);
+        if (normalizado.isBlank()) {
+            return null;
+        }
+
+        boolean assuntoReservaAerea = contemAlgum(normalizado,
+                "reserva", "localizador", "bilhete", "passagem", "aereo", "voo");
+        boolean assuntoRegra = contemAlgum(normalizado,
+                "regra", "multa", "reembolso", "reembolsar", "alteracao", "alterar",
+                "remarcacao", "remarcar", "cancelamento", "cancelar", "penalidade");
+
+        if (assuntoReservaAerea && assuntoRegra) {
+            return "reserva_aerea_regras";
+        }
+        boolean pedidoListagemRecente = contemAlgum(normalizado,
+                "ultima", "ultimas", "recente", "recentes", "listar", "lista", "mostre", "mostrar", "minhas");
+        boolean assuntoListagemReserva = contemAlgum(normalizado,
+                "reserva", "reservas", "venda", "vendas", "passagem", "passagens", "aereo", "aereas", "voo", "voos");
+
+        if (pedidoListagemRecente && assuntoListagemReserva) {
+            return "ultimas_reservas_aereas";
+        }
+        boolean pedidoDadosReserva = assuntoReservaAerea && contemAlgum(normalizado,
+                "dados", "detalhe", "detalhes", "carrega", "carregar", "consulta", "consultar",
+                "ver", "mostrar", "informacao", "informacoes", "status", "emitir", "emissao",
+                "assento", "assentos", "bilhete", "bilhetes", "eticket", "voucher", "acoes",
+                "acao", "fazer", "checkin");
+
+        if (pedidoDadosReserva) {
+            return "reserva_aerea_detalhes";
+        }
+        return null;
+    }
+
+    private boolean isKeywordUltimasReservasAereas(String keyword) {
+        return "ultimas_reservas_aereas".equals(keyword) || "ultimas_vendas".equals(keyword);
+    }
+
+    private boolean isKeywordCarregarReservaAerea(String keyword) {
+        return "reserva_aerea_regras".equals(keyword) || "reserva_aerea_detalhes".equals(keyword);
+    }
+
+    private boolean deveTentarCarregarReservaAerea(String input, String keyword) {
+        if (isKeywordCarregarReservaAerea(keyword)) {
+            return true;
+        }
+        if (input == null || input.isBlank() || isKeywordUltimasReservasAereas(keyword)) {
+            return false;
+        }
+        String normalizado = normalizarTexto(input);
+        return contemAlgum(normalizado, "localizador", "reserva", "bilhete", "passagem", "aereo", "voo");
+    }
+
+    private boolean contemAlgum(String texto, String... termos) {
+        for (String termo : termos) {
+            if (texto.contains(termo)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizarTexto(String value) {
+        if (value == null) {
+            return "";
+        }
+        String semAcento = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+        return semAcento.toLowerCase(Locale.ROOT);
+    }
+
+    public ChatMessageDTO carregarReservaAereaComRegras(ConversationRequestDTO req) {
+        return carregarReservaAereaComRegras(req, extrairLocalizador(req.input()));
+    }
+
+    public ChatMessageDTO carregarReservaAereaComRegras(ConversationRequestDTO req, String localizador) {
+        if (localizador == null) {
+            return new ChatMessageDTO("system",
+                    "Dado do sistema (reserva_aerea_regras): o usuario quer consultar dados, regras, multas, reembolso, cancelamento ou remarcacao de uma reserva aerea, " +
+                            "mas nao informou um localizador claro. Peca o localizador antes de afirmar regras ou valores.");
+        }
+
+        try {
+            ConsultarLocalizadorRequest request = montarRequestConsultaLocalizador(req, localizador);
+            ConsultarLocalizadorResponse response = regrasReservaService.enriquecer(aereoClient.carregarReserva(request));
+            Map<String, Object> resumo = resumirReservaAereaComRegras(localizador, response);
+            return new ChatMessageDTO("system",
+                    "Dado do sistema (reserva_aerea_regras): " + mapper.writeValueAsString(resumo) +
+                            "\nResponda em texto claro. Traga os dados da reserva e informe regras de cancelamento, reembolso e alteracao/remarcacao quando os dados existirem. " +
+                            "Se a consulta falhar ou faltarem dados, explique a limitacao e solicite o dado faltante. " +
+                            "Nao confirme cancelamento, reembolso ou remarcacao executados; apenas oriente e, se necessario, diga que precisa de confirmacao operacional.");
+        } catch (Exception e) {
+            return new ChatMessageDTO("system",
+                    "Dado do sistema (reserva_aerea_regras): nao foi possivel carregar a reserva " + localizador +
+                            " para consultar dados e regras agora. Oriente o usuario a conferir o localizador ou tentar novamente.");
+        }
+    }
+
+    public ChatMessageDTO carregarDadosReservaAerea(ConversationRequestDTO req) {
+        return carregarDadosReservaAerea(req, extrairLocalizador(req.input()));
+    }
+
+    public ChatMessageDTO carregarDadosReservaAerea(ConversationRequestDTO req, String localizador) {
+        if (localizador == null) {
+            return new ChatMessageDTO("system",
+                    "Dado do sistema (reserva_aerea_detalhes): o usuario quer consultar os dados de uma reserva aerea, " +
+                            "mas nao informou um localizador claro. Peca o localizador antes de afirmar dados da reserva.");
+        }
+
+        try {
+            ConsultarLocalizadorRequest request = montarRequestConsultaLocalizador(req, localizador);
+            ConsultarLocalizadorResponse response = aereoClient.carregarReserva(request);
+            Map<String, Object> resumo = resumirReservaAereaDados(localizador, response);
+            return new ChatMessageDTO("system",
+                    "Dado do sistema (reserva_aerea_detalhes): " + mapper.writeValueAsString(resumo) +
+                            "\nResponda em texto claro trazendo somente os dados da reserva encontrada: localizador, status, sistema, datas, prazo, passageiros, trechos/voos, bagagem, bilhetes e valores quando existirem. " +
+                            "Quando existirem acoesDisponiveis ou alertasOperacionais, use esses dados para sugerir os proximos passos. " +
+                            "Nao fale de regras, multa, reembolso, cancelamento ou remarcacao se estes dados nao foram solicitados nesta mensagem; nesse caso, ofereca apenas consultar as regras. " +
+                            "Nao confirme emissao, cancelamento, reembolso, remarcacao ou reenvio executados sem confirmacao explicita do usuario. " +
+                            "Se a consulta falhar ou faltarem dados, explique a limitacao e solicite o dado faltante.");
+        } catch (Exception e) {
+            return new ChatMessageDTO("system",
+                    "Dado do sistema (reserva_aerea_detalhes): nao foi possivel carregar os dados da reserva " + localizador +
+                            " agora. Oriente o usuario a conferir o localizador ou tentar novamente.");
+        }
+    }
+
+    private ConsultarLocalizadorRequest montarRequestConsultaLocalizador(ConversationRequestDTO req, String localizador) {
+        ConsultarLocalizadorRequest request = new ConsultarLocalizadorRequest();
+        request.setSistema("Wooba");
+        request.setLocalizador(localizador);
+
+        com.confApi.aereo.dto.Agencia agencia = new com.confApi.aereo.dto.Agencia();
+       agencia.setCodgAgencia(req.codgAgencia() == null ? null : String.valueOf(req.codgAgencia()));
+      //  agencia.setCodgAgencia(req.idErp() == null ? null : String.valueOf(req.idErp()));
+        agencia.setCodgSistemaBackoffice(req.idErp());
+        agencia.setNome(req.codgAgencia() == null ? null : String.valueOf(req.codgAgencia()));
+        agencia.setUnidade(req.unidade());
+        request.setAgencia(agencia);
+
+        IdentificacaoAgenciaModel identificacao = new IdentificacaoAgenciaModel();
+        identificacao.setCodgAgencia(req.codgAgencia() == null ? null : req.codgAgencia().intValue());
+        identificacao.setCodgUsuario(req.codgUsuario() == null ? null : req.codgUsuario().intValue());
+        identificacao.setCodgErp(parseInteger(req.idErp()));
+        request.setIdentificacaoAgenciaModel(null);
+        return request;
+    }
+
+    private Integer parseInteger(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value.replaceAll("\\D+", ""));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private String extrairLocalizador(String input) {
+        if (input == null || input.isBlank()) {
+            return null;
+        }
+
+        String localizadorIA = extrairLocalizadorIA(input);
+        if (localizadorIA != null) {
+            return localizadorIA;
+        }
+
+        return extrairLocalizadorPorRegex(input);
+    }
+
+    private String extrairLocalizadorIA(String input) {
+        try {
+            String resposta = agenteIADecisor("ExtratorLocalizadorIA", profileExtratorLocalizadorIA(), input);
+            return normalizarLocalizadorExtraido(resposta);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String profileExtratorLocalizadorIA() {
+        return """
+                Voce e um extrator de localizador de reserva aerea.
+                Leia a mensagem do usuario e retorne somente o localizador mais provavel.
+
+                Regras:
+                - Responda apenas com o codigo do localizador, sem frases, sem JSON, sem markdown e sem pontuacao.
+                - O localizador costuma ter de 5 a 8 caracteres alfanumericos.
+                - Converta letras para maiusculas.
+                - Ignore palavras comuns como reserva, localizador, multa, regra, reembolso, alteracao, remarcacao, passagem e bilhete.
+                - Se nao houver localizador claro, retorne vazio.
+
+                Exemplos:
+                Usuario: "ver regras do localizador abc123"
+                Resposta: ABC123
+
+                Usuario: "a reserva X7K9PQ tem multa?"
+                Resposta: X7K9PQ
+                """;
+    }
+
+    private String normalizarLocalizadorExtraido(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalizado = value
+                .replace("`", "")
+                .replace("\"", "")
+                .trim()
+                .toUpperCase(Locale.ROOT);
+        if (normalizado.isBlank() || normalizado.equals("NULL") || normalizado.equals("NULO")) {
+            return null;
+        }
+
+        Matcher matcher = Pattern.compile("\\b[A-Z0-9]{5,8}\\b").matcher(normalizado);
+        return matcher.find() ? matcher.group() : null;
+    }
+
+    private String extrairLocalizadorPorRegex(String input) {
+        if (input == null || input.isBlank()) {
+            return null;
+        }
+
+        Set<String> ignorar = Set.of(
+                "QUERO", "REGRA", "REGRAS", "MULTA", "AEREO", "AEREA", "VOOS", "VOO",
+                "LOCALIZADOR", "RESERVA", "REEMBOLSO", "ALTERACAO", "REMARCACAO", "BILHETE",
+                "PASSAGEM", "CANCELAMENTO", "POSSUI", "TENHO", "SABER"
+        );
+
+        Matcher matcher = Pattern.compile("\\b[A-Z0-9]{5,8}\\b").matcher(input.toUpperCase(Locale.ROOT));
+        while (matcher.find()) {
+            String candidato = matcher.group();
+            if (!ignorar.contains(candidato)) {
+                return candidato;
+            }
+        }
+        return null;
+    }
+
+    private Map<String, Object> resumirReservaAereaComRegras(String localizador, ConsultarLocalizadorResponse response) {
+        Map<String, Object> resumo = new LinkedHashMap<>();
+        resumo.put("tipoConsulta", "reserva_aerea_regras");
+        resumo.put("localizadorConsultado", localizador);
+        resumo.put("statusConsulta", response == null || response.getException() != null ? "ERRO_CONSULTA" : "OK");
+        if (response != null && response.getException() != null) {
+            resumo.put("erro", response.getException());
+        }
+
+        List<Map<String, Object>> reservas = new ArrayList<>();
+        if (response != null && response.getReservas() != null) {
+            for (Reserva reserva : response.getReservas()) {
+                reservas.add(resumirReserva(reserva));
+            }
+        }
+        resumo.put("quantidadeReservas", reservas.size());
+        resumo.put("reservas", reservas);
+        return resumo;
+    }
+
+    private Map<String, Object> resumirReservaAereaDados(String localizador, ConsultarLocalizadorResponse response) {
+        Map<String, Object> resumo = new LinkedHashMap<>();
+        resumo.put("tipoConsulta", "reserva_aerea_detalhes");
+        resumo.put("localizadorConsultado", localizador);
+        resumo.put("statusConsulta", response == null || response.getException() != null ? "ERRO_CONSULTA" : "OK");
+        if (response != null && response.getException() != null) {
+            resumo.put("erro", response.getException());
+        }
+
+        List<Map<String, Object>> reservas = new ArrayList<>();
+        if (response != null && response.getReservas() != null) {
+            for (Reserva reserva : response.getReservas()) {
+                reservas.add(resumirReservaDados(reserva));
+            }
+        }
+        resumo.put("quantidadeReservas", reservas.size());
+        resumo.put("reservas", reservas);
+        return resumo;
+    }
+
+    private Map<String, Object> resumirReserva(Reserva reserva) {
+        Map<String, Object> map = new LinkedHashMap<>(resumirReservaDados(reserva));
+        if (reserva == null) {
+            return map;
+        }
+        map.put("cancelamento", resumirCancelamento(reserva));
+        map.put("regrasAereas", resumirRegras(reserva.getRegrasAereas()));
+        return map;
+    }
+
+    private Map<String, Object> resumirReservaDados(Reserva reserva) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (reserva == null) {
+            return map;
+        }
+        putIfNotNull(map, "localizador", reserva.getLocalizador());
+        putIfNotNull(map, "status", reserva.getStatus());
+        putIfNotNull(map, "sistema", reserva.getSistema());
+        putIfNotNull(map, "dataEmissao", reserva.getDataEmissao());
+        putIfNotNull(map, "dataCriacao", reserva.getDataCriacao());
+        putIfNotBlank(map, "prazoEmissao", reserva.getPrazoEmissao());
+        putIfNotNull(map, "permiteEmitir", reserva.getPermiteEmitir());
+        putIfNotNull(map, "permiteCancelar", reserva.getPermiteCancelar());
+        putIfNotNull(map, "mapaDeAssentosDisponivel", reserva.getMapaDeAssentosDisponivel());
+        map.put("quantidadePassageiros", reserva.getPassageiros() == null ? 0 : reserva.getPassageiros().size());
+        List<Map<String, Object>> passageiros = resumirPassageirosHub(reserva.getPassageiros());
+        if (!passageiros.isEmpty()) {
+            map.put("passageiros", passageiros);
+        }
+        map.put("quantidadeTrechos", reserva.getViagens() == null ? 0 : reserva.getViagens().size());
+        List<Map<String, Object>> viagens = resumirViagensHub(reserva.getViagens());
+        if (!viagens.isEmpty()) {
+            map.put("viagens", viagens);
+        }
+        Map<String, Object> valores = resumirValorReserva(reserva.getValorReserva());
+        if (!valores.isEmpty()) {
+            map.put("valores", valores);
+        }
+        List<Map<String, Object>> acoesDisponiveis = montarAcoesDisponiveisReserva(reserva);
+        if (!acoesDisponiveis.isEmpty()) {
+            map.put("acoesDisponiveis", acoesDisponiveis);
+        }
+        List<Map<String, Object>> alertasOperacionais = montarAlertasOperacionaisReserva(reserva);
+        if (!alertasOperacionais.isEmpty()) {
+            map.put("alertasOperacionais", alertasOperacionais);
+        }
+        return map;
+    }
+
+    private List<Map<String, Object>> montarAcoesDisponiveisReserva(Reserva reserva) {
+        if (reserva == null) {
+            return new ArrayList<>();
+        }
+        return montarAcoesDisponiveisLocalizador(reserva.getLocalizador());
+    }
+
+    private List<Map<String, Object>> montarAcoesDisponiveisLocalizador(String localizador) {
+        List<Map<String, Object>> acoes = new ArrayList<>();
+        if (localizador == null || localizador.isBlank()) {
+            return acoes;
+        }
+
+        adicionarAcao(acoes, "consultar_regras", "Consultar regras",
+                "Carregar multa, reembolso, cancelamento e alteracao/remarcacao desta reserva.",
+                false, true, false);
+
+        adicionarAcao(acoes, "abrir_reserva", "Abrir reserva",
+                "Fechar o chat e abrir esta reserva aerea no sistema.",
+                false, false, false);
+
+        return acoes;
+    }
+
+    private void adicionarAcao(List<Map<String, Object>> acoes, String codigo, String titulo, String descricao,
+                               boolean precisaConfirmacao, boolean exigeConsultaRegras, boolean operacaoSensivel) {
+        Map<String, Object> acao = new LinkedHashMap<>();
+        acao.put("codigo", codigo);
+        acao.put("titulo", titulo);
+        acao.put("descricao", descricao);
+        acao.put("precisaConfirmacao", precisaConfirmacao);
+        acao.put("exigeConsultaRegras", exigeConsultaRegras);
+        acao.put("operacaoSensivel", operacaoSensivel);
+        acoes.add(acao);
+    }
+
+    private List<Map<String, Object>> montarAlertasOperacionaisReserva(Reserva reserva) {
+        List<Map<String, Object>> alertas = new ArrayList<>();
+        if (reserva == null) {
+            return alertas;
+        }
+
+        if (isReservaCancelada(reserva)) {
+            adicionarAlerta(alertas, "RESERVA_CANCELADA", "Reserva com status de cancelamento.", reserva.getStatus());
+        }
+        if (isReservaEmitida(reserva)) {
+            adicionarAlerta(alertas, "RESERVA_EMITIDA", "Reserva possui emissao ou bilhete.", null);
+        } else if (Boolean.TRUE.equals(reserva.getPermiteEmitir())) {
+            adicionarAlerta(alertas, "PENDENTE_EMISSAO", "Reserva pode ser emitida.", reserva.getPrazoEmissao());
+        }
+        if (reserva.getPrazoEmissao() != null && !reserva.getPrazoEmissao().isBlank()) {
+            adicionarAlerta(alertas, "PRAZO_EMISSAO", "Existe prazo de emissao informado.", reserva.getPrazoEmissao());
+        }
+        Date proximaPartida = obterProximaPartida(reserva);
+        if (proximaPartida != null && isDentroDasProximasHoras(proximaPartida, 72)) {
+            adicionarAlerta(alertas, "VOO_PROXIMO_72H", "Ha voo nas proximas 72 horas.", proximaPartida);
+        }
+        if (reserva.getPassageiros() == null || reserva.getPassageiros().isEmpty()) {
+            adicionarAlerta(alertas, "SEM_PASSAGEIROS", "A consulta nao retornou passageiros.", null);
+        }
+        if (!possuiVoos(reserva)) {
+            adicionarAlerta(alertas, "SEM_VOOS", "A consulta nao retornou voos/trechos.", null);
+        }
+        return alertas;
+    }
+
+    private void adicionarAlerta(List<Map<String, Object>> alertas, String codigo, String mensagem, Object detalhe) {
+        Map<String, Object> alerta = new LinkedHashMap<>();
+        alerta.put("codigo", codigo);
+        alerta.put("mensagem", mensagem);
+        putIfNotNull(alerta, "detalhe", detalhe);
+        alertas.add(alerta);
+    }
+
+    private boolean isReservaCancelada(Reserva reserva) {
+        if (reserva == null || reserva.getStatus() == null) {
+            return false;
+        }
+        String status = normalizarTexto(reserva.getStatus());
+        return status.contains("cancel");
+    }
+
+    private boolean isReservaEmitida(Reserva reserva) {
+        return reserva != null && (reserva.getDataEmissao() != null || possuiBilhetes(reserva));
+    }
+
+    private boolean possuiBilhetes(Reserva reserva) {
+        if (reserva == null || reserva.getPassageiros() == null) {
+            return false;
+        }
+        for (com.confApi.hub.aereo.dto.Passageiro passageiro : reserva.getPassageiros()) {
+            if (passageiro != null && passageiro.getBilhetes() != null && !passageiro.getBilhetes().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean possuiVoos(Reserva reserva) {
+        if (reserva == null || reserva.getViagens() == null) {
+            return false;
+        }
+        for (com.confApi.hub.aereo.dto.TrechoReserva viagem : reserva.getViagens()) {
+            if (viagem != null && viagem.getVoos() != null && !viagem.getVoos().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean possuiVooFuturo(Reserva reserva) {
+        Date proximaPartida = obterProximaPartida(reserva);
+        return proximaPartida != null && proximaPartida.after(new Date());
+    }
+
+    private boolean possuiVooProximo(Reserva reserva, int horas) {
+        Date proximaPartida = obterProximaPartida(reserva);
+        return proximaPartida != null && isDentroDasProximasHoras(proximaPartida, horas);
+    }
+
+    private Date obterProximaPartida(Reserva reserva) {
+        if (reserva == null || reserva.getViagens() == null) {
+            return null;
+        }
+
+        Date agora = new Date();
+        Date proxima = null;
+        for (com.confApi.hub.aereo.dto.TrechoReserva viagem : reserva.getViagens()) {
+            if (viagem == null || viagem.getVoos() == null) {
+                continue;
+            }
+            for (com.confApi.hub.aereo.dto.Voo voo : viagem.getVoos()) {
+                if (voo == null || voo.getDataPartida() == null) {
+                    continue;
+                }
+                Date partida = aplicarHora(voo.getDataPartida(), voo.getHoraPartida());
+                if (partida.before(agora)) {
+                    continue;
+                }
+                if (proxima == null || partida.before(proxima)) {
+                    proxima = partida;
+                }
+            }
+        }
+        return proxima;
+    }
+
+    private Date aplicarHora(Date data, String hora) {
+        if (data == null || hora == null || hora.isBlank()) {
+            return data;
+        }
+
+        Matcher matcher = Pattern.compile("^(\\d{1,2}):(\\d{2})").matcher(hora.trim());
+        if (!matcher.find()) {
+            return data;
+        }
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(data);
+        calendar.set(Calendar.HOUR_OF_DAY, Integer.parseInt(matcher.group(1)));
+        calendar.set(Calendar.MINUTE, Integer.parseInt(matcher.group(2)));
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+        return calendar.getTime();
+    }
+
+    private boolean isDentroDasProximasHoras(Date data, int horas) {
+        Date agora = new Date();
+        if (data.before(agora)) {
+            return false;
+        }
+        long limite = agora.getTime() + horas * 60L * 60L * 1000L;
+        return data.getTime() <= limite;
+    }
+
+    private List<Map<String, Object>> resumirPassageirosHub(List<com.confApi.hub.aereo.dto.Passageiro> passageiros) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (passageiros == null) {
+            return resultado;
+        }
+        for (com.confApi.hub.aereo.dto.Passageiro passageiro : passageiros) {
+            if (passageiro == null) {
+                continue;
+            }
+            resultado.add(resumirPassageiroHub(passageiro));
+            if (resultado.size() >= LIMITE_PASSAGEIROS_RESUMO) {
+                break;
+            }
+        }
+        return resultado;
+    }
+
+    private Map<String, Object> resumirPassageiroHub(com.confApi.hub.aereo.dto.Passageiro passageiro) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        putIfNotBlank(map, "nome", montarNomePassageiroHub(passageiro));
+        putIfNotBlank(map, "idPassageiro", passageiro.getIdPassageiro());
+        putIfNotBlank(map, "faixaEtaria", passageiro.getFaixaEtaria());
+        putIfNotBlank(map, "nascimento", passageiro.getNascimento());
+        putIfNotNull(map, "dataNascimento", passageiro.getDataNascimento());
+        putIfNotBlank(map, "sexo", passageiro.getSexo());
+        if (passageiro.getBilhetes() != null && !passageiro.getBilhetes().isEmpty()) {
+            map.put("quantidadeBilhetes", passageiro.getBilhetes().size());
+            map.put("bilhetes", resumirBilhetesHub(passageiro.getBilhetes()));
+        }
+        return map;
+    }
+
+    private String montarNomePassageiroHub(com.confApi.hub.aereo.dto.Passageiro passageiro) {
+        StringJoiner joiner = new StringJoiner(" ");
+        if (passageiro.getNome() != null && !passageiro.getNome().isBlank()) {
+            joiner.add(passageiro.getNome().trim());
+        }
+        if (passageiro.getNomeDoMeio() != null && !passageiro.getNomeDoMeio().isBlank()) {
+            joiner.add(passageiro.getNomeDoMeio().trim());
+        }
+        if (passageiro.getSobrenome() != null && !passageiro.getSobrenome().isBlank()) {
+            joiner.add(passageiro.getSobrenome().trim());
+        }
+        return joiner.toString();
+    }
+
+    private List<Map<String, Object>> resumirBilhetesHub(List<com.confApi.hub.aereo.dto.Bilhete> bilhetes) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (bilhetes == null) {
+            return resultado;
+        }
+        for (com.confApi.hub.aereo.dto.Bilhete bilhete : bilhetes) {
+            if (bilhete == null) {
+                continue;
+            }
+            Map<String, Object> map = new LinkedHashMap<>();
+            putIfNotBlank(map, "numero", bilhete.getNumero());
+            putIfNotBlank(map, "status", bilhete.getStatus());
+            putIfNotNull(map, "dataEmissao", bilhete.getDataDeEmissao());
+            putIfNotBlank(map, "passageiro", bilhete.getPassageiro());
+            putIfNotBlank(map, "paxRef", bilhete.getPaxRef());
+            resultado.add(map);
+            if (resultado.size() >= LIMITE_PASSAGEIROS_RESUMO) {
+                break;
+            }
+        }
+        return resultado;
+    }
+
+    private List<Map<String, Object>> resumirViagensHub(List<com.confApi.hub.aereo.dto.TrechoReserva> viagens) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (viagens == null) {
+            return resultado;
+        }
+        for (com.confApi.hub.aereo.dto.TrechoReserva viagem : viagens) {
+            if (viagem == null) {
+                continue;
+            }
+            resultado.add(resumirTrechoHub(viagem));
+            if (resultado.size() >= LIMITE_TRECHOS_RESUMO) {
+                break;
+            }
+        }
+        return resultado;
+    }
+
+    private Map<String, Object> resumirTrechoHub(com.confApi.hub.aereo.dto.TrechoReserva trecho) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        putIfNotBlank(map, "sistema", trecho.getSistema());
+        putIfNotBlank(map, "identificacaoDaViagem", trecho.getIdentificacaoDaViagem());
+        putIfNotNull(map, "duracao", trecho.getDuracao());
+        putIfNotBlank(map, "tempoDeDuracao", trecho.getTempoDeDuracao());
+        putIfNotNull(map, "numeroParadas", trecho.getNumeroParadas());
+        putIfNotEmpty(map, "companhia", resumirCompanhiaHub(trecho.getCompanhia()));
+        putIfNotEmpty(map, "origem", resumirAeroportoHub(trecho.getOrigem()));
+        putIfNotEmpty(map, "destino", resumirAeroportoHub(trecho.getDestino()));
+        List<Map<String, Object>> voos = resumirVoosHub(trecho.getVoos());
+        if (!voos.isEmpty()) {
+            map.put("voos", voos);
+        }
+        return map;
+    }
+
+    private List<Map<String, Object>> resumirVoosHub(List<com.confApi.hub.aereo.dto.Voo> voos) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (voos == null) {
+            return resultado;
+        }
+        for (com.confApi.hub.aereo.dto.Voo voo : voos) {
+            if (voo == null) {
+                continue;
+            }
+            resultado.add(resumirVooHub(voo));
+            if (resultado.size() >= LIMITE_VOOS_RESUMO) {
+                break;
+            }
+        }
+        return resultado;
+    }
+
+    private Map<String, Object> resumirVooHub(com.confApi.hub.aereo.dto.Voo voo) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        putIfNotBlank(map, "numeroVoo", voo.getNumeroVoo());
+        putIfNotBlank(map, "status", voo.getStatus());
+        putIfNotNull(map, "dataPartida", voo.getDataPartida());
+        putIfNotBlank(map, "horaPartida", voo.getHoraPartida());
+        putIfNotNull(map, "dataChegada", voo.getDataChegada());
+        putIfNotBlank(map, "horaChegada", voo.getHoraChegada());
+        putIfNotBlank(map, "duracao", voo.getDuracao());
+        putIfNotNull(map, "qtdEscalas", voo.getQtdEscalas());
+        putIfNotBlank(map, "classe", voo.getClasse());
+        putIfNotBlank(map, "cabine", voo.getCabine());
+        putIfNotBlank(map, "familia", voo.getFamilia());
+        putIfNotBlank(map, "familiaCodigo", voo.getFamiliaCodigo());
+        putIfNotBlank(map, "baseTarifaria", voo.getBaseTarifaria());
+        putIfNotBlank(map, "localizadorCia", voo.getLocalizadorCia());
+        putIfNotNull(map, "conexao", voo.getIsConexao());
+        putIfNotNull(map, "reembolsavel", voo.getIsReembolsavel());
+        putIfNotNull(map, "bagagemInclusa", voo.getBagagemInclusa());
+        putIfNotNull(map, "bagagemQuantidade", voo.getBagagemQuantidade());
+        putIfNotNull(map, "bagagemPeso", voo.getBagagemPeso());
+        putIfNotBlank(map, "bagagemUnidadeDeMedida", voo.getBagagemUnidadeDeMedida());
+        putIfNotEmpty(map, "origem", resumirAeroportoHub(voo.getOrigem()));
+        putIfNotEmpty(map, "destino", resumirAeroportoHub(voo.getDestino()));
+        putIfNotEmpty(map, "ciaMandatoria", resumirCompanhiaHub(voo.getCiaMandatoria()));
+        putIfNotEmpty(map, "ciaOperadora", resumirCompanhiaHub(voo.getCiaOperadora()));
+        return map;
+    }
+
+    private Map<String, Object> resumirAeroportoHub(com.confApi.hub.aereo.dto.Aeroporto aeroporto) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (aeroporto == null) {
+            return map;
+        }
+        putIfNotBlank(map, "iata", aeroporto.getCodigoIata());
+        putIfNotBlank(map, "nome", aeroporto.getDescricao());
+        return map;
+    }
+
+    private Map<String, Object> resumirCompanhiaHub(com.confApi.hub.aereo.dto.Companhia companhia) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (companhia == null) {
+            return map;
+        }
+        putIfNotNull(map, "id", companhia.getId());
+        putIfNotBlank(map, "iata", normalizarIataCia(companhia.getCodigoIata()));
+        putIfNotBlank(map, "nome", companhia.getDescricao());
+        return map;
+    }
+
+    private Map<String, Object> resumirValorReserva(com.confApi.aereo.dto.ValorReserva valorReserva) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (valorReserva == null) {
+            return map;
+        }
+        putIfNotNull(map, "saldoDevedor", valorReserva.getSaldoDevedor());
+        putIfNotNull(map, "valor", valorReserva.getValor());
+        Map<String, Object> valorBase = resumirValorBase(valorReserva.getValorBase());
+        if (!valorBase.isEmpty()) {
+            map.put("valorBase", valorBase);
+        }
+        return map;
+    }
+
+    private Map<String, Object> resumirValorBase(com.confApi.aereo.dto.ValorBase valorBase) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (valorBase == null) {
+            return map;
+        }
+        putIfNotNull(map, "tarifa", valorBase.getTarifa());
+        putIfNotNull(map, "cambio", valorBase.getCambio());
+        putIfNotNull(map, "taxaEmbarque", valorBase.getTaxaEmbarque());
+        putIfNotNull(map, "taxaDU", valorBase.getTaxaDU());
+        putIfNotNull(map, "RAV", valorBase.getRAV());
+        putIfNotNull(map, "RC", valorBase.getRC());
+        putIfNotNull(map, "MKP", valorBase.getMKP());
+        putIfNotNull(map, "taxaAssento", valorBase.getTaxaAssento());
+        putIfNotNull(map, "total", valorBase.getTotal());
+        List<Map<String, Object>> valoresPorPassageiro = resumirValoresPassageiro(valorBase.getValorPassageiroList());
+        if (!valoresPorPassageiro.isEmpty()) {
+            map.put("valoresPorPassageiro", valoresPorPassageiro);
+        }
+        return map;
+    }
+
+    private List<Map<String, Object>> resumirValoresPassageiro(List<com.confApi.aereo.dto.ValorPassageiro> valoresPassageiro) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (valoresPassageiro == null) {
+            return resultado;
+        }
+        for (com.confApi.aereo.dto.ValorPassageiro valorPassageiro : valoresPassageiro) {
+            if (valorPassageiro == null) {
+                continue;
+            }
+            Map<String, Object> map = new LinkedHashMap<>();
+            putIfNotBlank(map, "nomePassageiro", valorPassageiro.getNomePassageiro());
+            putIfNotNull(map, "tarifa", valorPassageiro.getTarifa());
+            putIfNotNull(map, "taxaEmbarque", valorPassageiro.getTaxaEmbarque());
+            putIfNotNull(map, "taxaDU", valorPassageiro.getTaxaDU());
+            putIfNotNull(map, "RAV", valorPassageiro.getRAV());
+            putIfNotNull(map, "RC", valorPassageiro.getRC());
+            putIfNotNull(map, "MKP", valorPassageiro.getMKP());
+            putIfNotNull(map, "taxaAssento", valorPassageiro.getTaxaAssento());
+            putIfNotNull(map, "total", valorPassageiro.getTotal());
+            resultado.add(map);
+            if (resultado.size() >= LIMITE_PASSAGEIROS_RESUMO) {
+                break;
+            }
+        }
+        return resultado;
+    }
+
+    private Map<String, Object> resumirCancelamento(Reserva reserva) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (reserva == null) {
+            map.put("status", "NAO_CONSULTADO");
+            return map;
+        }
+
+        putIfNotNull(map, "permiteCancelarReserva", reserva.getPermiteCancelar());
+        RegrasAereasReservaResponse regras = reserva.getRegrasAereas();
+        if (regras == null || regras.getReembolso() == null) {
+            map.put("baseRegra", "reembolso");
+            map.put("status", "SEM_REGRA_REEMBOLSO");
+            return map;
+        }
+
+        RegraAereaReembolsoConsultaResponse reembolso = regras.getReembolso();
+        map.put("baseRegra", "reembolso");
+        putIfNotNull(map, "status", reembolso.getStatus());
+        putIfNotNull(map, "mensagem", reembolso.getMensagem());
+        if (reembolso.getRegra() != null) {
+            putIfNotNull(map, "momento", reembolso.getRegra().getMomento());
+            putIfNotNull(map, "permiteReembolso", reembolso.getRegra().getPermiteReembolso());
+            putIfNotNull(map, "statusReembolso", reembolso.getRegra().getStatusReembolso());
+            putIfNotNull(map, "aplicaMulta", reembolso.getRegra().getAplicaMulta());
+            putIfNotNull(map, "tipoMulta", reembolso.getRegra().getTipoMulta());
+            putIfNotNull(map, "moedaMulta", reembolso.getRegra().getMoedaMulta());
+            putIfNotNull(map, "valorMultaFixo", reembolso.getRegra().getValorMultaFixo());
+            putIfNotNull(map, "percentualMulta", reembolso.getRegra().getPercentualMulta());
+            putIfNotNull(map, "tituloUsuario", reembolso.getRegra().getTituloUsuario());
+            putIfNotNull(map, "descricaoUsuario", reembolso.getRegra().getDescricaoUsuario());
+            putIfNotNull(map, "observacao", reembolso.getRegra().getObservacao());
+        }
+        if (reembolso.getCalculo() != null) {
+            putIfNotNull(map, "valorMultaCalculado", reembolso.getCalculo().getValorMulta());
+            putIfNotNull(map, "valorPrevistoReembolso", reembolso.getCalculo().getValorPrevistoReembolso());
+            putIfNotNull(map, "mensagemCalculo", reembolso.getCalculo().getMensagem());
+            putIfNotNull(map, "alertas", reembolso.getCalculo().getAlertas());
+        }
+        return map;
+    }
+
+    private Map<String, Object> resumirRegras(RegrasAereasReservaResponse regras) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (regras == null) {
+            map.put("status", "NAO_CONSULTADO");
+            return map;
+        }
+        putIfNotNull(map, "status", regras.getStatus());
+        putIfNotNull(map, "mensagem", regras.getMensagem());
+        putIfNotNull(map, "dadosReservaUtilizados", regras.getDadosReservaUtilizados());
+        map.put("reembolso", resumirReembolso(regras.getReembolso()));
+        map.put("alteracao", resumirAlteracao(regras.getAlteracao()));
+        map.put("reembolsosPorMomento", resumirReembolsos(regras.getReembolsos()));
+        map.put("alteracoesPorMomento", resumirAlteracoes(regras.getAlteracoes()));
+        map.put("quantidadeRegrasReembolso", regras.getReembolsos() == null ? 0 : regras.getReembolsos().size());
+        map.put("quantidadeRegrasAlteracao", regras.getAlteracoes() == null ? 0 : regras.getAlteracoes().size());
+        return map;
+    }
+
+    private List<Map<String, Object>> resumirReembolsos(List<RegraAereaReembolsoConsultaResponse> reembolsos) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (reembolsos == null) {
+            return resultado;
+        }
+        for (RegraAereaReembolsoConsultaResponse reembolso : reembolsos) {
+            resultado.add(resumirReembolso(reembolso));
+        }
+        return resultado;
+    }
+
+    private List<Map<String, Object>> resumirAlteracoes(List<RegraAereaAlteracaoConsultaResponse> alteracoes) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (alteracoes == null) {
+            return resultado;
+        }
+        for (RegraAereaAlteracaoConsultaResponse alteracao : alteracoes) {
+            resultado.add(resumirAlteracao(alteracao));
+        }
+        return resultado;
+    }
+
+    private Map<String, Object> resumirReembolso(RegraAereaReembolsoConsultaResponse response) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (response == null) {
+            map.put("status", "NAO_CONSULTADO");
+            return map;
+        }
+        putIfNotNull(map, "status", response.getStatus());
+        putIfNotNull(map, "mensagem", response.getMensagem());
+        if (response.getRegra() != null) {
+            putIfNotNull(map, "momento", response.getRegra().getMomento());
+            putIfNotNull(map, "permiteReembolso", response.getRegra().getPermiteReembolso());
+            putIfNotNull(map, "statusReembolso", response.getRegra().getStatusReembolso());
+            putIfNotNull(map, "aplicaMulta", response.getRegra().getAplicaMulta());
+            putIfNotNull(map, "tipoMulta", response.getRegra().getTipoMulta());
+            putIfNotNull(map, "moedaMulta", response.getRegra().getMoedaMulta());
+            putIfNotNull(map, "valorMultaFixo", response.getRegra().getValorMultaFixo());
+            putIfNotNull(map, "percentualMulta", response.getRegra().getPercentualMulta());
+            putIfNotNull(map, "percentualReembolso", response.getRegra().getPercentualReembolso());
+            putIfNotNull(map, "tituloUsuario", response.getRegra().getTituloUsuario());
+            putIfNotNull(map, "descricaoUsuario", response.getRegra().getDescricaoUsuario());
+            putIfNotNull(map, "observacao", response.getRegra().getObservacao());
+        }
+        if (response.getCalculo() != null) {
+            putIfNotNull(map, "valorMultaCalculado", response.getCalculo().getValorMulta());
+            putIfNotNull(map, "valorPrevistoReembolso", response.getCalculo().getValorPrevistoReembolso());
+            putIfNotNull(map, "mensagemCalculo", response.getCalculo().getMensagem());
+            putIfNotNull(map, "alertas", response.getCalculo().getAlertas());
+        }
+        return map;
+    }
+
+    private Map<String, Object> resumirAlteracao(RegraAereaAlteracaoConsultaResponse response) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (response == null) {
+            map.put("status", "NAO_CONSULTADO");
+            return map;
+        }
+        putIfNotNull(map, "status", response.getStatus());
+        putIfNotNull(map, "mensagem", response.getMensagem());
+        if (response.getRegra() != null) {
+            putIfNotNull(map, "momento", response.getRegra().getMomento());
+            putIfNotNull(map, "permiteAlteracao", response.getRegra().getPermiteAlteracao());
+            putIfNotNull(map, "statusAlteracao", response.getRegra().getStatusAlteracao());
+            putIfNotNull(map, "cobraDiferencaTarifaria", response.getRegra().getCobraDiferencaTarifaria());
+            putIfNotNull(map, "aplicaMulta", response.getRegra().getAplicaMulta());
+            putIfNotNull(map, "tipoMulta", response.getRegra().getTipoMulta());
+            putIfNotNull(map, "moedaMulta", response.getRegra().getMoedaMulta());
+            putIfNotNull(map, "valorMultaFixo", response.getRegra().getValorMultaFixo());
+            putIfNotNull(map, "percentualMulta", response.getRegra().getPercentualMulta());
+            putIfNotNull(map, "tituloUsuario", response.getRegra().getTituloUsuario());
+            putIfNotNull(map, "descricaoUsuario", response.getRegra().getDescricaoUsuario());
+            putIfNotNull(map, "observacao", response.getRegra().getObservacao());
+        }
+        if (response.getCalculo() != null) {
+            putIfNotNull(map, "valorMultaCalculado", response.getCalculo().getValorMulta());
+            putIfNotNull(map, "diferencaTarifaria", response.getCalculo().getDiferencaTarifaria());
+            putIfNotNull(map, "totalPrevisto", response.getCalculo().getTotalPrevisto());
+            putIfNotNull(map, "resumoCalculo", response.getCalculo().getResumo());
+        }
+        return map;
+    }
+
+    private void putIfNotNull(Map<String, Object> map, String key, Object value) {
+        if (value != null) {
+            map.put(key, value);
+        }
+    }
+
+    private void putIfNotBlank(Map<String, Object> map, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            map.put(key, value);
+        }
+    }
+
+    private void putIfNotEmpty(Map<String, Object> map, String key, Map<String, Object> value) {
+        if (value != null && !value.isEmpty()) {
+            map.put(key, value);
+        }
     }
 
     public ChatMessageDTO listarFamilias(ConversationRequestDTO req, String cia) {
@@ -325,46 +1442,268 @@ public class ChatService {
 
     public ChatMessageDTO listarUltimasVendas(ConversationRequestDTO req) {
         try {
-            // Monta filtro
-            RQConsultaVendasDto filtro = new RQConsultaVendasDto();
-            filtro.setUsuario(req.codgUsuario().intValue());
+            if (req.codgUsuario() == null) {
+                return new ChatMessageDTO("system", "Dado do sistema: {\"erro\":\"Usuario nao informado para consultar reservas aereas.\"}");
+            }
+                System.out.println("ConversationRequestDTO "+req.toString());
+            Integer codgUsuario = req.codgUsuario().intValue();
+            Integer codgAgencia = req.codgAgencia() == null ? null : req.codgAgencia().intValue();
+            String localizador =null;// extrairLocalizador(req.input());
+            List<ReservaAereo> reservas = reservaAereoApi.consultarReservasUsuario(codgUsuario, codgAgencia, localizador);
 
-            // filtro.setUsuario(58467);
-            filtro.setIsUltimasVendas(true);
-
-            // Chama serviço e protege contra null
-            List<VendasAereasExibicao> vendas = turVendasService.findVendasWoobaByParam(filtro);
-            if (vendas == null) {
-                vendas = java.util.Collections.emptyList();
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("tipo", "ultimas_reservas_aereas_usuario");
+            response.put("fonte", "/reservaAereo/consultarReservas/localizador");
+            response.put("codgUsuario", codgUsuario);
+            putIfNotNull(response, "codgAgencia", codgAgencia);
+            putIfNotBlank(response, "localizadorConsultado", localizador);
+            response.put("filtroMinhasReservas", true);
+            response.put("filtroMinhaAgencia", true);
+            response.put("quantidadeRetornada", reservas == null ? 0 : reservas.size());
+            response.put("limiteContexto", LIMITE_ULTIMAS_RESERVAS_AEREAS);
+            List<Map<String, Object>> reservasResumo = resumirReservasAereasUsuario(reservas);
+            response.put("reservas", reservasResumo);
+            String localizadorContexto = extrairPrimeiroLocalizadorResumo(reservasResumo);
+            if (localizadorContexto != null && !localizadorContexto.isBlank()) {
+                response.put("localizadorContexto", localizadorContexto);
+                response.put("acoesDisponiveis", montarAcoesDisponiveisLocalizador(localizadorContexto));
             }
 
-            // Normaliza sigla da LATAM (JJ -> LA)
-            for (VendasAereasExibicao v : vendas) {
-                String sigla = v.getSiglaCia();
-                if (sigla != null && sigla.equalsIgnoreCase("JJ")) {
-                    v.setSiglaCia("LA");
-                }
-            }
-            VendaAereaExibicaoResponse fResponse = new VendaAereaExibicaoResponse();
-            // Converte para IA sem serializar para String
-            List<VendasAereasExibicaoIA> vendasIA = mapper.convertValue(
-                    vendas,
-                    new com.fasterxml.jackson.core.type.TypeReference<List<VendasAereasExibicaoIA>>() {
-                    }
-            );
-
-            // Garante lista em fResponse e adiciona resultados
-            if (fResponse.getVendas() == null) {
-                fResponse.setVendas(new java.util.ArrayList<>());
-            }
-            fResponse.getVendas().addAll(vendasIA);
-
-            // Retorna o objeto preenchido
-            return new ChatMessageDTO("system", "Dado do sistema: " + fResponse.toString());
+            return new ChatMessageDTO("system",
+                    "Dado do sistema (ultimas_reservas_aereas_usuario): " + mapper.writeValueAsString(response) +
+                            "\nUse estes dados para responder ao usuario listando as reservas encontradas. " +
+                            "Priorize localizador, status, datas, companhia, passageiros e trechos. " +
+                            "Se a lista estiver vazia, diga que nao foram encontradas reservas aereas para o usuario informado.");
 
         } catch (Exception e) {
-            return new ChatMessageDTO("system", "Dado do sistema: " + "Não foi possivel listar as vendas.");
+            return new ChatMessageDTO("system", "Dado do sistema: " + "Nao foi possivel listar as reservas aereas do usuario.");
         }
+    }
+
+    private List<Map<String, Object>> resumirReservasAereasUsuario(List<ReservaAereo> reservas) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (reservas == null) {
+            return resultado;
+        }
+
+        for (ReservaAereo reserva : reservas) {
+            if (reserva == null) {
+                continue;
+            }
+            resultado.add(resumirReservaAereaUsuario(reserva));
+            if (resultado.size() >= LIMITE_ULTIMAS_RESERVAS_AEREAS) {
+                break;
+            }
+        }
+        return resultado;
+    }
+
+    private String extrairPrimeiroLocalizadorResumo(List<Map<String, Object>> reservasResumo) {
+        if (reservasResumo == null || reservasResumo.isEmpty()) {
+            return null;
+        }
+
+        Object localizador = reservasResumo.get(0).get("localizador");
+        return localizador == null ? null : localizador.toString();
+    }
+
+    private Map<String, Object> resumirReservaAereaUsuario(ReservaAereo reserva) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        putIfNotNull(map, "codgReservaAereo", reserva.getCodgReservaAereo());
+        putIfNotBlank(map, "localizador", reserva.getLocalizador());
+        putIfNotNull(map, "status", reserva.getStatus());
+        putIfNotNull(map, "dataCriacao", formatarDataSistema(reserva.getDataCriacao()));
+        putIfNotNull(map, "dataEmissao", formatarDataSistema(reserva.getDataEmissao()));
+        putIfNotNull(map, "dataLimiteEmissao", formatarDataSistema(reserva.getDataLimiteEmissao()));
+        putIfNotNull(map, "dataCancelamento", formatarDataSistema(reserva.getDataCancelamento()));
+        putIfNotBlank(map, "motivoCancelamento", reserva.getDescMotivoCancelamento());
+        putIfNotBlank(map, "regraReserva", reserva.getRegraReserva());
+        putIfNotNull(map, "valorTotalReserva", reserva.getValorTotalReserva());
+
+        Map<String, Object> usuarioCriacao = resumirUsuarioReserva(reserva.getCodgUsuarioCriacao());
+        if (!usuarioCriacao.isEmpty()) {
+            map.put("usuarioCriacao", usuarioCriacao);
+        }
+
+        Map<String, Object> agencia = resumirAgenciaReserva(reserva.getCodgAgencia());
+        if (!agencia.isEmpty()) {
+            map.put("agencia", agencia);
+        }
+
+        Map<String, Object> companhia = resumirCompanhiaReserva(reserva.getCodgCompanhiaAerea());
+        if (!companhia.isEmpty()) {
+            map.put("companhia", companhia);
+        }
+
+        map.put("quantidadePassageiros", reserva.getPassageiros() == null ? 0 : reserva.getPassageiros().size());
+        map.put("passageiros", resumirPassageirosReserva(reserva.getPassageiros()));
+        map.put("quantidadeTrechos", reserva.getTrechos() == null ? 0 : reserva.getTrechos().size());
+        map.put("trechos", resumirTrechosReserva(reserva.getTrechos()));
+        return map;
+    }
+
+    private Map<String, Object> resumirUsuarioReserva(Usuario usuario) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (usuario == null) {
+            return map;
+        }
+        putIfNotNull(map, "codgUsuario", usuario.getCodgUsuario());
+        putIfNotBlank(map, "nome", usuario.getNomeCompleto());
+        putIfNotBlank(map, "login", usuario.getLoginUsuario());
+        return map;
+    }
+
+    private Map<String, Object> resumirAgenciaReserva(Agencia agencia) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (agencia == null) {
+            return map;
+        }
+        putIfNotNull(map, "codgAgencia", agencia.getCodgAgencia());
+        putIfNotBlank(map, "nome", agencia.getNomeAgencia());
+        return map;
+    }
+
+    private Map<String, Object> resumirCompanhiaReserva(CompanhiaAerea companhia) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (companhia == null) {
+            return map;
+        }
+        putIfNotNull(map, "codgCompanhiaAerea", companhia.getCodgCompanhiaAerea());
+        putIfNotBlank(map, "iata", normalizarIataCia(companhia.getIataCia()));
+        putIfNotBlank(map, "nome", companhia.getNomeCia());
+        return map;
+    }
+
+    private List<String> resumirPassageirosReserva(List<Passageiro> passageiros) {
+        List<String> nomes = new ArrayList<>();
+        if (passageiros == null) {
+            return nomes;
+        }
+
+        for (Passageiro passageiro : passageiros) {
+            if (passageiro == null) {
+                continue;
+            }
+            String nome = montarNomePassageiro(passageiro);
+            if (!nome.isBlank()) {
+                nomes.add(nome);
+            }
+            if (nomes.size() >= LIMITE_PASSAGEIROS_RESUMO) {
+                break;
+            }
+        }
+        return nomes;
+    }
+
+    private String montarNomePassageiro(Passageiro passageiro) {
+        StringJoiner joiner = new StringJoiner(" ");
+        if (passageiro.getNomePassageiro() != null && !passageiro.getNomePassageiro().isBlank()) {
+            joiner.add(passageiro.getNomePassageiro().trim());
+        }
+        if (passageiro.getMeioNomePassageiro() != null && !passageiro.getMeioNomePassageiro().isBlank()) {
+            joiner.add(passageiro.getMeioNomePassageiro().trim());
+        }
+        if (passageiro.getSobrenomePassageiro() != null && !passageiro.getSobrenomePassageiro().isBlank()) {
+            joiner.add(passageiro.getSobrenomePassageiro().trim());
+        }
+        return joiner.toString();
+    }
+
+    private List<Map<String, Object>> resumirTrechosReserva(List<Trecho> trechos) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (trechos == null) {
+            return resultado;
+        }
+
+        for (Trecho trecho : trechos) {
+            if (trecho == null) {
+                continue;
+            }
+            resultado.add(resumirTrechoReserva(trecho));
+            if (resultado.size() >= LIMITE_TRECHOS_RESUMO) {
+                break;
+            }
+        }
+        return resultado;
+    }
+
+    private Map<String, Object> resumirTrechoReserva(Trecho trecho) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        putIfNotNull(map, "dataPartida", formatarDataSistema(trecho.getDataPartida()));
+        putIfNotNull(map, "dataChegada", formatarDataSistema(trecho.getDataChegada()));
+        putIfNotBlank(map, "origem", resumirAeroporto(trecho.getCodgAeroportoOrigem()));
+        putIfNotBlank(map, "destino", resumirAeroporto(trecho.getCodgAeroportoDestino()));
+
+        Map<String, Object> companhia = resumirCompanhiaReserva(trecho.getCodgCompanhiaAerea());
+        if (!companhia.isEmpty()) {
+            map.put("companhia", companhia);
+        }
+        map.put("voos", resumirVoosReserva(trecho.getVoos()));
+        return map;
+    }
+
+    private List<Map<String, Object>> resumirVoosReserva(List<Voo> voos) {
+        List<Map<String, Object>> resultado = new ArrayList<>();
+        if (voos == null) {
+            return resultado;
+        }
+
+        for (Voo voo : voos) {
+            if (voo == null) {
+                continue;
+            }
+            resultado.add(resumirVooReserva(voo));
+            if (resultado.size() >= LIMITE_VOOS_RESUMO) {
+                break;
+            }
+        }
+        return resultado;
+    }
+
+    private Map<String, Object> resumirVooReserva(Voo voo) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        putIfNotBlank(map, "numeroVoo", voo.getNumeroVoo());
+        putIfNotBlank(map, "origem", resumirAeroporto(voo.getCodgAeroportoOrigem()));
+        putIfNotBlank(map, "destino", resumirAeroporto(voo.getCodgAeroportoDestino()));
+        putIfNotNull(map, "dataHoraPartida", formatarDataSistema(voo.getDataHoraPartida()));
+        putIfNotNull(map, "dataHoraChegada", formatarDataSistema(voo.getDataHoraChegada()));
+        putIfNotBlank(map, "classeTarifa", voo.getClasseTarifa());
+        putIfNotBlank(map, "baseTarifa", voo.getBaseTarifa());
+        putIfNotBlank(map, "familia", voo.getFamilia());
+        putIfNotNull(map, "qtdBagagem", voo.getQtdBagagem());
+        putIfNotNull(map, "qtdEscalas", voo.getQtdEscalas());
+        putIfNotBlank(map, "cabine", voo.getCabine());
+        putIfNotBlank(map, "statusVoo", voo.getStatusVoo());
+
+        Map<String, Object> companhia = resumirCompanhiaReserva(voo.getCodgCompanhiaAerea());
+        if (!companhia.isEmpty()) {
+            map.put("companhia", companhia);
+        }
+        return map;
+    }
+
+    private String resumirAeroporto(Aeroporto aeroporto) {
+        if (aeroporto == null) {
+            return null;
+        }
+        if (aeroporto.getIataAeroporto() != null && !aeroporto.getIataAeroporto().isBlank()) {
+            return aeroporto.getIataAeroporto();
+        }
+        return aeroporto.getNomeAeroporto();
+    }
+
+    private String normalizarIataCia(String iata) {
+        if (iata != null && iata.equalsIgnoreCase("JJ")) {
+            return "LA";
+        }
+        return iata;
+    }
+
+    private String formatarDataSistema(Date date) {
+        if (date == null) {
+            return null;
+        }
+        return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").format(date);
     }
 
 
@@ -549,37 +1888,32 @@ public class ChatService {
     }
 
     public String conversationAgentIA(String input) throws IOException {
-        // 1) Mensagem de sistema com o perfil do AgentIA
-        ChatMessageDTO system = new ChatMessageDTO("system", profileAgentIA());
+        String resposta = agenteIADecisor("AgentIA", profileAgentIA(), input);
+        return resposta == null || resposta.isBlank() ? "desconhecido" : resposta;
+    }
 
-        // 2) Cria o histórico (somente system + user)
+    private String agenteIADecisor(String nomeAgente, String perfilAgente, String input) throws IOException {
         List<ChatMessageDTO> messages = new ArrayList<>();
-        messages.add(system);
-        messages.add(new ChatMessageDTO("user", input));
+        messages.add(new ChatMessageDTO("system", perfilAgente));
+        messages.add(new ChatMessageDTO("user", input == null ? "" : input));
 
-        // 3) Metadados básicos (opcional, mas mantém estrutura uniforme)
         Map<String, Object> metadata = new HashMap<>();
-        metadata.put("agent", "AgentIA");
+        metadata.put("agent", nomeAgente);
         metadata.put("timestamp", new Date());
 
-        // 4) Monta o ChatRequestDTO (sem precisar de req externo)
         ChatRequestDTO chatReq = new ChatRequestDTO(
                 messages,
-                null,        // usa modelo padrão do ChatService (ex.: GPT-4o-mini)
-                false,       // streaming desligado
-                List.of(),   // sem ferramentas
+                null,
+                false,
+                List.of(),
                 metadata
         );
 
-        // 5) Faz a chamada ao ChatService e captura a resposta
         ChatResponseDTO response = chat(chatReq, null, null);
-
-        // 6) Retorna apenas o conteúdo textual (keyword)
         if (response != null && response.content() != null && !response.content().isEmpty()) {
-            return response.content();
+            return response.content().trim();
         }
-
-        return "desconhecido";
+        return "";
     }
 
     public FieldAssistantResponseDTO assistField(FieldAssistantRequestDTO req) throws IOException {
@@ -741,6 +2075,7 @@ Formato esperado:
                 - Faturas e boletos;
                 - Check-ins e embarques próximos (72h);
                 - Vendas e reservas recentes.
+                - Reservas aéreas e regras de multa, reembolso, cancelamento, alteração e remarcação.
 
                 Responda **somente com a keyword da intenção**, sem explicações.
                 Palavras-chave possíveis:
@@ -749,20 +2084,30 @@ Formato esperado:
                 - "boletos"
                 - "checkin"
                 - "ultimas_vendas"
+                - "ultimas_reservas_aereas"
                 - "familias"
                 - "alertas"
+                - "reserva_aerea_detalhes"
+                - "reserva_aerea_regras"
 
                 Exemplos:
                 - Pergunta: "Quais são meus limites de crédito?" → Resposta: "limites"
                 - Pergunta: "Me mostre as últimas vendas" → Resposta: "ultimas_vendas"
+                - Pergunta: "Liste minhas últimas reservas" → Resposta: "ultimas_reservas_aereas"
                 - Pergunta: "Quero ver as famílias da GOL" → Resposta: "familias;GOL"
+                - Pergunta: "Carregue os dados da reserva ABC123" → Resposta: "reserva_aerea_detalhes"
+                - Pergunta: "Consulte o localizador XYZ789" → Resposta: "reserva_aerea_detalhes"
+                - Pergunta: "Posso emitir a reserva ABC123?" → Resposta: "reserva_aerea_detalhes"
+                - Pergunta: "Mostre os bilhetes do localizador XYZ789" → Resposta: "reserva_aerea_detalhes"
+                - Pergunta: "Tem assento disponivel na reserva ABC123?" → Resposta: "reserva_aerea_detalhes"
+                - Pergunta: "A reserva ABC123 tem multa para remarcação?" → Resposta: "reserva_aerea_regras"
+                - Pergunta: "Consulte o reembolso do localizador XYZ789" → Resposta: "reserva_aerea_regras"
+                - Pergunta: "Quero cancelar a reserva ABC123" → Resposta: "reserva_aerea_regras"
                 - Pergunta fora do contexto → Resposta: "desconhecido"
                 """;
     }
 
     public String identificarTipoConsultaViagem(String input) throws IOException {
-        List<ChatMessageDTO> messages = new ArrayList<>();
-
         String prompt = """
             Você é um classificador de intenção.
             Analise a mensagem do usuário e responda somente com uma das opções abaixo:
@@ -779,23 +2124,7 @@ Formato esperado:
             Responda apenas com uma palavra.
             """;
 
-        messages.add(new ChatMessageDTO("system", prompt));
-        messages.add(new ChatMessageDTO("user", input));
-
-        ChatRequestDTO chatReq = new ChatRequestDTO(
-                messages,
-                null,
-                false,
-                List.of(),
-                Map.of("agent", "classificador_viagem")
-        );
-
-        ChatResponseDTO response = chat(chatReq, null, null);
-
-        if (response != null && response.content() != null) {
-            return response.content().trim().toLowerCase();
-        }
-
-        return "desconhecido";
+        String resposta = agenteIADecisor("classificador_viagem", prompt, input);
+        return resposta == null || resposta.isBlank() ? "desconhecido" : resposta.trim().toLowerCase(Locale.ROOT);
     }
 }
