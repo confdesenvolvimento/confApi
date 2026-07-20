@@ -1,8 +1,6 @@
 package com.confApi.endPoints.clube.Campanha;
 
 import com.confApi.db.clube.campanha.Campanha;
-import com.confApi.db.clube.campanha.CampanhaService2;
-import com.confApi.db.clube.campanha.dto.CampanhaRankingDTO;
 import com.confApi.db.clube.campanha.CampanhaService;
 import com.confApi.db.clube.campanha.dto.CampanhasAgrupadasDTO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,9 +15,6 @@ public class CampanhaController {
 
     @Autowired
     private CampanhaService campanhaService;
-
-    @Autowired
-    private CampanhaService2 campanhaService2;
 
 
     @GetMapping
