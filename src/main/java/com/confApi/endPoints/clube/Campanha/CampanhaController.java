@@ -1,8 +1,10 @@
 package com.confApi.endPoints.clube.Campanha;
 
 import com.confApi.db.clube.campanha.Campanha;
+import com.confApi.db.clube.campanha.CampanhaService2;
 import com.confApi.db.clube.campanha.dto.CampanhaRankingDTO;
 import com.confApi.db.clube.campanha.CampanhaService;
+import com.confApi.db.clube.campanha.dto.CampanhasAgrupadasDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,11 +17,10 @@ public class CampanhaController {
 
     @Autowired
     private CampanhaService campanhaService;
-/*
-    @PostMapping
-    public ResponseEntity<?> create(@RequestBody Campanha campanha) {
-        return ResponseEntity.ok(campanhaService.create(campanha));
-    }*/
+
+    @Autowired
+    private CampanhaService2 campanhaService2;
+
 
     @GetMapping
     public List<Campanha> getAll() {
@@ -35,11 +36,11 @@ public class CampanhaController {
     public List<Campanha> getAllAtivasStatus1() {
         return campanhaService.getAllAtivasStatus1();
     }
-
+/*
     @GetMapping("/campanhas-ativas-hoje")
     public List<Campanha> getCampanhasAtivasHoje() {
         return campanhaService.getCampanhasAtivasHoje();
-    }
+    }*/
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getById(@PathVariable Integer id) {
@@ -51,8 +52,9 @@ public class CampanhaController {
         return ResponseEntity.ok(campanhaService.update(id, campanha));
     }
 
-    @GetMapping("/campanhas")
-    public List<CampanhaRankingDTO> getCampanhas(@RequestParam String loginUsuario) {
-        return campanhaService.getCampanhas(loginUsuario);
+    @GetMapping("/campanhas-agrupadas")
+    public CampanhasAgrupadasDTO getCampanhasAgrupadas(@RequestParam String loginUsuario) {
+        return campanhaService.getCampanhasAgrupadas(loginUsuario);
     }
+
 }

@@ -28,8 +28,6 @@ public class CartaoUsuarioCiaController {
 
     @GetMapping("/lista/{id}")
     public List<CartaoUsuarioCia> findAllByCartaoUsuario(@PathVariable int id) {
-        System.out.println("get lista : "+id);
-        //System.out.println("lista : "+cartaoUsuarioCiaService.lista(id));
         return cartaoUsuarioCiaService.lista(id);
     }
 

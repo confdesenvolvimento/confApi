@@ -20,4 +20,24 @@ public class RankingEntryDTO implements Serializable {
     private String nomeUsuario;
     private String nomeExibicaoRanking;
     private Integer contador=0;
+
+    @Override
+    public String toString() {
+        return "RankingEntryDTO{" +
+                "position=" + position +
+                ", codgUsuario='" + codgUsuario + '\'' +
+                ", codgAgencia='" + codgAgencia + '\'' +
+                ", nomeAgencia='" + nomeAgencia + '\'' +
+                ", totalVendas=" + totalVendas +
+                ", totalBilhetes=" + totalBilhetes +
+                ", totalValorCount=" + totalValorCount +
+                ", totalValor=" + totalValor +
+                ", isUserLogged=" + isUserLogged +
+                ", nomeUnidade='" + nomeUnidade + '\'' +
+                ", codgUnidade=" + codgUnidade +
+                ", nomeUsuario='" + nomeUsuario + '\'' +
+                ", nomeExibicaoRanking='" + nomeExibicaoRanking + '\'' +
+                ", contador=" + contador +
+                '}';
+    }
 }

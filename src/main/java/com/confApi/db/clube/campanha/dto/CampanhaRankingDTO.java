@@ -44,4 +44,40 @@ public class CampanhaRankingDTO {
     private Integer flagTipoMensal;
     private String descUnidade;
     private List<RankingEntryDTO> rankingCampanha;
+
+    @Override
+    public String toString() {
+        return "CampanhaRankingDTO{" +
+                "codgCampanha=" + codgCampanha +
+                ", nomeCampanha='" + nomeCampanha + '\'' +
+                ", tituloCampanha='" + tituloCampanha + '\'' +
+                ", descricaoCampanha='" + descricaoCampanha + '\'' +
+                ", descricaoCampanhaExibicao='" + descricaoCampanhaExibicao + '\'' +
+                ", regrasCampanha='" + regrasCampanha + '\'' +
+                ", validadeInicio=" + validadeInicio +
+                ", validadeFinal=" + validadeFinal +
+                ", flagTipoPublico=" + flagTipoPublico +
+                ", flagPremium=" + flagPremium +
+                ", descricaoTipoProdutoCampanha='" + descricaoTipoProdutoCampanha + '\'' +
+                ", flagTipoContabilizaVendas=" + flagTipoContabilizaVendas +
+                ", flagStatusCampanha=" + flagStatusCampanha +
+                ", CompanhiaAerea='" + CompanhiaAerea + '\'' +
+                ", iataCia='" + iataCia + '\'' +
+                ", numrCia='" + numrCia + '\'' +
+                ", tipoProduto=" + tipoProduto +
+                ", arquivoAnexo=" + arquivoAnexo +
+                ", flagContabilTarifa=" + flagContabilTarifa +
+                ", flagContabilBilhete=" + flagContabilBilhete +
+                ", flagContabilAgencia=" + flagContabilAgencia +
+                ", flagContabilEmissor=" + flagContabilEmissor +
+                ", quantidadeTopResultado=" + quantidadeTopResultado +
+                ", valorPago=" + valorPago +
+                ", flagTipoContabilValorPago=" + flagTipoContabilValorPago +
+                ", flagTipoMercado=" + flagTipoMercado +
+                ", linkVideo='" + linkVideo + '\'' +
+                ", flagTipoMensal=" + flagTipoMensal +
+                ", descUnidade='" + descUnidade + '\'' +
+                ", rankingCampanha=" + rankingCampanha +
+                '}';
+    }
 }
