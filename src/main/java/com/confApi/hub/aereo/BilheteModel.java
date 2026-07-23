@@ -1,6 +1,8 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.aereo.eNums.StatusBilheteWooba;
 import com.confApi.endPoints.bilhete.BilheteResponse;
+import com.confApi.hub.aereo.dto.Bilhete;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -19,6 +21,13 @@ public class BilheteModel implements Serializable {
         this.dataEmissao = bilheteResponse.getDataEmissao();
         this.dataCancelamento = bilheteResponse.getDataCancelamento();
         this.isCancelar = bilheteResponse.getIsCancelar();
+    }
+
+    public BilheteModel(Bilhete bilhete) {
+        this.status = StatusBilheteWooba.getValorPorDescricao(bilhete.getStatus());
+        this.numeroBilhete = bilhete.getNumero();
+        this.dataEmissao = bilhete.getDataDeEmissao();
+        this.dataCancelamento = bilhete.getDataDeEmissao();
     }
 
     public BilheteModel() {
@@ -74,7 +83,15 @@ public class BilheteModel implements Serializable {
         this.dataCancelamento = dataCancelamento;
     }
 
-
-
+    @Override
+    public String toString() {
+        return "BilheteModel{" +
+                "status=" + status +
+                ", numeroBilhete='" + numeroBilhete + '\'' +
+                ", dataEmissao=" + dataEmissao +
+                ", dataCancelamento=" + dataCancelamento +
+                ", isCancelar=" + isCancelar +
+                '}';
+    }
 }
 

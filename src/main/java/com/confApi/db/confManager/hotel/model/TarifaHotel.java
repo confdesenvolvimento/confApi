@@ -34,8 +34,6 @@ public class TarifaHotel implements Serializable {
     public TarifaHotel() {
     }
 
-
-
     public TarifaHotel(HotelQuartoValor hotelQuartoValor, ReservaHotel reservaHotel) {
         this.valorMarkupAplicado = hotelQuartoValor.getPercMkpAplicado();
         this.percentualMarkupAplicado = hotelQuartoValor.getPercMkpAplicado();
@@ -54,10 +52,6 @@ public class TarifaHotel implements Serializable {
         this.disponibilidade = null;
 //        this.tarifasDiaria =  null;
     }
-
-
-
-
 
     public void calcularTotais(TarifaHotel tarifa) {
 

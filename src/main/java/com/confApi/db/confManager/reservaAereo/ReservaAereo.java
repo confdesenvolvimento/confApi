@@ -1,5 +1,6 @@
 package com.confApi.db.confManager.reservaAereo;
 
+import com.confApi.aereo.eNums.StatusReservaEnum;
 import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.companhiaAerea.CompanhiaAerea;
 import com.confApi.db.confManager.passageiro.Passageiro;
@@ -8,10 +9,13 @@ import com.confApi.db.confManager.reservaPacote.ReservaPacote;
 import com.confApi.db.confManager.sistema.Sistema;
 import com.confApi.db.confManager.trecho.Trecho;
 import com.confApi.db.confManager.usuario.Usuario;
+import com.confApi.hub.aereo.PassageiroModel;
 import com.confApi.hub.aereo.ReservaAereoModel;
+import com.confApi.hub.aereo.dto.TrechoReserva;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -43,28 +47,44 @@ public class ReservaAereo implements Serializable {
 
     public ReservaAereo(ReservaAereoModel obj) {
         this.codgReservaAereo = obj.getCodgReservaAereoDB().intValue();
-        this.codgUsuarioCriacao = null;
+        this.codgUsuarioCriacao = obj.getUsuarioCriacao2();
         this.dataCriacao = obj.getDataCriacao();
         this.dataEmissao = obj.getDataEmissao();
         this.dataLimiteEmissao = null;
-        this.dataCancelamento = null;
+        this.dataCancelamento = obj.getDataCancelamento();
         this.localizador = obj.getLocalizador();
-        this.status = 0;
+        this.status = StatusReservaEnum.fromNome(obj.getStatusReserva()).getValor();
         this.descMotivoCancelamento = obj.getDescMotivoCancelamento();
         this.regraReserva = obj.getRegraReserva();
         this.codgSistema = new Sistema(obj.getSistema(), null);
-        this.codgCompanhiaAerea = null;
-        this.codgAgencia = null;
+        this.codgCompanhiaAerea = obj.getCodgCompanhiaAerea();
+        this.codgAgencia = obj.getAgencia();
         this.codgUsuarioEmissao = null;
         this.codgUsuarioCancelamento = null;
-        this.trechos = null;
-        this.passageiros = null;
+        if(obj.getTrechos() != null && !obj.getTrechos().isEmpty()){
+            this.trechos = new ArrayList<>();
+            for(TrechoReserva trecho : obj.getTrechos()){
+                Trecho trecho1 = new Trecho(trecho);
+                this.trechos.add(trecho1);
+            }
+        } else {
+            this.trechos = null;
+        }
+
+        if(obj.getPassageiros() != null && !obj.getPassageiros().isEmpty()){
+            this.passageiros = new ArrayList<>();
+            for(PassageiroModel passageiroModel : obj.getPassageiros()){
+                Passageiro passageiro = new Passageiro(passageiroModel, obj);
+                this.passageiros.add(passageiro);
+            }
+        } else {
+            this.passageiros = null;
+        }
+
         this.recebimentos = null;
         this.codgReservaPacote = obj.getReservaPacote();
         this.fonte = null;
     }
-
-
 
     public List<Recebimento> getRecebimentos() {
         return recebimentos;

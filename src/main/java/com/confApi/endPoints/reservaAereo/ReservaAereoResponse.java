@@ -93,7 +93,6 @@ public class ReservaAereoResponse {
         this.recebimentos = new ArrayList<>();
 
         // 1) preenche a partir da API (hub) – equivalente ao populaReservaFromApi
-        System.out.println("TESTE pesquisaResponseHubList: " + pesquisaResponseHubList);
         if (pesquisaResponseHubList != null) {
             preencherComHub(pesquisaResponseHubList);
         }
@@ -145,7 +144,6 @@ public class ReservaAereoResponse {
         }
 
         // Passageiros
-        System.out.println("reservaApi.getPassageiros(): " + reservaApi.getPassageiros().size());
         if (reservaApi.getPassageiros() != null && !reservaApi.getPassageiros().isEmpty()) {
             for (var paxApi : reservaApi.getPassageiros()) {
                 PassageiroResponse p = new PassageiroResponse();
@@ -324,7 +322,7 @@ public class ReservaAereoResponse {
                 r.setValorEntrada(rdb.getValrEntrada());
                 r.setStatusRecebimento(rdb.getStatus());
                 r.setDataRecebimento(rdb.getDataRecebimento());
-                r.setCodgCodgRecebimento(rdb.getCodgRecebimento());
+                r.setCodgRecebimento(rdb.getCodgRecebimento());
                 r.setLink(rdb.getLink());
                 // se houver dados de cartão, mapeie aqui também
 

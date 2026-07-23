@@ -21,6 +21,27 @@ public class Aeroporto implements Serializable {
     private String latitude;
     private String longitude;
 
+    public Aeroporto(Integer codgAeroporto, String nomeAeroporto, String codigoIata,
+                     Double valrTaxaEmbarque, Integer categoria, Integer status,
+                     Cidade cidade, String nomeAereoportoExibicao, String latitude,
+                     String longitude) {
+        this.codgAeroporto = codgAeroporto;
+        this.nomeAeroporto = nomeAeroporto;
+        this.codigoIata = codigoIata;
+        this.valrTaxaEmbarque = valrTaxaEmbarque;
+        this.categoria = categoria;
+        this.status = status;
+        this.cidade = cidade;
+        this.nomeAereoportoExibicao = nomeAereoportoExibicao;
+        this.latitude = latitude;
+        this.longitude = longitude;
+    }
+
+    public Aeroporto(com.confApi.hub.aereo.dto.Aeroporto aeroporto) {
+        this.nomeAeroporto = aeroporto.getDescricao();
+        this.codigoIata = aeroporto.getCodigoIata();
+    }
+
     public String getNomeAereoportoExibicao() {
         StringBuilder nomeAeroportoExibicaoBuilder = new StringBuilder();
 
@@ -225,8 +246,12 @@ public class Aeroporto implements Serializable {
         this.longitude = longitude;
     }
 
+    public String getCodigoIata() {
+        return codigoIata;
+    }
 
-
-
+    public void setCodigoIata(String codigoIata) {
+        this.codigoIata = codigoIata;
+    }
 }
 

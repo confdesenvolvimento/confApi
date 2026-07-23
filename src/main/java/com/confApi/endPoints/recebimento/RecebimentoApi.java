@@ -109,6 +109,36 @@ public class RecebimentoApi {
         }
     }
 
+    public List<CancelarResponse> cancelar(Integer codgRecebimento, Recebimento recebimento) {
+        try {
+            ConfAppResp token = confAppService.token();
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                    .path("/recebimento/cancelarRecebimento/{id}")
+                    .buildAndExpand(codgRecebimento)
+                    .toUriString();
+
+            System.out.println("url: " + url);
+            System.out.println("recebimento: " + recebimento);
+
+            ResponseEntity<List<CancelarResponse>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.PUT,
+                    new HttpEntity<>(recebimento, defaultHeaders(token.getToken())),
+                    new ParameterizedTypeReference<List<CancelarResponse>>() {}
+            );
+
+            System.out.println("response CANCELAR BILHETE DB: " + response.getBody());
+
+            return response.getBody();
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, "Erro ao atualizar recebimento da reserva Wooba. Id: " + codgRecebimento, e);
+            alertarErro("Erro ao atualizar recebimento da reserva Wooba. Id " + codgRecebimento, e);
+            throw e;
+        }
+    }
+
     private void alertarErro(String mensagem, Exception e) {
         if (telegramErrorAlert != null) {
             telegramErrorAlert.enviar(this, mensagem, e);

@@ -10,6 +10,8 @@ import com.confApi.db.confManager.reservaPacote.ReservaPacote;
 import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import com.confApi.endPoints.recebimento.RecebimentoResponse;
 import com.confApi.endPoints.reservaPacote.ReservaPacoteResponse;
+import com.confApi.hub.aereo.CartaoModel;
+import com.confApi.hub.aereo.ReservaAereoModel;
 import com.confApi.model.RecebimentoModel;
 import com.confApi.seguros.dto.SeguroCompraModel;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -51,6 +53,80 @@ public class Recebimento implements Serializable {
     private SeguroReserva codgReservaSeguro;
     private CarroReserva codgReservaCarro;
 
+    public Recebimento(ReservaAereoModel reservaAereoModel) {
+        if (reservaAereoModel == null || reservaAereoModel.getRecebimento() == null) {
+            return;
+        }
+
+        com.confApi.hub.aereo.RecebimentoModel recebimentoModel = reservaAereoModel.getRecebimento();
+
+        this.codgRecebimento = recebimentoModel.getCodgRecebimento();
+        this.valrRecebimento = reservaAereoModel.getValorTotalReserva();
+        this.valrEntrada = reservaAereoModel.getValorTotalReserva();
+
+        if (recebimentoModel.getCartaoSelecionado() != null) {
+            CartaoModel cartao = recebimentoModel.getCartaoSelecionado();
+
+            this.numrCartao = cartao.getNumeroCartao();
+            this.validadeCartao = cartao.getValidadeCartao();
+            this.codgSegCartao = cartao.getCodgSegurancaCartao();
+            this.titularCartao = cartao.getTitularBandeira();
+
+            if (cartao.getParcelaSelecionada() != null) {
+                this.qtdeParcela = cartao.getParcelaSelecionada().getNumeroDaParcela();
+                this.valrPrimeiraParcela = cartao.getParcelaSelecionada().getValorPrimeiraParcela();
+                this.valrDemaisParcela = cartao.getParcelaSelecionada().getValorDemaisParcelas();
+                this.valrEntrada = cartao.getParcelaSelecionada().getValorPrimeiraParcela();
+            }
+
+            this.codgAutCartao = cartao.getCodgAutorizacao();
+            this.codgTransacao = cartao.getCodgTransacao();
+            this.orderGatewayCartao = cartao.getCodgTransacao();
+
+            this.codgBandeira = new Bandeira(1);
+        }
+
+        this.assinaturaEletronica = recebimentoModel.getAssinatura();
+        this.status = recebimentoModel.getStatusRecebimento() != null
+                ? recebimentoModel.getStatusRecebimento()
+                : 1;
+
+        this.dataRecebimento = recebimentoModel.getDataRecebimento() != null
+                ? recebimentoModel.getDataRecebimento()
+                : new Date();
+
+        this.codgGatewayCartao = null;
+
+        if (recebimentoModel.getFormaDePagamento() != null
+                && recebimentoModel.getFormaDePagamento().getCodgFormaPagto() != null) {
+            this.codgFormaPagto = new FormaPagamento(
+                    recebimentoModel.getFormaDePagamento().getCodgFormaPagto()
+            );
+        } else if (recebimentoModel.getCodgFormaPagamento() != null) {
+            this.codgFormaPagto = new FormaPagamento(
+                    recebimentoModel.getCodgFormaPagamento()
+            );
+        }
+
+        this.valrCancelado = 0.0;
+
+        if (reservaAereoModel.getCodgReservaAereoDB() != null) {
+            this.codgReservaAereo = new ReservaAereo(
+                    reservaAereoModel.getCodgReservaAereoDB().intValue()
+            );
+        }
+
+        this.link = recebimentoModel.getLink();
+
+        this.codgReservaHotel = null;
+        this.codgReservaPacote = null;
+        this.codgReservaSeguro = null;
+
+        this.mensagem = null;
+        this.qrcodePix = null;
+        this.copiacolaPix = null;
+    }
+
     public Recebimento(RecebimentoModel recebimentoModel) {
         this.codgRecebimento = recebimentoModel.getCodgRecebimento() != null ? recebimentoModel.getCodgRecebimento() : null;
         this.valrRecebimento = recebimentoModel.getValorPagamento();
@@ -85,11 +161,47 @@ public class Recebimento implements Serializable {
         this.codgReservaCarro = null;
     }
 
+    public Recebimento(com.confApi.hub.aereo.RecebimentoModel recebimentoModel) {
+        System.out.println("RecebimentoModel: " + recebimentoModel);
+        this.codgRecebimento = recebimentoModel.getCodgRecebimento() != null ? recebimentoModel.getCodgRecebimento() : null;
+        this.valrRecebimento = recebimentoModel.getValorPagamento();
+        if(recebimentoModel.getCartaoSelecionado() != null){
+            this.numrCartao = recebimentoModel.getCartaoSelecionado().getNumeroCartao();
+            this.validadeCartao = recebimentoModel.getCartaoSelecionado().getValidadeCartao();
+            this.codgSegCartao = recebimentoModel.getCartaoSelecionado().getCodgSegurancaCartao();
+            this.titularCartao = recebimentoModel.getCartaoSelecionado().getTitularBandeira();
+            this.qtdeParcela = recebimentoModel.getCartaoSelecionado().getQuantidadeParcelas() != null ?
+                Integer.parseInt(recebimentoModel.getCartaoSelecionado().getQuantidadeParcelas()) : null;
+            this.codgBandeira = recebimentoModel.getCartaoSelecionado().getCodgBandeira() != null ?
+                    new Bandeira(Integer.parseInt(recebimentoModel.getCartaoSelecionado().getCodgBandeira())) : null;
+        }
+        this.valrPrimeiraParcela = recebimentoModel.getValorEntrada();
+        this.valrDemaisParcela = recebimentoModel.getValorEntrada();
+        this.codgAutCartao = null;
+        this.codgTransacao = null;
+        this.orderGatewayCartao = null;
+        this.status = null;
+        this.valrEntrada = recebimentoModel.getValorEntrada();
+        this.dataRecebimento = new Date();
+        this.codgGatewayCartao = null;
+        this.codgFormaPagto = recebimentoModel.getFormaDePagamento();
+        this.valrCancelado = null;
+        this.codgReservaAereo = null;
+        this.link = null;
+        this.codgReservaHotel = null;
+        this.assinaturaEletronica = null;
+        this.mensagem = null;
+        this.qrcodePix = null;
+        this.copiacolaPix = null;
+        this.codgReservaPacote = null;
+        this.codgReservaSeguro = null;
+    }
+
     public Recebimento() {
     }
 
     public Recebimento(RecebimentoResponse recebimentoResponse, ReservaPacoteResponse reservaPacoteResponse) {
-        this.codgRecebimento = recebimentoResponse.getCodgCodgRecebimento();
+        this.codgRecebimento = recebimentoResponse.getCodgRecebimento();
         this.valrRecebimento = recebimentoResponse.getValorPagamento();
         this.numrCartao = recebimentoResponse.getCartaoSelecionado().getNumeroCartao();
         this.validadeCartao = recebimentoResponse.getCartaoSelecionado().getValidadeCartao();

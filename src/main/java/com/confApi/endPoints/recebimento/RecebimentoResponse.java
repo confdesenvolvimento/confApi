@@ -21,7 +21,7 @@ public class RecebimentoResponse {
     private CartaoResponse cartaoSelecionado;
     private Integer statusRecebimento;
     private Date dataRecebimento;
-    private Integer codgCodgRecebimento;
+    private Integer codgRecebimento;
     private String assinatura;
     private String link;
 
@@ -34,7 +34,7 @@ public class RecebimentoResponse {
         this.cartaoSelecionado = new CartaoResponse(recebimento);
         this.statusRecebimento = recebimento.getStatus();
         this.dataRecebimento = recebimento.getDataRecebimento();
-        this.codgCodgRecebimento = recebimento.getCodgRecebimento();
+        this.codgRecebimento = recebimento.getCodgRecebimento();
         this.assinatura = recebimento.getAssinaturaEletronica();
         this.link = recebimento.getLink();
     }

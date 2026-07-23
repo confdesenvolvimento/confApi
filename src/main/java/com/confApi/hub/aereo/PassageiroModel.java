@@ -1,14 +1,20 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.aereo.dto.Reserva;
 import com.confApi.endPoints.bilhete.BilheteResponse;
 import com.confApi.endPoints.passageiro.PassageiroResponse;
 import com.confApi.endPoints.reservaValoresAereos.ReservaValoresAereoResponse;
+import com.confApi.hub.aereo.dto.Bilhete;
 import com.confApi.hub.aereo.dto.DocumentoPassageiro;
+import com.confApi.hub.aereo.dto.Passageiro;
 
 import java.io.Serializable;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.time.LocalDate;
 
 public class PassageiroModel implements Serializable {
 
@@ -29,25 +35,58 @@ public class PassageiroModel implements Serializable {
     private List<ReservaValoresAereo> valores;
     private List<BilheteModel> bilhetes;
 
+    public PassageiroModel(Passageiro passageiro, Reserva reservaApi) {
+        if (passageiro == null) {
+            return;
+        }
+
+        this.nome = passageiro.getNome();
+        this.nomeDoMeio = passageiro.getNomeDoMeio();
+        this.sobrenome = passageiro.getSobrenome();
+        this.faixaEtaria = passageiro.getFaixaEtaria();
+        this.email = passageiro.getEmail();
+        this.telefone = new ContatoModel(passageiro.getTelefone());
+        this.sexo = passageiro.getSexo();
+        this.cpf = passageiro.getCpf();
+        this.passaporte = new PassaporteModel(passageiro.getPassaporte());
+        this.voeBiz = passageiro.getVoeBiz();
+        this.idPassageiro = passageiro.getIdPassageiro();
+        this.nascimento = passageiro.getNascimento();
+
+        if (passageiro.getDocumento() != null) {
+            this.documento = passageiro.getDocumento();
+        }
+
+        if (reservaApi.getValorReserva() != null) {
+            this.valores = new ArrayList<>();
+            this.valores.add(new ReservaValoresAereo(reservaApi.getValorReserva().getValorBase().getValorPassageiroList().get(0)));
+        }
+
+        if (passageiro.getBilhetes() != null) {
+            this.bilhetes = new ArrayList<>();
+            for (Bilhete bilhete : passageiro.getBilhetes()) {
+                this.bilhetes.add(new BilheteModel(bilhete));
+            }
+        }
+    }
+
     public Date converterData(String data) {
-        String timestampString = data.substring(data.indexOf("(") + 1, data.indexOf("-"));
-        if (!timestampString.equalsIgnoreCase("")) {
-            String offsetString = data.substring(data.indexOf("-") + 1, data.indexOf(")"));
-            long timestamp = Long.parseLong(timestampString);
-            int offsetHours = Integer.parseInt(offsetString.substring(0, 3));
-            int offsetMinutes = Integer.parseInt(offsetString.substring(3));
-
-            // Calcular o deslocamento em milissegundos
-            int offsetMilliseconds = (offsetHours * 60 + offsetMinutes) * 60 * 1000;
-
-            // Somar o deslocamento ao timestamp
-            Date date = new Date(timestamp + offsetMilliseconds);
-
-            // Imprimir a data convertida
-            return date;
-        } else {
+        if (data == null || data.isBlank()) {
             return null;
         }
+
+        LocalDate localDate;
+
+        if (data.matches("\\d{2}/\\d{2}/\\d{4}")) {
+            localDate = LocalDate.parse(data, DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            );
+        } else if (data.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            localDate = LocalDate.parse(data, DateTimeFormatter.ISO_LOCAL_DATE);
+        } else {
+            throw new IllegalArgumentException("Formato de data não suportado: " + data);
+        }
+
+        return Date.from(localDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
     }
 
     public PassageiroModel(PassageiroResponse passageiroResponse) {
@@ -240,20 +279,22 @@ public class PassageiroModel implements Serializable {
 
     @Override
     public String toString() {
-        return "Passageiro{"
-                + "cpf='" + cpf + '\''
-                + ", documento=" + documento
-                + ", email='" + email + '\''
-                + ", faixaEtaria='" + faixaEtaria + '\''
-                + ", nascimento=" + nascimento
-                + ", nome='" + nome + '\''
-                + ", nomeDoMeio='" + nomeDoMeio + '\''
-                + ", sobrenome='" + sobrenome + '\''
-                + ", passaporte=" + passaporte
-                + ", sexo='" + sexo + '\''
-                + ", telefone=" + telefone
-                + ", voeBiz='" + voeBiz + '\''
-                + ", idPassageiro='" + idPassageiro + '\''
-                + '}';
+        return "PassageiroModel{" +
+                "codgPassageiroDb=" + codgPassageiroDb +
+                ", cpf='" + cpf + '\'' +
+                ", documento=" + documento +
+                ", email='" + email + '\'' +
+                ", faixaEtaria='" + faixaEtaria + '\'' +
+                ", nascimento='" + nascimento + '\'' +
+                ", nome='" + nome + '\'' +
+                ", nomeDoMeio='" + nomeDoMeio + '\'' +
+                ", sobrenome='" + sobrenome + '\'' +
+                ", passaporte=" + passaporte +
+                ", sexo='" + sexo + '\'' +
+                ", telefone=" + telefone +
+                ", voeBiz='" + voeBiz + '\'' +
+                ", idPassageiro='" + idPassageiro + '\'' +
+                ", bilhetes=" + bilhetes +
+                '}';
     }
 }

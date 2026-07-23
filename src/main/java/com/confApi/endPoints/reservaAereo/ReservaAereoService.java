@@ -15,18 +15,9 @@ public class ReservaAereoService {
 
     public ReservaAereoResponse consultarLocalizador(ReservaAereoConsultarLocalizadorRequest obj) {
         ConsultarLocalizadorRequestHub consultarLocalizadorRequestHub = new ConsultarLocalizadorRequestHub(obj);
-        //System.out.println("consultarLocalizadorRequestHub: " + consultarLocalizadorRequestHub);
-
         ConsultarLocalizadorResponseHub pesquisaResponseHubList = reservaAereoApi.reservaAereoConsultaLocalizadorHub(consultarLocalizadorRequestHub);
-        //System.out.println("pesquisaResponseHubList: " + pesquisaResponseHubList);
-
         ReservaAereo pesquisaResponseDb = reservaAereoApi.reservaAereoConsultaLocalizadorDb(obj.getLocalizador());
-
         ReservaAereoResponse reservaAereoResponse = new ReservaAereoResponse(pesquisaResponseHubList, pesquisaResponseDb);
-
-        //System.out.println(reservaAereoResponse.toString());
-        //System.out.println(reservaAereoResponse.getPassageiros());
-        //System.out.println(reservaAereoResponse.getTrechos());
 
         return reservaAereoResponse;
     }

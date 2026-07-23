@@ -137,7 +137,7 @@ public class ReservaHotelMapper implements Serializable {
         recebimentoModel.setValorEntrada(recebimentoDB.getValrEntrada());
         recebimentoModel.setStatusRecebimento(recebimentoDB.getStatus());
         recebimentoModel.setDataRecebimento(recebimentoDB.getDataRecebimento());
-        recebimentoModel.setCodgCodgRecebimento(recebimentoDB.getCodgRecebimento());
+        recebimentoModel.setCodgRecebimento(recebimentoDB.getCodgRecebimento());
         if (recebimentoDB.getLink() != null) {
             recebimentoModel.setLink(recebimentoDB.getLink());
         }

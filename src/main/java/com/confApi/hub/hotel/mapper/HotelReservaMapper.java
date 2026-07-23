@@ -132,6 +132,10 @@ public final class HotelReservaMapper {
         return DF_DDMMYYYY.format(data);
     }
 
+    private static String converterFormatoDataV2(Date data) {
+        return DF_YYYYMMDD.format(data);
+    }
+
     /**
      * Tenta parsear data recebida do front.
      * Aceita "yyyy-MM-dd" e "dd/MM/yyyy".
@@ -159,6 +163,86 @@ public final class HotelReservaMapper {
             // cai fora
         }
         return null;
+    }
+
+    public static ReservarRequest toHubV2(ReservarRequestFront front) {
+        if (front == null) return null;
+
+        ReservarRequest hub = new ReservarRequest();
+
+        // 1) Datas + dados principais
+        hub.setDtCheckIn(front.getDtCheckIn());
+        hub.setDtCheckOut(front.getDtCheckOut());
+
+        // Esses podem vir do front (se vier nulo, segue nulo como no legado)
+        hub.setDataCriacao(front.getDataCriacao());
+        hub.setInfoGlobal(front.getInfoGlobal());
+        hub.setIdentificador(front.getIdentificador());
+        hub.setStatus(front.getStatus());
+
+        hub.setCodgHotel(front.getCodgHotel());
+        hub.setCodgCidade(front.getCodgCidade());
+        hub.setSearchToken(front.getSearchToken());
+
+        // 2) Acomodações
+        List<HotelAcomodacaoFront> acomodacoesFront =
+                front.getAcomodacoes() == null ? Collections.emptyList() : front.getAcomodacoes();
+
+        hub.setAcomodacoes(new ArrayList<>());
+
+        for (HotelAcomodacaoFront aFront : acomodacoesFront) {
+            if (aFront == null) continue;
+
+            HotelAcomodacao aHub = new HotelAcomodacao();
+            aHub.setCodgPlanoTarifa(aFront.getCodgPlanoTarifa());
+            aHub.setCodgRoom(aFront.getCodgRoom());
+            aHub.setSiglaTipoQuarto(aFront.getSiglaTipoQuarto());
+            aHub.setSistema(aFront.getSistema());
+
+            // Tarifa
+            if (aFront.getTarifaHotel() != null) {
+                TarifaHotel th = new TarifaHotel();
+                th.setValorTotalEstadiaNet(aFront.getTarifaHotel().getValorTotalEstadiaNet());
+                th.setMoeda(aFront.getTarifaHotel().getMoeda());
+                aHub.setTarifaHotel(th);
+            } else {
+                aHub.setTarifaHotel(null);
+            }
+
+            // Forma pagamento
+            aHub.setFormaPagamento(aFront.getFormaPagamento());
+
+            // Hóspedes (com idade + dataNascimento formatada)
+            if (aFront.getHospedes() != null && !aFront.getHospedes().isEmpty()) {
+                aHub.setHospedes(new ArrayList<>());
+
+                for (Hospedes h : aFront.getHospedes()) {
+                    if (h == null) continue;
+
+                    // Regra do legado:
+                    // - se dataNascimento != null:
+                    //   - calcula idade
+                    //   - converte formato da data e seta no próprio campo
+                    if (h.getDataNascimento() != null && !String.valueOf(h.getDataNascimento()).trim().isEmpty()) {
+
+                        Date dn = tryParseToDate(String.valueOf(h.getDataNascimento()).trim());
+                        if (dn != null) {
+                            h.setIdade(calcularIdade(dn));
+                            h.setDataNascimento(converterFormatoDataV2(dn)); // yyyy-MM-dd
+                        } else {
+                            // se não conseguir parsear, mantém como veio (ou você pode lançar erro)
+                            // h.setDataNascimento(h.getDataNascimento());
+                        }
+                    }
+                    aHub.getHospedes().add(h);
+                }
+            } else {
+                aHub.setHospedes(new ArrayList<>()); // evita null
+            }
+            hub.getAcomodacoes().add(aHub);
+        }
+
+        return hub;
     }
 }
 

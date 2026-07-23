@@ -246,11 +246,11 @@ public class AereoClient {
                 return response.getBody();
             }
 
-            LOG.log(
-                    Level.WARNING,
-                    "{0} retornou status {1} sem corpo válido. URL: {2}",
-                    new Object[]{operacao, response.getStatusCode(), url}
-            );
+//            LOG.log(
+//                    Level.WARNING,
+//                    "{0} retornou status {1} sem corpo válido. URL: {2}",
+//                    new Object[]{operacao, response.getStatusCode(), url}
+//            );
 
         } catch (Exception e) {
             tratarErro(operacao, url, inicio, e);

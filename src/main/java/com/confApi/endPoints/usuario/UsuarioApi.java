@@ -42,6 +42,7 @@ public class UsuarioApi {
 
 
     public Usuario consultaUsuarioByLogin(String loginUsuario) {
+        System.out.println("consultaUsuarioByLogin: " + loginUsuario + "");
         try {
             ConfAppResp token = confAppService.token();
             String url = UriComponentsBuilder
@@ -53,6 +54,8 @@ public class UsuarioApi {
             HttpEntity<?> entity =
                     new HttpEntity<>(null, headers);
 
+            System.out.println("REQUEST USUARIO: " + url + "");
+
             ResponseEntity<Usuario> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
@@ -60,6 +63,7 @@ public class UsuarioApi {
                     new ParameterizedTypeReference<Usuario>() {
                     }
             );
+            System.out.println("RESPONSE USUARIO: " + response.getBody() + "");
             return response.getBody();
         } catch (Exception e) {
             Usuario erro = new Usuario();

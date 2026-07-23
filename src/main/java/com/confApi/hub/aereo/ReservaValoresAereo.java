@@ -1,5 +1,7 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.aereo.dto.ValorPassageiro;
+import com.confApi.aereo.dto.ValorReserva;
 import com.confApi.endPoints.reservaValoresAereos.ReservaValoresAereoResponse;
 
 import java.io.Serializable;
@@ -20,12 +22,14 @@ public class ReservaValoresAereo implements Serializable {
     private Double totalGeral = 0.0;
     private String moeda = "BRL";
 
-    public String getMoeda() {
-        return moeda;
-    }
-
-    public void setMoeda(String moeda) {
-        this.moeda = moeda;
+    public ReservaValoresAereo(ValorPassageiro valorPassageiro) {
+        this.valorTarifa = valorPassageiro.getTarifa();
+        this.valorTaxaEmbarque = valorPassageiro.getTaxaEmbarque();
+        this.taxaDu = valorPassageiro.getTaxaDU();
+        this.taxaRc = valorPassageiro.getRC();
+        this.taxaRav = valorPassageiro.getRAV();
+        this.taxaAssento = valorPassageiro.getTaxaAssento();
+        this.totalGeral = valorPassageiro.getTotal();
     }
 
     public ReservaValoresAereo(ReservaValoresAereoResponse reservaValoresAereoResponse) {
@@ -49,22 +53,6 @@ public class ReservaValoresAereo implements Serializable {
     }
 
     public ReservaValoresAereo() {
-    }
-
-    public Double getTotalGeral() {
-        return totalGeral;
-    }
-
-    public void setTotalGeral(Double totalGeral) {
-        this.totalGeral = totalGeral;
-    }
-
-    public Double getTaxaRav() {
-        return taxaRav;
-    }
-
-    public void setTaxaRav(Double taxaRav) {
-        this.taxaRav = taxaRav;
     }
 
     public Integer getTipoTarifaPax() {
@@ -115,6 +103,14 @@ public class ReservaValoresAereo implements Serializable {
         this.taxaRc = taxaRc;
     }
 
+    public Double getTaxaRav() {
+        return taxaRav;
+    }
+
+    public void setTaxaRav(Double taxaRav) {
+        this.taxaRav = taxaRav;
+    }
+
     public Double getValorMkp() {
         return valorMkp;
     }
@@ -147,7 +143,20 @@ public class ReservaValoresAereo implements Serializable {
         this.taxaAssento = taxaAssento;
     }
 
+    public Double getTotalGeral() {
+        return totalGeral;
+    }
 
+    public void setTotalGeral(Double totalGeral) {
+        this.totalGeral = totalGeral;
+    }
 
+    public String getMoeda() {
+        return moeda;
+    }
+
+    public void setMoeda(String moeda) {
+        this.moeda = moeda;
+    }
 }
 

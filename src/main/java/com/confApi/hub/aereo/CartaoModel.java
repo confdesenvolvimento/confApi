@@ -1,5 +1,6 @@
 package com.confApi.hub.aereo;
 
+import com.confApi.db.confManager.recebimento.Recebimento;
 import com.confApi.endPoints.cartao.CartaoResponse;
 import com.confApi.endPoints.parcelaCartao.ParcelaCartaoResponse;
 
@@ -24,6 +25,44 @@ public class CartaoModel implements Serializable {
     private ParcelaCartaoModel parcelaSelecionada;
 
     public CartaoModel() {
+    }
+
+    public CartaoModel(String codgBandeira, String siglaBandeira, String nomeBandeira,
+                       String titularBandeira, String numeroCartao, String validadeCartao,
+                       String codgSegurancaCartao, String quantidadeParcelas, Double valor,
+                       String codgAutorizacao, String codgTransacao, List<ParcelaCartaoModel> parcelasCartao,
+                       ParcelaCartaoModel parcelaSelecionada) {
+        this.codgBandeira = codgBandeira;
+        this.siglaBandeira = siglaBandeira;
+        this.nomeBandeira = nomeBandeira;
+        this.titularBandeira = titularBandeira;
+        this.numeroCartao = numeroCartao;
+        this.validadeCartao = validadeCartao;
+        this.codgSegurancaCartao = codgSegurancaCartao;
+        this.quantidadeParcelas = quantidadeParcelas;
+        this.valor = valor;
+        this.codgAutorizacao = codgAutorizacao;
+        this.codgTransacao = codgTransacao;
+        this.parcelasCartao = parcelasCartao;
+        this.parcelaSelecionada = parcelaSelecionada;
+    }
+
+    public CartaoModel(Recebimento recebimento) {
+        if(recebimento.getCodgBandeira() != null) {
+            this.codgBandeira = recebimento.getCodgBandeira().getCodgBandeira().toString();
+            this.siglaBandeira = recebimento.getCodgBandeira().getSiglaBandeira();
+            this.nomeBandeira = recebimento.getCodgBandeira().getNomeBandeira();
+        }
+        this.titularBandeira = recebimento.getTitularCartao();
+        this.numeroCartao = recebimento.getNumrCartao();
+        this.validadeCartao = recebimento.getValidadeCartao();
+        this.codgSegurancaCartao = recebimento.getCodgSegCartao();
+        this.quantidadeParcelas = recebimento.getQtdeParcela() != null ? recebimento.getQtdeParcela().toString() : null;
+        this.valor = recebimento.getValrRecebimento();
+        this.codgAutorizacao = recebimento.getCodgAutCartao();
+        this.codgTransacao = recebimento.getCodgTransacao();
+        this.parcelasCartao = null;
+        this.parcelaSelecionada =  recebimento.getQtdeParcela() != null ? new ParcelaCartaoModel(recebimento.getQtdeParcela()) : null;
     }
 
     public CartaoModel(CartaoResponse cartaoResponse) {
@@ -230,6 +269,22 @@ public class CartaoModel implements Serializable {
         this.parcelasCartao = parcelasCartao;
     }
 
-
-
+    @Override
+    public String toString() {
+        return "CartaoModel{" +
+                "codgBandeira='" + codgBandeira + '\'' +
+                ", siglaBandeira='" + siglaBandeira + '\'' +
+                ", nomeBandeira='" + nomeBandeira + '\'' +
+                ", titularBandeira='" + titularBandeira + '\'' +
+                ", numeroCartao='" + numeroCartao + '\'' +
+                ", validadeCartao='" + validadeCartao + '\'' +
+                ", codgSegurancaCartao='" + codgSegurancaCartao + '\'' +
+                ", quantidadeParcelas='" + quantidadeParcelas + '\'' +
+                ", valor=" + valor +
+                ", codgAutorizacao='" + codgAutorizacao + '\'' +
+                ", codgTransacao='" + codgTransacao + '\'' +
+                ", parcelasCartao=" + parcelasCartao +
+                ", parcelaSelecionada=" + parcelaSelecionada +
+                '}';
+    }
 }

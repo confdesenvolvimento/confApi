@@ -1,5 +1,6 @@
 package com.confApi.hoteis.model.reserva;
 
+import com.confApi.db.confManager.hotel.model.HotelAcomodacao;
 import com.confApi.hub.hotel.dto.Hospedes;
 import com.confApi.hub.hotel.dto.HotelPoliticaCancelamento;
 import com.confApi.hub.hotel.dto.HotelTaxasPoliticas;
@@ -40,4 +41,36 @@ public class HotelAcomodacaoFront {    private String codgPlanoTarifa;
     private List<HotelPoliticaCancelamento> politicaCancelamento = new ArrayList<>();
 
     private String sistema;
+
+    public HotelAcomodacaoFront(HotelAcomodacao hotelAcomodacao) {
+        this.codgPlanoTarifa = hotelAcomodacao.getCodgPlanoTarifa();
+        this.codgRoom = hotelAcomodacao.getCodgRoom();
+        this.siglaTipoQuarto = hotelAcomodacao.getSiglaTipoQuarto();
+        this.nomeQuarto = hotelAcomodacao.getNomeQuarto();
+        this.nomeQuartoExtenso = hotelAcomodacao.getNomeQuartoExtenso();
+        this.isSelecionado = hotelAcomodacao.getIsSelecionado();
+        this.nomeTipoQuarto = hotelAcomodacao.getNomeTipoQuarto();
+        this.descricaoTipoCama = hotelAcomodacao.getDescricaoTipoCama();
+        this.regime = hotelAcomodacao.getRegime();
+        this.descricaoOferta = hotelAcomodacao.getDescricaoOferta();
+        this.descricaoTipoDeTarifa = hotelAcomodacao.getDescricaoTipoDeTarifa();
+        this.descricaoTipoAcomodacao = hotelAcomodacao.getDescricaoTipoAcomodacao();
+        this.tarifaHotel = new TarifaHotel(hotelAcomodacao.getTarifaHotel());
+        this.vagasDisponiveis = hotelAcomodacao.getVagasDisponiveis();
+        this.isPrePagamento = hotelAcomodacao.getIsPrePagamento();
+        this.isNaoReembolsavel = hotelAcomodacao.getIsNaoReembolsavel();
+        this.formaPagamento = hotelAcomodacao.getFormaPagamento();
+        this.maximoHospedes = hotelAcomodacao.getMaximoHospedes();
+        this.minimoHospedes = hotelAcomodacao.getMinimoHospedes();
+        this.maximoCriancas = hotelAcomodacao.getMaximoCriancas();
+        this.minimoCriancas = hotelAcomodacao.getMinimoCriancas();
+        this.hospedes = hotelAcomodacao.getHospedes();
+        this.taxasPoliticas = new ArrayList<>();
+        for(com.confApi.db.confManager.hotel.model.HotelTaxasPoliticas hotelTaxasPoliticas : hotelAcomodacao.getTaxasPoliticas()){
+            HotelTaxasPoliticas hotelTaxasPoliticas1 = new HotelTaxasPoliticas(hotelTaxasPoliticas);
+            this.taxasPoliticas.add(hotelTaxasPoliticas1);
+        }
+        this.politicaCancelamento = hotelAcomodacao.getPoliticaCancelamento();
+        this.sistema = hotelAcomodacao.getSistema();
+    }
 }

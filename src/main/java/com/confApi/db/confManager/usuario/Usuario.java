@@ -3,6 +3,7 @@ package com.confApi.db.confManager.usuario;
 import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.unidade.dto.Unidade;
 import com.confApi.db.confManager.usuario.dto.UsuarioClienteDto;
+import com.confApi.db.confManager.usuario.dto.UsuarioDto;
 import com.confApi.endPoints.usuario.UsuarioResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -53,6 +54,29 @@ public class Usuario implements Serializable {
         this.agencia = usuarioResponse.getAgencia() != null ? new Agencia(usuarioResponse.getAgencia()) : null;
         this.codigoWooba = usuarioResponse.getCodigoWooba();
         this.qrcode = usuarioResponse.getQrcode();
+    }
+
+    public Usuario(UsuarioDto usuarioDto) {
+        this.codgUsuario = usuarioDto.getId();
+        this.nomeCompleto = usuarioDto.getNome();
+        this.loginUsuario = usuarioDto.getLogin();
+        this.chaveUsuario = usuarioDto.getChaveToken();
+        this.email = usuarioDto.getEmail();
+        this.senha = null;
+        this.idToken = usuarioDto.getTokenAcesso();
+        this.cpf = usuarioDto.getCpf();
+        this.telefone = usuarioDto.getTelefone();
+        this.celular = usuarioDto.getCelular();
+        this.codgSistemaBackOffice = usuarioDto.getUsuarioBackOffice();
+        this.status = usuarioDto.getStatus();
+        this.emissaoAutorizada = usuarioDto.getEmissaoAutorizada();
+        this.sexo = usuarioDto.getSexo();
+        this.administradorAgencia = usuarioDto.getAdministradorAgencia();
+        this.tipoUsuario = usuarioDto.getTipoUsuario();
+        this.unidade = usuarioDto.getUnidade();
+        this.agencia = usuarioDto.getAgencia();
+        this.codigoWooba = usuarioDto.getCodigoWooba();
+        this.qrcode = null;
     }
 
     public Usuario(Integer codgUsuario) {
