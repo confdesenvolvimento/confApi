@@ -31,4 +31,9 @@ public class VwConversaResumo {
     private String atendenteNome;
     private Long totalMensagens;
     private Long mensagensNaoLidas;
+    private String ultimaMensagem;
+    private Integer ultimoRemetenteCodgUsuario;
+    private RemetenteTipo ultimoRemetenteTipo;
+    private TipoMensagem tipoUltimaMensagem;
+    private LocalDateTime ultimaMensagemEm;
 }

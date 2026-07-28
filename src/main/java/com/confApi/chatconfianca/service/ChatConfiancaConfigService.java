@@ -21,6 +21,9 @@ import com.confApi.chatconfianca.dto.model.RefUnidade;
 import com.confApi.chatconfianca.dto.model.RefUsuario;
 import com.confApi.chatconfianca.dto.model.RespostaRapida;
 import com.confApi.chatconfianca.dto.model.SlaPolitica;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoAtendenteSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.request.SlaPoliticaSincronizacaoRequest;
 import com.confApi.exception.RegraDeNegocioException;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
@@ -28,10 +31,14 @@ import org.springframework.stereotype.Service;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -114,12 +121,60 @@ public class ChatConfiancaConfigService {
         validarObrigatorio(entity, "Informe o departamento/unidade.");
         validarObrigatorio(entity.getDepartamentoId(), "Informe o departamento.");
         validarObrigatorio(entity.getCodgUnidade(), "Informe a unidade.");
-        Departamento departamento = buscarDepartamento(entity.getDepartamentoId());
-        if (possuiFilhosDepartamento(departamento.getId())) {
-            throw regra(400, "Departamento agrupador nao recebe atendimento. Selecione um subdepartamento.");
-        }
+        validarDepartamentoOperacional(entity.getDepartamentoId());
         validarHorarioAtendimentoJson(entity);
         sincronizarUnidadeReferencia(entity.getCodgUnidade());
+        aplicarPadroesDepartamentoUnidade(entity);
+        return manager.post("chat-confianca/persistencia/departamento-unidades",
+                entity, DepartamentoUnidade.class);
+    }
+
+    public List<DepartamentoUnidade> sincronizarDepartamentoUnidades(
+            DepartamentoUnidadeSincronizacaoRequest request) {
+        validarObrigatorio(request, "Informe os vinculos de unidade.");
+        validarObrigatorio(request.getDepartamentoId(), "Informe o departamento.");
+        validarDepartamentoOperacional(request.getDepartamentoId());
+
+        Set<Integer> codigos = request.getCodigosUnidade() == null
+                ? new LinkedHashSet<>()
+                : request.getCodigosUnidade().stream()
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<Integer, RefUnidade> unidadesPorCodigo = listarUnidadesReferencia().stream()
+                .filter(item -> item.getCodgUnidade() != null)
+                .collect(Collectors.toMap(
+                        RefUnidade::getCodgUnidade,
+                        item -> item,
+                        (atual, substituta) -> substituta,
+                        LinkedHashMap::new));
+        for (Integer codigo : codigos) {
+            RefUnidade unidade = unidadesPorCodigo.get(codigo);
+            if (unidade == null) {
+                throw regra(400, "Unidade " + codigo + " nao encontrada no ConfiancaManager.");
+            }
+            completarUnidadeReferencia(unidade, codigo);
+            manager.post("chat-confianca/persistencia/unidades", unidade, RefUnidade.class);
+        }
+
+        DepartamentoUnidade padrao = request.getConfiguracaoPadrao() == null
+                ? new DepartamentoUnidade()
+                : request.getConfiguracaoPadrao();
+        padrao.setId(null);
+        padrao.setDepartamentoId(request.getDepartamentoId());
+        padrao.setCodgUnidade(null);
+        validarHorarioAtendimentoJson(padrao);
+        aplicarPadroesDepartamentoUnidade(padrao);
+        request.setCodigosUnidade(new ArrayList<>(codigos));
+        request.setConfiguracaoPadrao(padrao);
+
+        return manager.postList(
+                "chat-confianca/persistencia/departamento-unidades/sincronizar",
+                request,
+                new ParameterizedTypeReference<List<DepartamentoUnidade>>() {
+                });
+    }
+
+    private void aplicarPadroesDepartamentoUnidade(DepartamentoUnidade entity) {
         if (entity.getPermiteChamadoAgencia() == null) {
             entity.setPermiteChamadoAgencia(true);
         }
@@ -138,8 +193,16 @@ public class ChatConfiancaConfigService {
         if (entity.getAtivo() == null) {
             entity.setAtivo(true);
         }
-        return manager.post("chat-confianca/persistencia/departamento-unidades",
-                entity, DepartamentoUnidade.class);
+    }
+
+    private void validarDepartamentoOperacional(Long departamentoId) {
+        Departamento departamento = buscarDepartamento(departamentoId);
+        if (Boolean.FALSE.equals(departamento.getAtivo())) {
+            throw regra(400, "Departamento inativo nao pode receber unidades.");
+        }
+        if (possuiFilhosDepartamento(departamento.getId())) {
+            throw regra(400, "Departamento agrupador nao recebe atendimento. Selecione um subdepartamento.");
+        }
     }
 
     public void excluirDepartamentoUnidade(Long id) {
@@ -196,6 +259,16 @@ public class ChatConfiancaConfigService {
         }
         return manager.post("chat-confianca/persistencia/departamento-atendentes",
                 entity, DepartamentoAtendente.class);
+    }
+
+    public List<DepartamentoAtendente> sincronizarDepartamentoAtendente(
+            DepartamentoAtendenteSincronizacaoRequest request) {
+        validarObrigatorio(request, "Informe os vinculos do atendente.");
+        return manager.postList(
+                "chat-confianca/persistencia/departamento-atendentes/sincronizar",
+                request,
+                new ParameterizedTypeReference<List<DepartamentoAtendente>>() {
+                });
     }
 
     public void excluirDepartamentoAtendente(Long id) {
@@ -267,6 +340,9 @@ public class ChatConfiancaConfigService {
         buscarPerfil(entity.getPerfilId());
         if (entity.getAtivo() == null) {
             entity.setAtivo(true);
+        }
+        if (entity.getAutomatico() == null) {
+            entity.setAutomatico(false);
         }
         return manager.post("chat-confianca/persistencia/usuario-perfis", entity, ChatUsuarioPerfil.class);
     }
@@ -389,6 +465,16 @@ public class ChatConfiancaConfigService {
         return manager.post("chat-confianca/persistencia/sla-politicas", politica, SlaPolitica.class);
     }
 
+    public List<SlaPolitica> sincronizarSlaPoliticas(
+            SlaPoliticaSincronizacaoRequest request) {
+        validarObrigatorio(request, "Informe a politica de SLA.");
+        return manager.postList(
+                "chat-confianca/persistencia/sla-politicas/sincronizar",
+                request,
+                new ParameterizedTypeReference<List<SlaPolitica>>() {
+                });
+    }
+
     public void excluirSlaPolitica(Long id) {
         validarObrigatorio(id, "Informe a politica de SLA.");
         manager.delete("chat-confianca/persistencia/sla-politicas/" + id);
@@ -424,10 +510,23 @@ public class ChatConfiancaConfigService {
         return salvarAgenciaReferencia(agencia);
     }
     public List<RefUnidade> listarUnidadesReferencia() {
-        return manager.getList("unidade",
-                new ParameterizedTypeReference<List<ManagerUnidade>>() {
-                }).stream()
+        Map<Integer, RefUnidade> unidades = manager.getList(
+                        "chat-confianca/persistencia/unidades",
+                        new ParameterizedTypeReference<List<RefUnidade>>() {
+                        }).stream()
+                .filter(item -> item.getCodgUnidade() != null)
+                .collect(Collectors.toMap(
+                        RefUnidade::getCodgUnidade,
+                        item -> item,
+                        (atual, ignorada) -> atual,
+                        LinkedHashMap::new));
+        manager.getList("unidade",
+                        new ParameterizedTypeReference<List<ManagerUnidade>>() {
+                        }).stream()
                 .map(this::toRefUnidade)
+                .filter(item -> item.getCodgUnidade() != null)
+                .forEach(item -> unidades.put(item.getCodgUnidade(), item));
+        return unidades.values().stream()
                 .sorted(Comparator.comparing(RefUnidade::getNomeUnidade, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .collect(Collectors.toList());
     }

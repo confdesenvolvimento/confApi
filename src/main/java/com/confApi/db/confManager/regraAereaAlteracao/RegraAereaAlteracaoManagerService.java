@@ -26,6 +26,7 @@ public class RegraAereaAlteracaoManagerService implements Serializable {
 
     private static final Logger LOG = Logger.getLogger(RegraAereaAlteracaoManagerService.class.getName());
     private static final String API_ACTION_CONSULTAR = "regrasAereas/alteracao/consultar";
+    private static final String API_ACTION_SIMULAR = "regrasAereas/alteracao/simular";
 
     private final RestTemplate restTemplate;
     private final ObjectMapper mapper;
@@ -42,7 +43,16 @@ public class RegraAereaAlteracaoManagerService implements Serializable {
     }
 
     public RegraAereaAlteracaoConsultaResponse consultar(RegraAereaAlteracaoConsultaRequest request) {
-        String url = montarUrl(API_ACTION_CONSULTAR);
+        return executarConsulta(API_ACTION_CONSULTAR, request);
+    }
+
+    public RegraAereaAlteracaoConsultaResponse simular(RegraAereaAlteracaoConsultaRequest request) {
+        request.setExigirRegraAprovada(true);
+        return executarConsulta(API_ACTION_SIMULAR, request);
+    }
+
+    private RegraAereaAlteracaoConsultaResponse executarConsulta(String action, RegraAereaAlteracaoConsultaRequest request) {
+        String url = montarUrl(action);
         try {
             ResponseEntity<String> response = restTemplate.exchange(
                     url,

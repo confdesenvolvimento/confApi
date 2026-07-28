@@ -469,6 +469,8 @@ public class ChatService {
                     "Quero preparar o reembolso da reserva" + loc + ". Consulte as regras antes.";
             case "preparar_alteracao" ->
                     "Quero preparar a alteracao ou remarcacao da reserva" + loc + ". Consulte as regras antes.";
+            case "simular_remarcacao" ->
+                    "Quero simular a alteracao da reserva" + loc + ".";
             default ->
                     label + " da reserva" + loc + ".";
         };
@@ -869,7 +871,42 @@ public class ChatService {
         if (reserva == null) {
             return new ArrayList<>();
         }
-        return montarAcoesDisponiveisLocalizador(reserva.getLocalizador());
+        List<Map<String, Object>> acoes = montarAcoesDisponiveisLocalizador(reserva.getLocalizador());
+        if (podeSimularRemarcacao(reserva)) {
+            adicionarAcao(acoes, "simular_remarcacao", "Simular alteracao",
+                    "Pesquisar outro voo da mesma companhia e calcular uma previa da remarcacao.",
+                    false, true, false);
+        }
+        return acoes;
+    }
+
+    private boolean podeSimularRemarcacao(Reserva reserva) {
+        return reserva != null
+                && !isReservaCancelada(reserva)
+                && isReservaEmitida(reserva)
+                && possuiBilheteAtivo(reserva)
+                && possuiVooFuturo(reserva);
+    }
+
+    private boolean possuiBilheteAtivo(Reserva reserva) {
+        if (reserva == null || reserva.getPassageiros() == null) {
+            return false;
+        }
+        for (com.confApi.hub.aereo.dto.Passageiro passageiro : reserva.getPassageiros()) {
+            if (passageiro == null || passageiro.getBilhetes() == null) {
+                continue;
+            }
+            for (com.confApi.hub.aereo.dto.Bilhete bilhete : passageiro.getBilhetes()) {
+                if (bilhete == null) {
+                    continue;
+                }
+                String status = normalizarTexto(bilhete.getStatus());
+                if (!status.contains("cancel") && !status.contains("reembols")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private List<Map<String, Object>> montarAcoesDisponiveisLocalizador(String localizador) {

@@ -20,7 +20,13 @@ public class RegraAereaAlteracaoConsultaRequest {
     private BigDecimal valorTarifa;
     private BigDecimal valorNovaTarifa;
     private BigDecimal valorTotalReserva;
+    private BigDecimal valorTaxas;
+    private BigDecimal valorNovasTaxas;
+    private BigDecimal taxaServico;
 
     private Integer quantidadePassageiros;
     private Integer quantidadeTrechos;
+
+    private Boolean exigirRegraAprovada;
+    private Integer validadeMaximaDias;
 }

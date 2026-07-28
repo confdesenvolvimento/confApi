@@ -17,14 +17,17 @@ import com.confApi.chatconfianca.dto.model.DepartamentoAtendente;
 import com.confApi.chatconfianca.dto.model.DepartamentoUnidade;
 import com.confApi.chatconfianca.dto.model.FilaAtendimento;
 import com.confApi.chatconfianca.dto.model.Mensagem;
+import com.confApi.chatconfianca.dto.model.MensagensNaoLidasResumo;
 import com.confApi.chatconfianca.dto.model.RefAgencia;
 import com.confApi.chatconfianca.dto.model.RefUnidade;
 import com.confApi.chatconfianca.dto.model.RefUsuario;
+import com.confApi.chatconfianca.dto.model.VwFilaAtendimento;
 import com.confApi.chatconfianca.dto.request.AbrirConversaRequest;
 import com.confApi.chatconfianca.dto.request.AssumirAtendimentoRequest;
 import com.confApi.chatconfianca.dto.request.AvaliarAtendimentoRequest;
 import com.confApi.chatconfianca.dto.request.EncerrarConversaRequest;
 import com.confApi.chatconfianca.dto.request.EnviarMensagemRequest;
+import com.confApi.chatconfianca.dto.response.ChatNotificacaoResumoResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,8 +38,10 @@ import org.mockito.invocation.InvocationOnMock;
 import org.springframework.core.ParameterizedTypeReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -66,6 +71,10 @@ class ChatConfiancaServiceTest {
 
         when(configService.sincronizarUsuarioReferencia(anyInt()))
                 .thenAnswer(invocation -> usuario((Integer) invocation.getArgument(0)));
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_UNIDADE_ID))
+                .thenReturn(Collections.singletonList(fixture.vinculoAtendente));
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(Collections.singletonList(fixture.departamentoUnidade));
         when(configService.buscarAtendenteStatus(ATENDENTE)).thenReturn(statusOnline());
         when(configService.salvarAtendenteStatus(any(AtendenteStatus.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -161,6 +170,117 @@ class ChatConfiancaServiceTest {
         assertEquals("Esta conversa ja foi avaliada por este usuario.", ex.getMessage());
     }
 
+    @Test
+    void perfilAdminChatPermaneceGlobalMesmoVinculadoAUnidadeEAgencia() {
+        fixture.atendente.setCodgAgencia(CODG_AGENCIA);
+        fixture.perfisAtendente.add("ADMIN_CHAT");
+
+        var sessao = service.montarSessao(ATENDENTE);
+
+        assertTrue(sessao.isAdmin());
+        assertTrue(sessao.getPerfis().contains("ADMIN_CHAT"));
+        assertEquals(CODG_UNIDADE, sessao.getUnidade().getCodgUnidade());
+        assertEquals(CODG_AGENCIA, sessao.getAgencia().getCodgAgencia());
+    }
+
+    @Test
+    void gestorAdministrativoSemPerfilAdminContinuaSemAcessoGlobal() {
+        fixture.atendente.setCodgAgencia(CODG_AGENCIA);
+        fixture.atendente.setTipoUsuario("Administrativo");
+        fixture.vinculoAtendente.setPapel(PapelAtendente.GESTOR);
+
+        var sessao = service.montarSessao(ATENDENTE);
+
+        assertTrue(sessao.isGestor());
+        assertFalse(sessao.isAdmin());
+    }
+
+    @Test
+    void vinculoGestorDeOutraUnidadeNaoLiberaGestaoDaUnidadeAtual() {
+        fixture.vinculoAtendente.setPapel(PapelAtendente.GESTOR);
+        fixture.vinculoAtendente.setDepartamentoUnidadeId(999L);
+
+        var sessao = service.montarSessao(ATENDENTE);
+
+        assertTrue(sessao.isAtendente());
+        assertFalse(sessao.isGestor());
+        assertFalse(sessao.isAdmin());
+    }
+
+    @Test
+    void gestorDeUnidadeNaoConsultaHistoricoDeOutraUnidade() {
+        fixture.vinculoAtendente.setPapel(PapelAtendente.GESTOR);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.listarHistoricoUnidade(2, ATENDENTE));
+
+        assertEquals(403, erro.getStatus());
+    }
+
+    @Test
+    void administradorGlobalConsultaHistoricoDeQualquerUnidadeMesmoVinculado() {
+        fixture.atendente.setCodgAgencia(CODG_AGENCIA);
+        fixture.perfisAtendente.add("ADMIN_CHAT");
+
+        List<?> historico = service.listarHistoricoUnidade(2, ATENDENTE);
+
+        assertNotNull(historico);
+        assertTrue(historico.isEmpty());
+    }
+
+    @Test
+    void atendenteNaoConsultaStatusDeOutroUsuario() {
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.buscarAtendenteStatus(ATENDENTE, SOLICITANTE));
+
+        assertEquals(403, erro.getStatus());
+    }
+
+    @Test
+    void resumoNotificacoesDoClienteRetornaConversasNaoLidas() {
+        fixture.resumoSolicitante.setConversasNaoLidas(2);
+        fixture.resumoSolicitante.setMensagensNaoLidas(4);
+        fixture.resumoSolicitante.setConversaDestaqueId(CONVERSA_ID);
+
+        ChatNotificacaoResumoResponse resumo = service.resumirNotificacoes(SOLICITANTE);
+
+        assertEquals(2, resumo.getConversasUsuarioNaoLidas());
+        assertEquals(4, resumo.getMensagensUsuarioNaoLidas());
+        assertEquals(CONVERSA_ID, resumo.getConversaUsuarioDestaqueId());
+        assertEquals(2, resumo.getTotalPendencias());
+        assertFalse(resumo.isAtendente());
+    }
+
+    @Test
+    void resumoNotificacoesDoAtendenteIncluiFilaPermitidaENaoLidas() {
+        fixture.resumoAtendente.setConversasNaoLidas(1);
+        fixture.resumoAtendente.setMensagensNaoLidas(3);
+        fixture.resumoAtendente.setConversaDestaqueId(CONVERSA_ID);
+        FilaAtendimento fila = new FilaAtendimento();
+        fila.setId(FILA_ID);
+        fila.setConversaId(CONVERSA_ID);
+        fila.setDepartamentoUnidadeId(DEPARTAMENTO_UNIDADE_ID);
+        fila.setStatus(StatusFila.AGUARDANDO);
+        fixture.filasDepartamento.add(fila);
+
+        VwFilaAtendimento itemFila = new VwFilaAtendimento();
+        itemFila.setId(FILA_ID);
+        itemFila.setConversaId(CONVERSA_ID);
+        itemFila.setStatus(StatusFila.AGUARDANDO);
+        fixture.filaAguardando.add(itemFila);
+
+        ChatNotificacaoResumoResponse resumo = service.resumirNotificacoes(ATENDENTE);
+
+        assertTrue(resumo.isAtendente());
+        assertEquals(1, resumo.getFilasAguardando());
+        assertEquals(1, resumo.getConversasAtendenteNaoLidas());
+        assertEquals(3, resumo.getMensagensAtendenteNaoLidas());
+        assertEquals(CONVERSA_ID, resumo.getConversaAtendenteDestaqueId());
+        assertEquals(2, resumo.getTotalPendencias());
+    }
+
     private Object responderGet(InvocationOnMock invocation) {
         String path = invocation.getArgument(0);
         if (path.equals("chat-confianca/consultas/usuarios/" + SOLICITANTE)) {
@@ -193,6 +313,15 @@ class ChatConfiancaServiceTest {
         if (path.equals("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/participantes/" + ATENDENTE + "/exists")) {
             return fixture.atendenteParticipante;
         }
+        if (path.equals("chat-confianca/consultas/resumos/nao-lidas/solicitante/" + SOLICITANTE)) {
+            return fixture.resumoSolicitante;
+        }
+        if (path.equals("chat-confianca/consultas/resumos/nao-lidas/solicitante/" + ATENDENTE)) {
+            return fixture.resumoSolicitanteAtendente;
+        }
+        if (path.equals("chat-confianca/consultas/resumos/nao-lidas/atendente/" + ATENDENTE)) {
+            return fixture.resumoAtendente;
+        }
         return null;
     }
 
@@ -202,13 +331,19 @@ class ChatConfiancaServiceTest {
             return Collections.singletonList(fixture.departamentoUnidade);
         }
         if (path.equals("chat-confianca/consultas/departamento-unidades/" + DEPARTAMENTO_UNIDADE_ID + "/filas")) {
-            return Collections.emptyList();
+            return fixture.filasDepartamento;
         }
         if (path.equals("chat-confianca/consultas/atendentes/" + ATENDENTE + "/departamentos")) {
             return Collections.singletonList(fixture.vinculoAtendente);
         }
         if (path.startsWith("chat-confianca/consultas/usuarios/" + ATENDENTE + "/perfis")) {
-            return Collections.singletonList("ATENDENTE");
+            return fixture.perfisAtendente;
+        }
+        if (path.equals("chat-confianca/consultas/fila/status/AGUARDANDO")) {
+            return fixture.filaAguardando;
+        }
+        if (path.equals("chat-confianca/consultas/fila/status/CHAMANDO")) {
+            return Collections.emptyList();
         }
         return Collections.emptyList();
     }
@@ -306,6 +441,12 @@ class ChatConfiancaServiceTest {
         private boolean atendenteParticipante;
         private long proximaMensagemId = 1000L;
         private final List<Mensagem> mensagens = new ArrayList<>();
+        private final List<String> perfisAtendente = new ArrayList<>(List.of("ATENDENTE"));
+        private final MensagensNaoLidasResumo resumoSolicitante = new MensagensNaoLidasResumo();
+        private final MensagensNaoLidasResumo resumoSolicitanteAtendente = new MensagensNaoLidasResumo();
+        private final MensagensNaoLidasResumo resumoAtendente = new MensagensNaoLidasResumo();
+        private final List<FilaAtendimento> filasDepartamento = new ArrayList<>();
+        private final List<VwFilaAtendimento> filaAguardando = new ArrayList<>();
     }
 
     private static RefUsuario solicitante() {
