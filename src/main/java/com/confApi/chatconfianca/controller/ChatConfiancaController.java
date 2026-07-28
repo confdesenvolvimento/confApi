@@ -24,6 +24,7 @@ import com.confApi.chatconfianca.dto.request.PerguntarConfiaRequest;
 import com.confApi.chatconfianca.dto.request.RegistrarLeituraRequest;
 import com.confApi.chatconfianca.dto.response.AnexoDownloadResponse;
 import com.confApi.chatconfianca.dto.response.ChatConfiancaIaResponse;
+import com.confApi.chatconfianca.dto.response.ChatNotificacaoResumoResponse;
 import com.confApi.chatconfianca.dto.response.DepartamentoAtendimentoOpcao;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.chatconfianca.service.ChatConfiancaIaService;
@@ -82,8 +83,10 @@ public class ChatConfiancaController {
     }
 
     @GetMapping("/conversas/{conversaId}")
-    public Conversa buscarConversa(@PathVariable Long conversaId) {
-        return service.buscarConversa(conversaId);
+    public Conversa buscarConversa(@PathVariable Long conversaId,
+                                   @RequestParam Integer codgUsuario,
+                                   @RequestParam(defaultValue = "false") boolean gestor) {
+        return service.buscarConversa(conversaId, codgUsuario, gestor);
     }
 
     @GetMapping("/conversas/{conversaId}/mensagens")
@@ -95,14 +98,16 @@ public class ChatConfiancaController {
     }
 
     @GetMapping("/conversas/{conversaId}/eventos")
-    public List<ConversaEvento> listarEventos(@PathVariable Long conversaId) {
-        return service.listarEventos(conversaId);
+    public List<ConversaEvento> listarEventos(@PathVariable Long conversaId,
+                                              @RequestParam Integer codgUsuario,
+                                              @RequestParam(defaultValue = "false") boolean gestor) {
+        return service.listarEventos(conversaId, codgUsuario, gestor);
     }
 
 
     @GetMapping("/tags")
-    public List<Tag> listarTagsAtivas() {
-        return service.listarTagsAtivas();
+    public List<Tag> listarTagsAtivas(@RequestParam Integer codgUsuario) {
+        return service.listarTagsAtivas(codgUsuario);
     }
 
     @GetMapping("/conversas/{conversaId}/tags")
@@ -224,9 +229,15 @@ public class ChatConfiancaController {
         return service.listarHistoricoAtendente(codgUsuario);
     }
 
+    @GetMapping("/notificacoes/resumo/{codgUsuario}")
+    public ChatNotificacaoResumoResponse resumirNotificacoes(@PathVariable Integer codgUsuario) {
+        return service.resumirNotificacoes(codgUsuario);
+    }
+
     @GetMapping("/historico/unidade/{codgUnidade}")
-    public List<VwConversaResumo> listarHistoricoUnidade(@PathVariable Integer codgUnidade) {
-        return service.listarHistoricoUnidade(codgUnidade);
+    public List<VwConversaResumo> listarHistoricoUnidade(@PathVariable Integer codgUnidade,
+                                                         @RequestParam Integer codgUsuario) {
+        return service.listarHistoricoUnidade(codgUnidade, codgUsuario);
     }
 
     @GetMapping("/historico/buscar")

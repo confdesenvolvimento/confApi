@@ -39,7 +39,10 @@ public class UsuarioService {
         return UsuarioExternoMapper.toDTO(json);
     }
 
-    public ResponseEntity<UsuarioDto> autenficarUsuarioAuth(@RequestBody AuthRequestDto requestDto) throws IOException {
-        return ResponseEntity.ok().body(usuarioApi.autenficarUsuarioAuth(requestDto).getBody());
+    public ResponseEntity<UsuarioDto> autenficarUsuarioAuth(@RequestBody AuthRequestDto requestDto) {
+        ResponseEntity<UsuarioDto> response = usuarioApi.autenficarUsuarioAuth(requestDto);
+
+       // System.out.println(">>> assoc no confApi: " + response.getBody().getAgenciaAssociadas());
+        return response;
     }
 }

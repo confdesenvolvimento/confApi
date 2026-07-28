@@ -35,9 +35,11 @@ import com.confApi.chatconfianca.dto.model.FilaAtendimento;
 import com.confApi.chatconfianca.dto.model.Mensagem;
 import com.confApi.chatconfianca.dto.model.MensagemAnexo;
 import com.confApi.chatconfianca.dto.model.MensagemLeitura;
+import com.confApi.chatconfianca.dto.model.MensagensNaoLidasResumo;
 import com.confApi.chatconfianca.dto.model.RefAgencia;
 import com.confApi.chatconfianca.dto.model.RefUnidade;
 import com.confApi.chatconfianca.dto.model.RefUsuario;
+import com.confApi.chatconfianca.dto.model.RespostaRapida;
 import com.confApi.chatconfianca.dto.model.VwConversaResumo;
 import com.confApi.chatconfianca.dto.model.VwFilaAtendimento;
 import com.confApi.chatconfianca.dto.request.AbrirConversaRequest;
@@ -49,6 +51,7 @@ import com.confApi.chatconfianca.dto.request.EnviarMensagemRequest;
 import com.confApi.chatconfianca.dto.request.RegistrarLeituraRequest;
 import com.confApi.chatconfianca.dto.response.AnexoDownloadResponse;
 import com.confApi.chatconfianca.dto.response.DepartamentoAtendimentoOpcao;
+import com.confApi.chatconfianca.dto.response.ChatNotificacaoResumoResponse;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import org.springframework.core.ParameterizedTypeReference;
@@ -128,14 +131,7 @@ public class ChatConfiancaService {
 
         List<String> perfis = new ArrayList<>(listarPerfis(codgUsuario, codgUnidade));
         List<DepartamentoAtendente> vinculosAtendente = listarDepartamentosAtendenteSeguro(codgUsuario);
-        adicionarPerfisPorVinculo(perfis, vinculosAtendente);
-        boolean gestorPorVinculo = possuiPapelGestor(vinculosAtendente);
-        boolean adminGlobalPorVinculo = usuario.getCodgUnidade() == null
-                && usuario.getCodgAgencia() == null
-                && gestorPorVinculo;
-        if (adminGlobalPorVinculo) {
-            adicionarPerfil(perfis, "ADMIN_CHAT");
-        }
+        adicionarPerfisPorVinculo(perfis, vinculosAtendente, codgUnidade);
 
         SessaoChatResponse response = new SessaoChatResponse();
         response.setUsuario(usuario);
@@ -144,7 +140,7 @@ public class ChatConfiancaService {
         response.setPerfis(perfis);
         response.setAtendente(temPerfil(perfis, "ATENDENTE", "SUPERVISOR", "GESTOR", "GESTOR_UNIDADE", "ADMIN_CHAT"));
         response.setGestor(temPerfil(perfis, "GESTOR", "GESTOR_UNIDADE", "SUPERVISOR"));
-        response.setAdmin(temPerfil(perfis, "ADMIN", "ADMIN_CHAT") || adminGlobalPorVinculo);
+        response.setAdmin(temPerfil(perfis, "ADMIN", "ADMIN_CHAT"));
         return response;
     }
 
@@ -475,6 +471,22 @@ public class ChatConfiancaService {
         return mensagem;
     }
 
+    public Mensagem registrarMensagemSistema(Long conversaId, String conteudo, String conteudoJson) {
+        validarObrigatorio(conversaId, "Informe a conversa.");
+        validarTextoObrigatorio(conteudo, "Informe a mensagem do sistema.");
+        Conversa conversa = buscarConversaOuFalhar(conversaId);
+        if (!aceitaMensagem(conversa.getStatus())) {
+            throw regra(409, "Conversa nao aceita novas mensagens.");
+        }
+        Mensagem mensagem = persistirMensagem(conversa, null, conteudo.trim(), false,
+                TipoMensagem.SISTEMA, conteudoJson, RemetenteTipo.SISTEMA);
+        conversa.setUltimoEventoEm(LocalDateTime.now());
+        manager.post("chat-confianca/persistencia/conversas", conversa, Conversa.class);
+        registrarEvento(conversa.getId(), "REMARCACAO_CONTEXTO_GERADO", null,
+                "Resumo da simulacao preparado para a equipe.");
+        return mensagem;
+    }
+
     public Conversa encaminharConversaParaAtendente(Long conversaId, Integer codgUsuario, String motivo) {
         validarObrigatorio(conversaId, "Informe a conversa.");
         validarObrigatorio(codgUsuario, "Informe o usuario.");
@@ -653,6 +665,13 @@ public class ChatConfiancaService {
         return buscarConversaOuFalhar(conversaId);
     }
 
+    public Conversa buscarConversa(Long conversaId, Integer codgUsuario, boolean gestor) {
+        validarObrigatorio(codgUsuario, "Informe o usuario.");
+        Conversa conversa = buscarConversaOuFalhar(conversaId);
+        validarAcessoConversa(conversa, codgUsuario, gestor, "Usuario nao participa da conversa.");
+        return conversa;
+    }
+
     public List<Mensagem> listarMensagens(Long conversaId, Integer codgUsuario, boolean podeVerInternas, boolean gestor) {
         validarObrigatorio(codgUsuario, "Informe o usuario.");
         Conversa conversa = buscarConversaOuFalhar(conversaId);
@@ -811,10 +830,19 @@ public class ChatConfiancaService {
     public List<VwFilaAtendimento> listarFilaParaAtendente(Integer codgUsuario, boolean gestor) {
         validarObrigatorio(codgUsuario, "Informe o atendente.");
         SessaoChatResponse sessao = montarSessao(codgUsuario);
-        boolean acessoGestor = gestor && (sessao.isGestor() || sessao.isAdmin());
-
-        if (acessoGestor) {
+        if (gestor && sessao.isAdmin()) {
             return ordenarFila(listarViewsFilaAbertas());
+        }
+        if (gestor && sessao.isGestor()) {
+            Integer codgUnidade = unidadeGestaoSessao(sessao);
+            Set<Long> conversasUnidade = listarHistoricoUnidade(codgUnidade).stream()
+                    .map(VwConversaResumo::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            return ordenarFila(listarViewsFilaAbertas().stream()
+                    .filter(item -> item.getConversaId() != null
+                    && conversasUnidade.contains(item.getConversaId()))
+                    .collect(Collectors.toList()));
         }
 
         Set<Long> filasPermitidas = listarDepartamentosAtendente(codgUsuario).stream()
@@ -882,8 +910,9 @@ public class ChatConfiancaService {
             throw regra(409, "Atendimento ja saiu da fila.");
         }
 
-        SessaoChatResponse sessao = montarSessao(request.getCodgAtendente());
-        boolean acessoGestor = Boolean.TRUE.equals(request.getGestor()) && (sessao.isGestor() || sessao.isAdmin());
+        Conversa conversa = buscarConversaOuFalhar(fila.getConversaId());
+        boolean acessoGestor = Boolean.TRUE.equals(request.getGestor())
+                && ehGestorOuAdmin(request.getCodgAtendente(), conversa.getCodgUnidade());
         DepartamentoAtendente vinculo = buscarVinculo(fila.getDepartamentoUnidadeId(), request.getCodgAtendente());
         if (!acessoGestor && vinculo == null) {
             throw regra(403, "Atendente nao esta vinculado ao departamento/unidade.");
@@ -891,7 +920,6 @@ public class ChatConfiancaService {
         validarLimite(request.getCodgAtendente(), vinculo);
         validarStatusAtendenteDisponivel(request.getCodgAtendente());
 
-        Conversa conversa = buscarConversaOuFalhar(fila.getConversaId());
         LocalDateTime agora = LocalDateTime.now();
         return assumirFila(fila, conversa, request.getCodgAtendente(), "Assumido pelo atendente", agora);
     }
@@ -1095,6 +1123,54 @@ public class ChatConfiancaService {
         );
     }
 
+    public ChatNotificacaoResumoResponse resumirNotificacoes(Integer codgUsuario) {
+        validarObrigatorio(codgUsuario, "Informe o usuario.");
+        SessaoChatResponse sessao = montarSessao(codgUsuario);
+
+        MensagensNaoLidasResumo usuario = manager.get(
+                "chat-confianca/consultas/resumos/nao-lidas/solicitante/" + codgUsuario,
+                MensagensNaoLidasResumo.class);
+        if (usuario == null) {
+            usuario = new MensagensNaoLidasResumo();
+        }
+
+        boolean equipe = sessao.isAtendente() || sessao.isGestor() || sessao.isAdmin();
+        MensagensNaoLidasResumo atendente = new MensagensNaoLidasResumo();
+        long filasAguardando = 0L;
+        if (equipe) {
+            MensagensNaoLidasResumo resumoAtendente = manager.get(
+                    "chat-confianca/consultas/resumos/nao-lidas/atendente/" + codgUsuario,
+                    MensagensNaoLidasResumo.class);
+            if (resumoAtendente != null) {
+                atendente = resumoAtendente;
+            }
+            boolean acessoGestao = sessao.isGestor() || sessao.isAdmin();
+            filasAguardando = listarFilaParaAtendente(codgUsuario, acessoGestao).stream()
+                    .map(VwFilaAtendimento::getConversaId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .count();
+        }
+
+        ChatNotificacaoResumoResponse response = new ChatNotificacaoResumoResponse();
+        response.setCodgUsuario(codgUsuario);
+        response.setAtendente(sessao.isAtendente());
+        response.setGestor(sessao.isGestor());
+        response.setAdmin(sessao.isAdmin());
+        response.setFilasAguardando(filasAguardando);
+        response.setConversasAtendenteNaoLidas(atendente.getConversasNaoLidas());
+        response.setMensagensAtendenteNaoLidas(atendente.getMensagensNaoLidas());
+        response.setConversaAtendenteDestaqueId(atendente.getConversaDestaqueId());
+        response.setConversasUsuarioNaoLidas(usuario.getConversasNaoLidas());
+        response.setMensagensUsuarioNaoLidas(usuario.getMensagensNaoLidas());
+        response.setConversaUsuarioDestaqueId(usuario.getConversaDestaqueId());
+        response.setTotalPendencias(filasAguardando
+                + atendente.getConversasNaoLidas()
+                + usuario.getConversasNaoLidas());
+        response.setAtualizadoEm(LocalDateTime.now());
+        return response;
+    }
+
     public List<VwConversaResumo> listarHistoricoUnidade(Integer codgUnidade) {
         validarObrigatorio(codgUnidade, "Informe a unidade.");
         return manager.getList(
@@ -1102,6 +1178,14 @@ public class ChatConfiancaService {
                 new ParameterizedTypeReference<List<VwConversaResumo>>() {
                 }
         );
+    }
+
+    public List<VwConversaResumo> listarHistoricoUnidade(Integer codgUnidade, Integer codgUsuario) {
+        validarObrigatorio(codgUsuario, "Informe o usuario.");
+        if (!ehGestorOuAdmin(codgUsuario, codgUnidade)) {
+            throw regra(403, "Historico restrito a gestores da unidade.");
+        }
+        return listarHistoricoUnidade(codgUnidade);
     }
 
     public List<VwConversaResumo> buscarHistorico(Integer codgUsuario,
@@ -1126,7 +1210,7 @@ public class ChatConfiancaService {
 
         if (acessoGestao) {
             if (!adminGlobalChat(sessao)) {
-                Integer unidadeSessao = unidadeSessao(sessao);
+                Integer unidadeSessao = unidadeGestaoSessao(sessao);
                 if (unidadeSessao == null) {
                     throw regra(403, "Usuario sem unidade para consultar historico do chat.");
                 }
@@ -1163,8 +1247,11 @@ public class ChatConfiancaService {
         });
     }
 
-    public List<ConversaEvento> listarEventos(Long conversaId) {
+    public List<ConversaEvento> listarEventos(Long conversaId, Integer codgUsuario, boolean gestor) {
         validarObrigatorio(conversaId, "Informe a conversa.");
+        validarObrigatorio(codgUsuario, "Informe o usuario.");
+        Conversa conversa = buscarConversaOuFalhar(conversaId);
+        validarAcessoConversa(conversa, codgUsuario, gestor, "Usuario nao participa da conversa.");
         return manager.getList(
                 "chat-confianca/consultas/conversas/" + conversaId + "/eventos",
                 new ParameterizedTypeReference<List<ConversaEvento>>() {
@@ -1182,6 +1269,57 @@ public class ChatConfiancaService {
                 .filter(item -> item != null && Boolean.TRUE.equals(item.getAtivo()))
                 .sorted(Comparator.comparing(Tag::getNome, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .collect(Collectors.toList());
+    }
+
+    public List<Tag> listarTagsAtivas(Integer codgUsuario) {
+        validarAcessoAtendimento(codgUsuario);
+        return listarTagsAtivas();
+    }
+
+    public List<RespostaRapida> listarRespostasRapidasAtendente(Integer codgUsuario,
+                                                                Long departamentoId,
+                                                                Integer codgUnidade) {
+        SessaoChatResponse sessao = validarAcessoAtendimento(codgUsuario);
+        Integer unidade = resolverUnidadeOperacional(sessao, codgUsuario, codgUnidade);
+        if (departamentoId != null && unidade != null
+                && !departamentoDisponivelNaUnidade(departamentoId, unidade)) {
+            throw regra(403, "Departamento nao pertence a unidade informada.");
+        }
+        return configService.listarRespostasRapidas(departamentoId, unidade, true);
+    }
+
+    public RespostaRapida salvarRespostaRapidaAtendente(Integer codgUsuario,
+                                                         RespostaRapida respostaRapida) {
+        validarObrigatorio(respostaRapida, "Informe a resposta rapida.");
+        SessaoChatResponse sessao = validarAcessoAtendimento(codgUsuario);
+        Integer unidade = resolverUnidadeOperacional(
+                sessao,
+                codgUsuario,
+                respostaRapida.getCodgUnidade());
+        if (unidade == null && !sessao.isAdmin()) {
+            throw regra(403, "Informe a unidade da resposta rapida.");
+        }
+        if (respostaRapida.getDepartamentoId() != null && unidade != null
+                && !departamentoDisponivelNaUnidade(respostaRapida.getDepartamentoId(), unidade)) {
+            throw regra(403, "Departamento nao pertence a unidade informada.");
+        }
+        respostaRapida.setCodgUnidade(unidade);
+        respostaRapida.setCriadoPorCodgUsuario(codgUsuario);
+        return configService.salvarRespostaRapida(respostaRapida);
+    }
+
+    public AtendenteStatus buscarAtendenteStatus(Integer codgUsuarioSolicitante,
+                                                  Integer codgAtendente) {
+        validarAcessoProprioAtendente(codgUsuarioSolicitante, codgAtendente);
+        return configService.buscarAtendenteStatus(codgAtendente);
+    }
+
+    public AtendenteStatus salvarAtendenteStatus(Integer codgUsuarioSolicitante,
+                                                  AtendenteStatus status) {
+        validarObrigatorio(status, "Informe o status do atendente.");
+        validarAcessoProprioAtendente(codgUsuarioSolicitante, status.getCodgUsuario());
+        status.setCodgUsuario(codgUsuarioSolicitante);
+        return configService.salvarAtendenteStatus(status);
     }
 
     public List<Tag> listarTagsConversa(Long conversaId, Integer codgUsuario, boolean gestor) {
@@ -1639,13 +1777,69 @@ public class ChatConfiancaService {
         }
     }
 
+    private SessaoChatResponse validarAcessoAtendimento(Integer codgUsuario) {
+        validarObrigatorio(codgUsuario, "Informe o usuario.");
+        SessaoChatResponse sessao = montarSessao(codgUsuario);
+        if (sessao == null || (!sessao.isAtendente() && !sessao.isGestor() && !sessao.isAdmin())) {
+            throw regra(403, "Acesso restrito a equipe de atendimento do chat.");
+        }
+        return sessao;
+    }
+
+    private void validarAcessoProprioAtendente(Integer codgUsuarioSolicitante,
+                                               Integer codgAtendente) {
+        validarObrigatorio(codgAtendente, "Informe o atendente.");
+        if (!Objects.equals(codgUsuarioSolicitante, codgAtendente)) {
+            throw regra(403, "O atendente somente pode alterar o proprio status.");
+        }
+        validarAcessoAtendimento(codgUsuarioSolicitante);
+    }
+
+    private Integer resolverUnidadeOperacional(SessaoChatResponse sessao,
+                                               Integer codgUsuario,
+                                               Integer codgUnidadeSolicitada) {
+        if (sessao.isAdmin()) {
+            return codgUnidadeSolicitada;
+        }
+        if (sessao.isGestor()) {
+            Integer unidadeGestor = unidadeGestaoSessao(sessao);
+            if (codgUnidadeSolicitada != null
+                    && !Objects.equals(codgUnidadeSolicitada, unidadeGestor)) {
+                throw regra(403, "Operacao restrita a unidade do gestor.");
+            }
+            return unidadeGestor;
+        }
+
+        Integer unidadeSessao = unidadeSessao(sessao);
+        Integer unidade = codgUnidadeSolicitada == null ? unidadeSessao : codgUnidadeSolicitada;
+        if (unidade == null) {
+            throw regra(403, "Atendente sem unidade operacional para o chat.");
+        }
+        if (!Objects.equals(unidade, unidadeSessao)
+                && !atendentePossuiVinculoNaUnidade(codgUsuario, unidade)) {
+            throw regra(403, "Atendente nao possui vinculo com a unidade informada.");
+        }
+        return unidade;
+    }
+
+    private boolean atendentePossuiVinculoNaUnidade(Integer codgUsuario, Integer codgUnidade) {
+        Set<Long> idsUnidade = idsDepartamentoUnidade(codgUnidade);
+        return listarDepartamentosAtendenteSeguro(codgUsuario).stream()
+                .filter(Objects::nonNull)
+                .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
+                .map(DepartamentoAtendente::getDepartamentoUnidadeId)
+                .anyMatch(idsUnidade::contains);
+    }
+
+    private boolean departamentoDisponivelNaUnidade(Long departamentoId, Integer codgUnidade) {
+        return configService.listarDepartamentoUnidadesPorUnidade(codgUnidade).stream()
+                .filter(Objects::nonNull)
+                .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
+                .anyMatch(item -> Objects.equals(item.getDepartamentoId(), departamentoId));
+    }
+
     private boolean adminGlobalChat(SessaoChatResponse sessao) {
-        return sessao != null
-                && sessao.isAdmin()
-                && (sessao.getUnidade() == null || sessao.getUnidade().getCodgUnidade() == null)
-                && sessao.getUsuario() != null
-                && sessao.getUsuario().getCodgUnidade() == null
-                && sessao.getUsuario().getCodgAgencia() == null;
+        return sessao != null && sessao.isAdmin();
     }
 
     private Integer unidadeSessao(SessaoChatResponse sessao) {
@@ -1656,6 +1850,15 @@ public class ChatConfiancaService {
             return sessao.getUnidade().getCodgUnidade();
         }
         return sessao.getUsuario() == null ? null : sessao.getUsuario().getCodgUnidade();
+    }
+
+    private Integer unidadeGestaoSessao(SessaoChatResponse sessao) {
+        if (sessao == null || sessao.getUsuario() == null
+                || sessao.getUsuario().getCodgAgencia() != null
+                || sessao.getUsuario().getCodgUnidade() == null) {
+            throw regra(403, "Gestao do chat restrita a usuario interno com unidade vinculada.");
+        }
+        return sessao.getUsuario().getCodgUnidade();
     }
 
     private void adicionarParametro(List<String> params, String nome, Object valor) {
@@ -2279,15 +2482,21 @@ public class ChatConfiancaService {
     }
 
     private boolean ehGestorOuAdmin(Integer codgUsuario, Integer codgUnidade) {
-        RefUsuario usuario = buscarUsuarioOuFalhar(codgUsuario);
+        SessaoChatResponse sessao = montarSessao(codgUsuario);
+        if (sessao.isAdmin()) {
+            return true;
+        }
+        RefUsuario usuario = sessao.getUsuario();
+        if (usuario == null || usuario.getCodgAgencia() != null
+                || usuario.getCodgUnidade() == null
+                || codgUnidade == null
+                || !Objects.equals(usuario.getCodgUnidade(), codgUnidade)) {
+            return false;
+        }
         List<String> perfis = new ArrayList<>(listarPerfis(codgUsuario, codgUnidade));
         List<DepartamentoAtendente> vinculosAtendente = listarDepartamentosAtendenteSeguro(codgUsuario);
-        adicionarPerfisPorVinculo(perfis, vinculosAtendente);
-        boolean adminGlobalPorVinculo = usuario.getCodgUnidade() == null
-                && usuario.getCodgAgencia() == null
-                && possuiPapelGestor(vinculosAtendente);
-        return temPerfil(perfis, "GESTOR", "GESTOR_UNIDADE", "SUPERVISOR", "ADMIN", "ADMIN_CHAT")
-                || adminGlobalPorVinculo;
+        adicionarPerfisPorVinculo(perfis, vinculosAtendente, codgUnidade);
+        return temPerfil(perfis, "GESTOR", "GESTOR_UNIDADE", "SUPERVISOR");
     }
 
     private List<String> listarPerfis(Integer codgUsuario, Integer codgUnidade) {
@@ -2309,31 +2518,46 @@ public class ChatConfiancaService {
         }
     }
 
-    private void adicionarPerfisPorVinculo(List<String> perfis, List<DepartamentoAtendente> vinculos) {
+    private void adicionarPerfisPorVinculo(List<String> perfis,
+                                           List<DepartamentoAtendente> vinculos,
+                                           Integer codgUnidade) {
         if (vinculos == null || vinculos.isEmpty()) {
             return;
         }
+        Set<Long> vinculosDaUnidade = idsDepartamentoUnidade(codgUnidade);
         vinculos.stream()
                 .filter(Objects::nonNull)
                 .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
-                .map(DepartamentoAtendente::getPapel)
-                .forEach(papel -> {
+                .forEach(item -> {
+                    adicionarPerfil(perfis, "ATENDENTE");
+                    PapelAtendente papel = item.getPapel();
+                    if (!vinculosDaUnidade.contains(item.getDepartamentoUnidadeId())) {
+                        return;
+                    }
                     if (papel == PapelAtendente.GESTOR) {
                         adicionarPerfil(perfis, "GESTOR");
                     } else if (papel == PapelAtendente.SUPERVISOR) {
                         adicionarPerfil(perfis, "SUPERVISOR");
-                    } else {
-                        adicionarPerfil(perfis, "ATENDENTE");
                     }
                 });
     }
 
-    private boolean possuiPapelGestor(List<DepartamentoAtendente> vinculos) {
-        return vinculos != null && vinculos.stream()
-                .filter(Objects::nonNull)
-                .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
-                .map(DepartamentoAtendente::getPapel)
-                .anyMatch(papel -> papel == PapelAtendente.GESTOR || papel == PapelAtendente.SUPERVISOR);
+    private Set<Long> idsDepartamentoUnidade(Integer codgUnidade) {
+        if (codgUnidade == null) {
+            return Set.of();
+        }
+        try {
+            return configService.listarDepartamentoUnidadesPorUnidade(codgUnidade).stream()
+                    .filter(Objects::nonNull)
+                    .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
+                    .map(DepartamentoUnidade::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.WARNING,
+                    "Nao foi possivel validar os vinculos do atendente na unidade " + codgUnidade + ".", ex);
+            return Set.of();
+        }
     }
 
     private void adicionarPerfil(List<String> perfis, String perfil) {

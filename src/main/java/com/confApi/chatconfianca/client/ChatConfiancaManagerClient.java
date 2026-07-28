@@ -82,6 +82,26 @@ public class ChatConfiancaManagerClient {
         }
     }
 
+    public <T> List<T> postList(
+            String path,
+            Object body,
+            ParameterizedTypeReference<List<T>> responseType) {
+        try {
+            ResponseEntity<List<T>> response = restTemplate.exchange(
+                    url(path),
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, headers()),
+                    responseType
+            );
+            return response.getBody() != null ? response.getBody() : Collections.emptyList();
+        } catch (HttpStatusCodeException ex) {
+            throw mapStatusException("gravar no manager", ex);
+        } catch (RestClientException ex) {
+            throw new ServiceIndisponivelException(
+                    "Nao foi possivel gravar no manager: " + ex.getMessage());
+        }
+    }
+
 
     public void delete(String path) {
         try {

@@ -13,7 +13,12 @@ public class RegraAereaAlteracaoCalculoResponse {
     private BigDecimal valorNovaTarifa;
     private BigDecimal valorMulta;
     private BigDecimal diferencaTarifaria;
+    private BigDecimal valorTaxasBase;
+    private BigDecimal valorNovasTaxas;
+    private BigDecimal diferencaTaxas;
+    private BigDecimal taxaServico;
     private BigDecimal totalPrevisto;
     private BigDecimal percentualMultaAplicado;
+    private Boolean calculoCompleto;
     private String resumo;
 }

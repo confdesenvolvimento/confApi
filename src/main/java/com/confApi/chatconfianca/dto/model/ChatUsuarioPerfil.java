@@ -12,6 +12,7 @@ public class ChatUsuarioPerfil {
     private Long perfilId;
     private Integer codgUnidade;
     private Boolean ativo;
+    private Boolean automatico;
     private LocalDateTime criadoEm;
     private LocalDateTime atualizadoEm;
 }
