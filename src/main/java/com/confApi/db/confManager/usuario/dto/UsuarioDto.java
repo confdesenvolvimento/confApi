@@ -1,12 +1,17 @@
 package com.confApi.db.confManager.usuario.dto;
 
+import com.confApi.db.confManager.agencia.AgenciaAssociadas;
 import com.confApi.db.confManager.agencia.dto.Agencia;
 import com.confApi.db.confManager.exception.MensagemDeErro;
 import com.confApi.db.confManager.unidade.dto.Unidade;
+import com.confApi.db.wooba.agencia.TurAgenciaDto;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @AllArgsConstructor
@@ -32,5 +37,6 @@ public class UsuarioDto {
     private Agencia agencia;
     private Integer codigoWooba;
     private MensagemDeErro mensagemDeErro;
+    private List<TurAgenciaDto> agenciaAssociadas = new ArrayList<>();
 
 }
