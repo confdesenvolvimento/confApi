@@ -21,9 +21,12 @@ import com.confApi.chatconfianca.dto.model.RefUnidade;
 import com.confApi.chatconfianca.dto.model.RefUsuario;
 import com.confApi.chatconfianca.dto.model.RespostaRapida;
 import com.confApi.chatconfianca.dto.model.SlaPolitica;
-import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeSincronizacaoRequest;
 import com.confApi.chatconfianca.dto.request.DepartamentoAtendenteSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeConfiguracaoMassaRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeConfiguracaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeVinculosRequest;
 import com.confApi.chatconfianca.dto.request.SlaPoliticaSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.response.DepartamentoUnidadeConfiguracaoMassaResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
@@ -129,8 +132,8 @@ public class ChatConfiancaConfigService {
                 entity, DepartamentoUnidade.class);
     }
 
-    public List<DepartamentoUnidade> sincronizarDepartamentoUnidades(
-            DepartamentoUnidadeSincronizacaoRequest request) {
+    public List<DepartamentoUnidade> salvarVinculosDepartamentoUnidades(
+            DepartamentoUnidadeVinculosRequest request) {
         validarObrigatorio(request, "Informe os vinculos de unidade.");
         validarObrigatorio(request.getDepartamentoId(), "Informe o departamento.");
         validarDepartamentoOperacional(request.getDepartamentoId());
@@ -140,38 +143,61 @@ public class ChatConfiancaConfigService {
                 : request.getCodigosUnidade().stream()
                         .filter(Objects::nonNull)
                         .collect(Collectors.toCollection(LinkedHashSet::new));
-        Map<Integer, RefUnidade> unidadesPorCodigo = listarUnidadesReferencia().stream()
+        Set<Integer> unidadesValidas = listarUnidadesReferencia().stream()
                 .filter(item -> item.getCodgUnidade() != null)
-                .collect(Collectors.toMap(
-                        RefUnidade::getCodgUnidade,
-                        item -> item,
-                        (atual, substituta) -> substituta,
-                        LinkedHashMap::new));
-        for (Integer codigo : codigos) {
-            RefUnidade unidade = unidadesPorCodigo.get(codigo);
-            if (unidade == null) {
-                throw regra(400, "Unidade " + codigo + " nao encontrada no ConfiancaManager.");
-            }
-            completarUnidadeReferencia(unidade, codigo);
-            manager.post("chat-confianca/persistencia/unidades", unidade, RefUnidade.class);
+                .map(RefUnidade::getCodgUnidade)
+                .collect(Collectors.toSet());
+        List<Integer> invalidas = codigos.stream()
+                .filter(codigo -> !unidadesValidas.contains(codigo))
+                .collect(Collectors.toList());
+        if (!invalidas.isEmpty()) {
+            throw regra(400, "Unidades nao encontradas no ConfiancaManager: " + invalidas);
         }
 
-        DepartamentoUnidade padrao = request.getConfiguracaoPadrao() == null
-                ? new DepartamentoUnidade()
-                : request.getConfiguracaoPadrao();
-        padrao.setId(null);
-        padrao.setDepartamentoId(request.getDepartamentoId());
-        padrao.setCodgUnidade(null);
-        validarHorarioAtendimentoJson(padrao);
-        aplicarPadroesDepartamentoUnidade(padrao);
         request.setCodigosUnidade(new ArrayList<>(codigos));
-        request.setConfiguracaoPadrao(padrao);
 
         return manager.postList(
-                "chat-confianca/persistencia/departamento-unidades/sincronizar",
+                "chat-confianca/persistencia/departamento-unidades/vinculos",
                 request,
                 new ParameterizedTypeReference<List<DepartamentoUnidade>>() {
                 });
+    }
+
+    /**
+     * Encaminha somente os campos configuraveis de um vinculo. Nao reutiliza a
+     * persistencia generica para impedir alteracao de departamento, unidade ou
+     * situacao do vinculo por este fluxo.
+     */
+    public DepartamentoUnidade salvarConfiguracaoDepartamentoUnidade(
+            Long departamentoUnidadeId,
+            DepartamentoUnidadeConfiguracaoRequest request) {
+        validarObrigatorio(departamentoUnidadeId, "Informe o departamento/unidade.");
+        validarObrigatorio(request, "Informe a configuracao do departamento/unidade.");
+        return manager.post(
+                "chat-confianca/persistencia/departamento-unidades/"
+                + departamentoUnidadeId + "/configuracao",
+                request,
+                DepartamentoUnidade.class);
+    }
+
+    /**
+     * Encaminha a configuracao em massa ao endpoint de persistencia dedicado.
+     * Nao usa o salvamento generico nem executa atualizacoes individuais em
+     * sequencia, preservando a atomicidade do backend.
+     */
+    public DepartamentoUnidadeConfiguracaoMassaResponse salvarConfiguracaoMassaDepartamentoUnidades(
+            Long departamentoId,
+            DepartamentoUnidadeConfiguracaoMassaRequest request) {
+        validarObrigatorio(departamentoId, "Informe o departamento.");
+        validarObrigatorio(request, "Informe a configuracao das unidades.");
+        if (!request.possuiCampoParaAlterar()) {
+            throw regra(400, "Selecione pelo menos um campo para alterar.");
+        }
+        return manager.post(
+                "chat-confianca/persistencia/departamentos/" + departamentoId
+                + "/unidades/configuracao",
+                request,
+                DepartamentoUnidadeConfiguracaoMassaResponse.class);
     }
 
     private void aplicarPadroesDepartamentoUnidade(DepartamentoUnidade entity) {
@@ -484,10 +510,17 @@ public class ChatConfiancaConfigService {
         validarObrigatorio(login, "Informe o login do usuario.");
         return sincronizarUsuarioReferenciaPorLogin(login);
     }
+
     public List<RefUsuario> listarUsuariosReferencia() {
-        return manager.getList("chat-confianca/persistencia/usuarios",
+        return manager.getList("chat-confianca/consultas/usuarios",
                 new ParameterizedTypeReference<List<RefUsuario>>() {
                 });
+    }
+
+    public RefUsuario buscarUsuarioReferencia(Integer codgUsuario) {
+        validarObrigatorio(codgUsuario, "Informe o usuario.");
+        return manager.get("chat-confianca/consultas/usuarios/" + codgUsuario,
+                RefUsuario.class);
     }
 
     public List<RefAgencia> listarAgenciasReferencia() {
@@ -545,7 +578,7 @@ public class ChatConfiancaConfigService {
 
 
     public RefUsuario sincronizarUsuarioReferencia(Integer codgUsuario) {
-        RefUsuario existente = manager.get("chat-confianca/persistencia/usuarios/" + codgUsuario, RefUsuario.class);
+        RefUsuario existente = buscarUsuarioReferencia(codgUsuario);
         ManagerUsuario usuario = buscarUsuarioManagerPorCodigo(codgUsuario);
         if (usuario == null) {
             if (existente != null) {

@@ -11,8 +11,11 @@ import com.confApi.chatconfianca.dto.model.RefUnidade;
 import com.confApi.chatconfianca.dto.model.RefUsuario;
 import com.confApi.chatconfianca.dto.model.SlaPolitica;
 import com.confApi.chatconfianca.dto.request.DepartamentoAtendenteSincronizacaoRequest;
-import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeConfiguracaoMassaRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeConfiguracaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeVinculosRequest;
 import com.confApi.chatconfianca.dto.request.SlaPoliticaSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.response.DepartamentoUnidadeConfiguracaoMassaResponse;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import org.junit.jupiter.api.Test;
@@ -46,7 +49,7 @@ class ChatConfiancaGestaoUnidadeServiceTest {
     private ChatConfiancaGestaoUnidadeService service;
 
     @Test
-    void permiteSincronizacaoParaAdministradorGlobal() {
+    void permiteSalvarVinculosParaAdministradorGlobal() {
         SessaoChatResponse sessao = new SessaoChatResponse();
         sessao.setAdmin(true);
         RefUsuario usuario = new RefUsuario();
@@ -55,12 +58,6 @@ class ChatConfiancaGestaoUnidadeServiceTest {
         usuario.setTipoUsuario("Administrativo");
         sessao.setUsuario(usuario);
         when(chatService.montarSessao(4389)).thenReturn(sessao);
-
-        Departamento departamento = new Departamento();
-        departamento.setId(4L);
-        departamento.setNome("Tecnologia Geral");
-        when(configService.buscarDepartamento(4L)).thenReturn(departamento);
-        when(configService.listarDepartamentos()).thenReturn(List.of(departamento));
 
         RefUnidade unidade = new RefUnidade();
         unidade.setCodgUnidade(1);
@@ -71,22 +68,22 @@ class ChatConfiancaGestaoUnidadeServiceTest {
         DepartamentoUnidade vinculo = new DepartamentoUnidade();
         vinculo.setDepartamentoId(4L);
         vinculo.setCodgUnidade(1);
-        DepartamentoUnidadeSincronizacaoRequest request =
-                new DepartamentoUnidadeSincronizacaoRequest();
+        DepartamentoUnidadeVinculosRequest request =
+                new DepartamentoUnidadeVinculosRequest();
         request.setDepartamentoId(4L);
         request.setCodigosUnidade(List.of(1));
-        when(configService.sincronizarDepartamentoUnidades(request))
+        when(configService.salvarVinculosDepartamentoUnidades(request))
                 .thenReturn(List.of(vinculo));
 
         List<DepartamentoUnidade> resultado =
-                service.sincronizarDepartamentoUnidades(4389, request);
+                service.salvarVinculosDepartamentoUnidades(4389, request);
 
         assertEquals(1, resultado.size());
-        verify(configService).sincronizarDepartamentoUnidades(request);
+        verify(configService).salvarVinculosDepartamentoUnidades(request);
     }
 
     @Test
-    void bloqueiaSincronizacaoEmMassaParaGestorDeUnidade() {
+    void bloqueiaSalvarVinculosParaGestorDeUnidade() {
         RefUsuario usuario = new RefUsuario();
         usuario.setCodgUnidade(1);
         SessaoChatResponse sessao = new SessaoChatResponse();
@@ -94,14 +91,173 @@ class ChatConfiancaGestaoUnidadeServiceTest {
         sessao.setUsuario(usuario);
         when(chatService.montarSessao(5000)).thenReturn(sessao);
 
-        DepartamentoUnidadeSincronizacaoRequest request =
-                new DepartamentoUnidadeSincronizacaoRequest();
+        DepartamentoUnidadeVinculosRequest request =
+                new DepartamentoUnidadeVinculosRequest();
         request.setDepartamentoId(4L);
         request.setCodigosUnidade(List.of(1, 2));
 
         assertThrows(
                 RegraDeNegocioException.class,
-                () -> service.sincronizarDepartamentoUnidades(5000, request));
+                () -> service.salvarVinculosDepartamentoUnidades(5000, request));
+        verify(configService, never()).salvarVinculosDepartamentoUnidades(any());
+    }
+
+    @Test
+    void bloqueiaUnidadeForaDoEscopoAdministrativo() {
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        sessao.setAdmin(true);
+        sessao.setUsuario(usuario(4389, 1, 501));
+        when(chatService.montarSessao(4389)).thenReturn(sessao);
+
+        RefUnidade unidade = new RefUnidade();
+        unidade.setCodgUnidade(1);
+        unidade.setNomeUnidade("CGB");
+        when(configService.listarUnidadesReferencia()).thenReturn(List.of(unidade));
+
+        DepartamentoUnidadeVinculosRequest request =
+                new DepartamentoUnidadeVinculosRequest();
+        request.setDepartamentoId(4L);
+        request.setCodigosUnidade(List.of(2));
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.salvarVinculosDepartamentoUnidades(4389, request));
+
+        assertEquals(400, erro.getStatus());
+        verify(configService, never()).salvarVinculosDepartamentoUnidades(any());
+    }
+
+    @Test
+    void administradorGlobalEditaConfiguracaoIndividualDaUnidade() {
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        sessao.setAdmin(true);
+        sessao.setUsuario(usuario(4389, 1, 501));
+        when(chatService.montarSessao(4389)).thenReturn(sessao);
+
+        DepartamentoUnidadeConfiguracaoRequest request =
+                new DepartamentoUnidadeConfiguracaoRequest();
+        request.setMensagemForaHorario("Retornaremos no proximo horario util.");
+        DepartamentoUnidade atualizado = departamentoUnidade(11L, 1);
+        atualizado.setMensagemForaHorario(request.getMensagemForaHorario());
+        when(configService.salvarConfiguracaoDepartamentoUnidade(11L, request))
+                .thenReturn(atualizado);
+
+        DepartamentoUnidade resultado = service.salvarConfiguracaoDepartamentoUnidade(4389, 11L, request);
+
+        assertEquals(atualizado, resultado);
+        verify(configService).salvarConfiguracaoDepartamentoUnidade(11L, request);
+    }
+
+    @Test
+    void bloqueiaEdicaoIndividualParaGestorDeUnidade() {
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        sessao.setGestor(true);
+        sessao.setUsuario(usuario(5000, 1, null));
+        when(chatService.montarSessao(5000)).thenReturn(sessao);
+
+        DepartamentoUnidadeConfiguracaoRequest request =
+                new DepartamentoUnidadeConfiguracaoRequest();
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.salvarConfiguracaoDepartamentoUnidade(5000, 11L, request));
+
+        assertEquals(403, erro.getStatus());
+        verify(configService, never()).salvarConfiguracaoDepartamentoUnidade(any(), any());
+    }
+
+    @Test
+    void validaIdentificadorEConfiguracaoAntesDeEncaminharEdicaoIndividual() {
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        sessao.setAdmin(true);
+        sessao.setUsuario(usuario(4389, 1, 501));
+        when(chatService.montarSessao(4389)).thenReturn(sessao);
+
+        DepartamentoUnidadeConfiguracaoRequest request =
+                new DepartamentoUnidadeConfiguracaoRequest();
+        RegraDeNegocioException erroId = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.salvarConfiguracaoDepartamentoUnidade(4389, null, request));
+        RegraDeNegocioException erroRequest = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.salvarConfiguracaoDepartamentoUnidade(4389, 11L, null));
+
+        assertEquals(400, erroId.getStatus());
+        assertEquals(400, erroRequest.getStatus());
+        verify(configService, never()).salvarConfiguracaoDepartamentoUnidade(any(), any());
+    }
+
+    @Test
+    void administradorGlobalEditaConfiguracaoDeTodasAsUnidadesDoDepartamento() {
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        sessao.setAdmin(true);
+        sessao.setUsuario(usuario(4389, 1, 501));
+        when(chatService.montarSessao(4389)).thenReturn(sessao);
+
+        DepartamentoUnidadeConfiguracaoMassaRequest request =
+                new DepartamentoUnidadeConfiguracaoMassaRequest();
+        request.setAlterarDistribuicao(true);
+        request.setDistribuicao(com.confApi.chatconfianca.dto.enums.DistribuicaoDepartamento.MENOR_FILA);
+        DepartamentoUnidadeConfiguracaoMassaResponse resposta =
+                new DepartamentoUnidadeConfiguracaoMassaResponse();
+        resposta.setTotalUnidadesAtualizadas(57);
+        when(configService.salvarConfiguracaoMassaDepartamentoUnidades(4L, request))
+                .thenReturn(resposta);
+
+        DepartamentoUnidadeConfiguracaoMassaResponse resultado =
+                service.salvarConfiguracaoMassaDepartamentoUnidades(4389, 4L, request);
+
+        assertEquals(57, resultado.getTotalUnidadesAtualizadas());
+        verify(configService).salvarConfiguracaoMassaDepartamentoUnidades(4L, request);
+    }
+
+    @Test
+    void bloqueiaEdicaoMassaParaGestorDeUnidade() {
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        sessao.setGestor(true);
+        sessao.setUsuario(usuario(5000, 1, null));
+        when(chatService.montarSessao(5000)).thenReturn(sessao);
+
+        DepartamentoUnidadeConfiguracaoMassaRequest request =
+                new DepartamentoUnidadeConfiguracaoMassaRequest();
+        request.setAlterarExigeAssunto(true);
+        request.setExigeAssunto(true);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.salvarConfiguracaoMassaDepartamentoUnidades(5000, 4L, request));
+
+        assertEquals(403, erro.getStatus());
+        verify(configService, never()).salvarConfiguracaoMassaDepartamentoUnidades(any(), any());
+    }
+
+    @Test
+    void exigeDepartamentoRequestECampoNaEdicaoMassa() {
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        sessao.setAdmin(true);
+        sessao.setUsuario(usuario(4389, 1, 501));
+        when(chatService.montarSessao(4389)).thenReturn(sessao);
+
+        DepartamentoUnidadeConfiguracaoMassaRequest comCampo =
+                new DepartamentoUnidadeConfiguracaoMassaRequest();
+        comCampo.setAlterarMensagemAbertura(true);
+        DepartamentoUnidadeConfiguracaoMassaRequest semCampo =
+                new DepartamentoUnidadeConfiguracaoMassaRequest();
+
+        RegraDeNegocioException erroId = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.salvarConfiguracaoMassaDepartamentoUnidades(4389, null, comCampo));
+        RegraDeNegocioException erroRequest = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.salvarConfiguracaoMassaDepartamentoUnidades(4389, 4L, null));
+        RegraDeNegocioException erroCampos = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.salvarConfiguracaoMassaDepartamentoUnidades(4389, 4L, semCampo));
+
+        assertEquals(400, erroId.getStatus());
+        assertEquals(400, erroRequest.getStatus());
+        assertEquals(400, erroCampos.getStatus());
+        verify(configService, never()).salvarConfiguracaoMassaDepartamentoUnidades(any(), any());
     }
 
     @Test
@@ -119,7 +275,7 @@ class ChatConfiancaGestaoUnidadeServiceTest {
         when(configService.listarDepartamentos()).thenReturn(List.of(departamento));
 
         RefUsuario atendente = usuario(6000, 1, null);
-        when(configService.listarUsuariosReferencia()).thenReturn(List.of(atendente));
+        when(configService.buscarUsuarioReferencia(6000)).thenReturn(atendente);
         DepartamentoUnidade unidade1 = departamentoUnidade(11L, 1);
         DepartamentoUnidade unidade2 = departamentoUnidade(12L, 2);
         when(configService.listarDepartamentoUnidades())
@@ -167,8 +323,8 @@ class ChatConfiancaGestaoUnidadeServiceTest {
         departamento.setAtivo(true);
         when(configService.buscarDepartamento(4L)).thenReturn(departamento);
         when(configService.listarDepartamentos()).thenReturn(List.of(departamento));
-        when(configService.listarUsuariosReferencia())
-                .thenReturn(List.of(usuario(6000, 1, null)));
+        when(configService.buscarUsuarioReferencia(6000))
+                .thenReturn(usuario(6000, 1, null));
         when(configService.listarDepartamentoUnidadesPorUnidade(1))
                 .thenReturn(List.of(departamentoUnidade(11L, 1)));
 
@@ -197,7 +353,7 @@ class ChatConfiancaGestaoUnidadeServiceTest {
         ChatPerfil perfilAdmin = perfil(99L, "ADMIN_CHAT");
         when(configService.buscarPerfil(99L)).thenReturn(perfilAdmin);
         RefUsuario novoAdministrador = usuario(6000, 2, 700);
-        when(configService.listarUsuariosReferencia()).thenReturn(List.of(novoAdministrador));
+        when(configService.buscarUsuarioReferencia(6000)).thenReturn(novoAdministrador);
         when(configService.listarUsuarioPerfis()).thenReturn(List.of());
         when(configService.salvarUsuarioPerfil(any(ChatUsuarioPerfil.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -315,7 +471,7 @@ class ChatConfiancaGestaoUnidadeServiceTest {
         ChatPerfil perfilAdmin = perfil(99L, "ADMIN_CHAT");
         when(configService.buscarPerfil(99L)).thenReturn(perfilAdmin);
         RefUsuario administrador = usuario(4389, 1, 501);
-        when(configService.listarUsuariosReferencia()).thenReturn(List.of(administrador));
+        when(configService.buscarUsuarioReferencia(4389)).thenReturn(administrador);
 
         ChatUsuarioPerfil existente = new ChatUsuarioPerfil();
         existente.setId(10L);
