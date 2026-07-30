@@ -13,8 +13,11 @@ import com.confApi.chatconfianca.dto.model.RefUsuario;
 import com.confApi.chatconfianca.dto.model.RespostaRapida;
 import com.confApi.chatconfianca.dto.model.SlaPolitica;
 import com.confApi.chatconfianca.dto.request.DepartamentoAtendenteSincronizacaoRequest;
-import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeConfiguracaoMassaRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeConfiguracaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeVinculosRequest;
 import com.confApi.chatconfianca.dto.request.SlaPoliticaSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.response.DepartamentoUnidadeConfiguracaoMassaResponse;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import java.util.ArrayList;
@@ -120,20 +123,15 @@ public class ChatConfiancaGestaoUnidadeService {
                 .collect(Collectors.toList());
     }
 
-    public List<DepartamentoUnidade> sincronizarDepartamentoUnidades(
+    public List<DepartamentoUnidade> salvarVinculosDepartamentoUnidades(
             Integer codgUsuarioGestor,
-            DepartamentoUnidadeSincronizacaoRequest request) {
+            DepartamentoUnidadeVinculosRequest request) {
         Integer unidade = unidadeGestor(codgUsuarioGestor);
         if (!isAdminGlobal(unidade)) {
             throw regra(403, "Somente o administrador geral pode vincular varias unidades.");
         }
         obrigatorio(request, "Informe os vinculos de unidade.");
         obrigatorio(request.getDepartamentoId(), "Informe o departamento.");
-        Departamento departamento = configService.buscarDepartamento(request.getDepartamentoId());
-        if (temFilho(departamento.getId())) {
-            throw regra(400, "Departamento agrupador nao recebe atendimento.");
-        }
-
         Set<Integer> unidadesValidas = listarUnidades(codgUsuarioGestor).stream()
                 .map(RefUnidade::getCodgUnidade)
                 .filter(Objects::nonNull)
@@ -150,70 +148,45 @@ public class ChatConfiancaGestaoUnidadeService {
             throw regra(400, "Unidades fora do escopo de administracao: " + invalidas);
         }
 
-        List<DepartamentoAtendente> equipeOrigem = new ArrayList<>();
-        if (Boolean.TRUE.equals(request.getReplicarAtendentes())) {
-            obrigatorio(
-                    request.getDepartamentoUnidadeOrigemId(),
-                    "Selecione a unidade modelo para replicar a equipe.");
-            DepartamentoUnidade origem = configService.buscarDepartamentoUnidade(
-                    request.getDepartamentoUnidadeOrigemId());
-            if (!Objects.equals(origem.getDepartamentoId(), request.getDepartamentoId())) {
-                throw regra(400, "Unidade modelo nao pertence ao departamento selecionado.");
-            }
-            equipeOrigem = configService.listarAtendentesDepartamento(origem.getId());
-        }
-
-        List<DepartamentoUnidade> sincronizados =
-                configService.sincronizarDepartamentoUnidades(request);
-        if (!equipeOrigem.isEmpty()) {
-            for (DepartamentoUnidade vinculo : sincronizados) {
-                if (Boolean.FALSE.equals(vinculo.getAtivo())) {
-                    continue;
-                }
-                for (DepartamentoAtendente atendente : equipeOrigem) {
-                    garantirPerfilUsuario(
-                            atendente.getCodgUsuario(),
-                            vinculo.getCodgUnidade(),
-                            perfilPorPapel(atendente.getPapel()));
-                }
-            }
-        }
-        return sincronizados;
+        return configService.salvarVinculosDepartamentoUnidades(request);
     }
 
-    public DepartamentoUnidade salvarDepartamentoUnidade(Integer codgUsuarioGestor, DepartamentoUnidade entity) {
+    /**
+     * Altera somente os campos de configuracao do vinculo indicado. A associacao
+     * entre departamento e unidade permanece imutavel neste fluxo.
+     */
+    public DepartamentoUnidade salvarConfiguracaoDepartamentoUnidade(
+            Integer codgUsuarioGestor,
+            Long departamentoUnidadeId,
+            DepartamentoUnidadeConfiguracaoRequest request) {
         Integer unidade = unidadeGestor(codgUsuarioGestor);
-        obrigatorio(entity, "Informe o departamento/unidade.");
-        if (entity.getId() != null) {
-            DepartamentoUnidade existente = configService.buscarDepartamentoUnidade(entity.getId());
-            if (!isAdminGlobal(unidade) && !Objects.equals(existente.getCodgUnidade(), unidade)) {
-                throw regra(403, "Departamento/unidade nao pertence a unidade do gestor.");
-            }
+        if (!isAdminGlobal(unidade)) {
+            throw regra(403, "Somente o administrador geral pode editar a configuracao da unidade.");
         }
-        if (!isAdminGlobal(unidade)
-                && entity.getDepartamentoId() != null
-                && !departamentoVisivelNaUnidade(entity.getDepartamentoId(), unidade)) {
-            Departamento departamento = configService.buscarDepartamento(entity.getDepartamentoId());
-            if (departamento.getDepartamentoPaiId() != null
-                    && !departamentoVisivelNaUnidade(departamento.getDepartamentoPaiId(), unidade)) {
-                throw regra(403, "Departamento nao pertence a unidade do gestor.");
-            }
-        }
-        if (isAdminGlobal(unidade)) {
-            obrigatorio(entity.getCodgUnidade(), "Informe a unidade.");
-        } else {
-            entity.setCodgUnidade(unidade);
-        }
-        return configService.salvarDepartamentoUnidade(entity);
+        obrigatorio(departamentoUnidadeId, "Informe o departamento/unidade.");
+        obrigatorio(request, "Informe a configuracao do departamento/unidade.");
+        return configService.salvarConfiguracaoDepartamentoUnidade(departamentoUnidadeId, request);
     }
 
-    public void excluirDepartamentoUnidade(Integer codgUsuarioGestor, Long id) {
+    /**
+     * Aplica, de uma unica vez, somente os campos explicitamente marcados em
+     * todos os vinculos ativos do departamento. A associacao entre departamento
+     * e unidade nao pode ser modificada por este fluxo.
+     */
+    public DepartamentoUnidadeConfiguracaoMassaResponse salvarConfiguracaoMassaDepartamentoUnidades(
+            Integer codgUsuarioGestor,
+            Long departamentoId,
+            DepartamentoUnidadeConfiguracaoMassaRequest request) {
         Integer unidade = unidadeGestor(codgUsuarioGestor);
-        DepartamentoUnidade existente = configService.buscarDepartamentoUnidade(id);
-        if (!isAdminGlobal(unidade) && !Objects.equals(existente.getCodgUnidade(), unidade)) {
-            throw regra(403, "Departamento/unidade nao pertence a unidade do gestor.");
+        if (!isAdminGlobal(unidade)) {
+            throw regra(403, "Somente o administrador geral pode editar a configuracao de todas as unidades.");
         }
-        configService.excluirDepartamentoUnidade(id);
+        obrigatorio(departamentoId, "Informe o departamento.");
+        obrigatorio(request, "Informe a configuracao das unidades.");
+        if (!request.possuiCampoParaAlterar()) {
+            throw regra(400, "Selecione pelo menos um campo para alterar.");
+        }
+        return configService.salvarConfiguracaoMassaDepartamentoUnidades(departamentoId, request);
     }
 
     public List<DepartamentoAtendente> listarAtendentes(Integer codgUsuarioGestor) {
@@ -721,10 +694,11 @@ public class ChatConfiancaGestaoUnidadeService {
     }
 
     private RefUsuario buscarUsuarioReferencia(Integer codgUsuario) {
-        return configService.listarUsuariosReferencia().stream()
-                .filter(item -> Objects.equals(item.getCodgUsuario(), codgUsuario))
-                .findFirst()
-                .orElseThrow(() -> regra(404, "Usuario nao encontrado na referencia do chat. Busque pelo login primeiro."));
+        RefUsuario usuario = configService.buscarUsuarioReferencia(codgUsuario);
+        if (usuario == null) {
+            throw regra(404, "Usuario nao encontrado na referencia do chat. Busque pelo login primeiro.");
+        }
+        return usuario;
     }
 
     private boolean usuarioInternoElegivel(RefUsuario usuario, Integer codgUnidade) {

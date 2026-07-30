@@ -10,9 +10,12 @@ import com.confApi.chatconfianca.dto.model.RefUnidade;
 import com.confApi.chatconfianca.dto.model.RefUsuario;
 import com.confApi.chatconfianca.dto.model.RespostaRapida;
 import com.confApi.chatconfianca.dto.model.SlaPolitica;
-import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeSincronizacaoRequest;
 import com.confApi.chatconfianca.dto.request.DepartamentoAtendenteSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeConfiguracaoMassaRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeConfiguracaoRequest;
+import com.confApi.chatconfianca.dto.request.DepartamentoUnidadeVinculosRequest;
 import com.confApi.chatconfianca.dto.request.SlaPoliticaSincronizacaoRequest;
+import com.confApi.chatconfianca.dto.response.DepartamentoUnidadeConfiguracaoMassaResponse;
 import com.confApi.chatconfianca.service.ChatConfiancaGestaoUnidadeService;
 import java.util.List;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -60,22 +63,28 @@ public class ChatConfiancaGestaoUnidadeController {
         return service.listarUnidades(codgUsuario);
     }
 
-    @PostMapping("/departamento-unidades/sincronizar")
-    public List<DepartamentoUnidade> sincronizarDepartamentoUnidades(
+    @PostMapping("/departamento-unidades/vinculos")
+    public List<DepartamentoUnidade> salvarVinculosDepartamentoUnidades(
             @RequestParam Integer codgUsuario,
-            @RequestBody DepartamentoUnidadeSincronizacaoRequest request) {
-        return service.sincronizarDepartamentoUnidades(codgUsuario, request);
+            @RequestBody DepartamentoUnidadeVinculosRequest request) {
+        return service.salvarVinculosDepartamentoUnidades(codgUsuario, request);
     }
 
-    @PostMapping("/departamento-unidades")
-    public DepartamentoUnidade salvarDepartamentoUnidade(@RequestParam Integer codgUsuario,
-                                                        @RequestBody DepartamentoUnidade entity) {
-        return service.salvarDepartamentoUnidade(codgUsuario, entity);
+    @PostMapping("/departamento-unidades/{id}/configuracao")
+    public DepartamentoUnidade salvarConfiguracaoDepartamentoUnidade(
+            @RequestParam Integer codgUsuario,
+            @PathVariable Long id,
+            @RequestBody DepartamentoUnidadeConfiguracaoRequest request) {
+        return service.salvarConfiguracaoDepartamentoUnidade(codgUsuario, id, request);
     }
 
-    @DeleteMapping("/departamento-unidades/{id}")
-    public void excluirDepartamentoUnidade(@RequestParam Integer codgUsuario, @PathVariable Long id) {
-        service.excluirDepartamentoUnidade(codgUsuario, id);
+    @PostMapping("/departamentos/{departamentoId}/unidades/configuracao")
+    public DepartamentoUnidadeConfiguracaoMassaResponse salvarConfiguracaoMassaDepartamentoUnidades(
+            @RequestParam Integer codgUsuario,
+            @PathVariable Long departamentoId,
+            @RequestBody DepartamentoUnidadeConfiguracaoMassaRequest request) {
+        return service.salvarConfiguracaoMassaDepartamentoUnidades(
+                codgUsuario, departamentoId, request);
     }
 
     @GetMapping("/atendentes")
