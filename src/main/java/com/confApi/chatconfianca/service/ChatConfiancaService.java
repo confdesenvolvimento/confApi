@@ -1060,49 +1060,18 @@ public class ChatConfiancaService {
             throw regra(403, "Usuario nao participa da conversa.");
         }
 
-        LocalDateTime agora = LocalDateTime.now();
-        List<Mensagem> mensagens = manager.getList(
-                "chat-confianca/consultas/conversas/" + request.getConversaId() + "/mensagens",
-                new ParameterizedTypeReference<List<Mensagem>>() {
-                }
+        boolean incluirInternas = acessoGestor
+                || Objects.equals(
+                        request.getCodgUsuario(),
+                        conversa.getAtendenteResponsavelCodgUsuario());
+        Integer atualizadas = manager.post(
+                "chat-confianca/persistencia/mensagem-leituras/conversas/"
+                        + request.getConversaId() + "/usuarios/" + request.getCodgUsuario()
+                        + "?incluirInternas=" + incluirInternas,
+                null,
+                Integer.class
         );
-
-        int atualizadas = 0;
-        for (Mensagem mensagem : mensagens) {
-            if (mensagem.getId() == null || Objects.equals(mensagem.getRemetenteCodgUsuario(), request.getCodgUsuario())) {
-                continue;
-            }
-            MensagemLeitura leitura = manager.get(
-                    "chat-confianca/persistencia/mensagem-leituras/" + mensagem.getId() + "/" + request.getCodgUsuario(),
-                    MensagemLeitura.class
-            );
-            boolean alterouLeitura = false;
-            if (leitura == null) {
-                leitura = new MensagemLeitura();
-                leitura.setMensagemId(mensagem.getId());
-                leitura.setCodgUsuario(request.getCodgUsuario());
-                leitura.setEntregueEm(agora);
-                alterouLeitura = true;
-            }
-            if (leitura.getLidaEm() == null) {
-                leitura.setLidaEm(agora);
-                alterouLeitura = true;
-            }
-            if (alterouLeitura) {
-                manager.post("chat-confianca/persistencia/mensagem-leituras", leitura, MensagemLeitura.class);
-                atualizadas++;
-            }
-            if (mensagem.getStatus() != StatusMensagem.LIDA && mensagem.getStatus() != StatusMensagem.EXCLUIDA) {
-                mensagem.setStatus(StatusMensagem.LIDA);
-                manager.post("chat-confianca/persistencia/mensagens", mensagem, Mensagem.class);
-                if (!alterouLeitura) {
-                    atualizadas++;
-                }
-            }
-        }
-
-        atualizarUltimaVisualizacao(request.getConversaId(), request.getCodgUsuario(), agora);
-        return atualizadas;
+        return atualizadas == null ? 0 : atualizadas;
     }
 
     public List<VwConversaResumo> listarHistoricoSolicitante(Integer codgUsuario) {
@@ -2570,21 +2539,6 @@ public class ChatConfiancaService {
                 .noneMatch(perfil::equals)) {
             perfis.add(perfil);
         }
-    }
-
-    private void atualizarUltimaVisualizacao(Long conversaId, Integer codgUsuario, LocalDateTime visualizacao) {
-        manager.getList(
-                "chat-confianca/consultas/conversas/" + conversaId + "/participantes",
-                new ParameterizedTypeReference<List<ConversaParticipante>>() {
-                }
-        ).stream()
-                .filter(item -> Objects.equals(item.getCodgUsuario(), codgUsuario))
-                .findFirst()
-                .ifPresent(participante -> {
-                    participante.setUltimaVisualizacaoEm(visualizacao);
-                    manager.post("chat-confianca/persistencia/conversa-participantes",
-                            participante, ConversaParticipante.class);
-                });
     }
 
     private boolean temPerfil(List<String> perfis, String... esperados) {

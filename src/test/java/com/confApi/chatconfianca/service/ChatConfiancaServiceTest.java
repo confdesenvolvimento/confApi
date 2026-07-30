@@ -27,6 +27,7 @@ import com.confApi.chatconfianca.dto.request.AssumirAtendimentoRequest;
 import com.confApi.chatconfianca.dto.request.AvaliarAtendimentoRequest;
 import com.confApi.chatconfianca.dto.request.EncerrarConversaRequest;
 import com.confApi.chatconfianca.dto.request.EnviarMensagemRequest;
+import com.confApi.chatconfianca.dto.request.RegistrarLeituraRequest;
 import com.confApi.chatconfianca.dto.response.ChatNotificacaoResumoResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import java.util.ArrayList;
@@ -45,7 +46,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -58,6 +64,9 @@ class ChatConfiancaServiceTest {
     private static final Long DEPARTAMENTO_UNIDADE_ID = 100L;
     private static final Long CONVERSA_ID = 10L;
     private static final Long FILA_ID = 20L;
+    private static final String LEITURA_BULK_PATH =
+            "chat-confianca/persistencia/mensagem-leituras/conversas/"
+                    + CONVERSA_ID + "/usuarios/";
 
     private final ChatConfiancaManagerClient manager = mock(ChatConfiancaManagerClient.class);
     private final ChatConfiancaConfigService configService = mock(ChatConfiancaConfigService.class);
@@ -219,6 +228,99 @@ class ChatConfiancaServiceTest {
     }
 
     @Test
+    void registrarLeituraDeveUsarUmaUnicaChamadaBulkERetornarQuantidade() {
+        fixture.conversa = conversaEncerrada();
+        fixture.solicitanteParticipante = true;
+        when(manager.post(
+                eq(LEITURA_BULK_PATH + SOLICITANTE + "?incluirInternas=false"),
+                isNull(),
+                eq(Integer.class)))
+                .thenReturn(4);
+
+        int atualizadas = service.registrarLeitura(leitura(SOLICITANTE, false));
+
+        assertEquals(4, atualizadas);
+        verify(manager, times(1))
+                .post(
+                        eq(LEITURA_BULK_PATH + SOLICITANTE + "?incluirInternas=false"),
+                        isNull(),
+                        eq(Integer.class));
+        verify(manager, never()).getList(
+                eq("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/mensagens"),
+                any(ParameterizedTypeReference.class));
+        verify(manager, never()).get(anyString(), eq(com.confApi.chatconfianca.dto.model.MensagemLeitura.class));
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/mensagem-leituras"),
+                any(),
+                eq(com.confApi.chatconfianca.dto.model.MensagemLeitura.class));
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/mensagens"),
+                any(Mensagem.class),
+                eq(Mensagem.class));
+    }
+
+    @Test
+    void registrarLeituraDeveManterBloqueioParaUsuarioSemParticipacao() {
+        fixture.conversa = conversaEncerrada();
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.registrarLeitura(leitura(SOLICITANTE, false)));
+
+        assertEquals(403, erro.getStatus());
+        assertEquals("Usuario nao participa da conversa.", erro.getMessage());
+        verify(manager, never())
+                .post(
+                        eq(LEITURA_BULK_PATH + SOLICITANTE + "?incluirInternas=false"),
+                        isNull(),
+                        eq(Integer.class));
+    }
+
+    @Test
+    void registrarLeituraDeveManterAcessoDoGestorDaUnidade() {
+        fixture.conversa = conversaEncerrada();
+        fixture.vinculoAtendente.setPapel(PapelAtendente.GESTOR);
+        when(manager.post(
+                eq(LEITURA_BULK_PATH + ATENDENTE + "?incluirInternas=true"),
+                isNull(),
+                eq(Integer.class)))
+                .thenReturn(2);
+
+        int atualizadas = service.registrarLeitura(leitura(ATENDENTE, true));
+
+        assertEquals(2, atualizadas);
+        verify(manager, never()).get(
+                "chat-confianca/consultas/conversas/" + CONVERSA_ID
+                        + "/participantes/" + ATENDENTE + "/exists",
+                Boolean.class);
+        verify(manager, times(1))
+                .post(
+                        eq(LEITURA_BULK_PATH + ATENDENTE + "?incluirInternas=true"),
+                        isNull(),
+                        eq(Integer.class));
+    }
+
+    @Test
+    void registrarLeituraDoAtendenteResponsavelDeveIncluirNotasInternas() {
+        fixture.conversa = conversaEncerrada();
+        fixture.atendenteParticipante = true;
+        when(manager.post(
+                eq(LEITURA_BULK_PATH + ATENDENTE + "?incluirInternas=true"),
+                isNull(),
+                eq(Integer.class)))
+                .thenReturn(1);
+
+        int atualizadas = service.registrarLeitura(leitura(ATENDENTE, false));
+
+        assertEquals(1, atualizadas);
+        verify(manager, times(1))
+                .post(
+                        eq(LEITURA_BULK_PATH + ATENDENTE + "?incluirInternas=true"),
+                        isNull(),
+                        eq(Integer.class));
+    }
+
+    @Test
     void administradorGlobalConsultaHistoricoDeQualquerUnidadeMesmoVinculado() {
         fixture.atendente.setCodgAgencia(CODG_AGENCIA);
         fixture.perfisAtendente.add("ADMIN_CHAT");
@@ -279,6 +381,14 @@ class ChatConfiancaServiceTest {
         assertEquals(3, resumo.getMensagensAtendenteNaoLidas());
         assertEquals(CONVERSA_ID, resumo.getConversaAtendenteDestaqueId());
         assertEquals(2, resumo.getTotalPendencias());
+    }
+
+    private RegistrarLeituraRequest leitura(Integer codgUsuario, boolean gestor) {
+        RegistrarLeituraRequest request = new RegistrarLeituraRequest();
+        request.setConversaId(CONVERSA_ID);
+        request.setCodgUsuario(codgUsuario);
+        request.setGestor(gestor);
+        return request;
     }
 
     private Object responderGet(InvocationOnMock invocation) {
