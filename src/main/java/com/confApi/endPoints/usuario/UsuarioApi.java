@@ -141,20 +141,24 @@ public class UsuarioApi {
         HttpEntity<AuthRequestDto> requestEntity = new HttpEntity<>(requestDto, headers);
 
         try {
-            return new RestTemplate().exchange(
+            ResponseEntity<UsuarioDto> response = new RestTemplate().exchange(
                     UrlConfig.URL_CONFIANCA_MANAGER + "/usuario/auth",
                     HttpMethod.POST,
                     requestEntity,
                     UsuarioDto.class
             );
+            System.out.println("RESPONSE USUARIO: " + response.getBody() + "");
+            return response;
 
         } catch (HttpClientErrorException ex) {
+            System.out.println("ERRO1: " + ex.getMessage());
             // 4xx — credencial inválida, não encontrado, etc
             LOG.log(Level.SEVERE, "Erro ao autenticar usuario no Manager.", ex);
             alertarErro("Erro 4xx ao autenticar usuario no Manager", ex);
             throw new RegraDeNegocioException(ex.getStatusCode().value(), ex.getMessage());
 
         } catch (ResourceAccessException ex) {
+            System.out.println("ERRO2: " + ex.getMessage() + "");
             // Manager fora do ar
             LOG.log(Level.SEVERE, "Manager indisponível: " + UrlConfig.URL_CONFIANCA_MANAGER, ex);
             alertarErro("⚠️ Manager FORA DO AR - autenticação indisponível", ex);

@@ -18,6 +18,7 @@ public class UsuarioController {
 
     @PostMapping("/auth")
     public ResponseEntity<UsuarioDto> autenficarUsuario(@RequestBody AuthRequestDto requestDto) throws IOException {
+        System.out.println("entrou no auth: " + requestDto);
         return ResponseEntity.ok().body(usuarioService.autenficarUsuarioAuth(requestDto).getBody());
     }
 
