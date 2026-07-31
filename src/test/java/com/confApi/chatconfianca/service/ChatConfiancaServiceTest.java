@@ -13,6 +13,7 @@ import com.confApi.chatconfianca.dto.model.AtendimentoAvaliacao;
 import com.confApi.chatconfianca.dto.model.AtendenteStatus;
 import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.model.ConversaParticipante;
+import com.confApi.chatconfianca.dto.model.ConversaTransferencia;
 import com.confApi.chatconfianca.dto.model.DepartamentoAtendente;
 import com.confApi.chatconfianca.dto.model.DepartamentoUnidade;
 import com.confApi.chatconfianca.dto.model.FilaAtendimento;
@@ -62,6 +63,7 @@ class ChatConfiancaServiceTest {
     private static final Integer CODG_AGENCIA = 501;
     private static final Integer CODG_UNIDADE = 1;
     private static final Long DEPARTAMENTO_UNIDADE_ID = 100L;
+    private static final Long DEPARTAMENTO_REMARCACAO_ID = 200L;
     private static final Long CONVERSA_ID = 10L;
     private static final Long FILA_ID = 20L;
     private static final String LEITURA_BULK_PATH =
@@ -383,6 +385,142 @@ class ChatConfiancaServiceTest {
         assertEquals(2, resumo.getTotalPendencias());
     }
 
+    @Test
+    void deveDirecionarRemarcacaoAoUnicoDepartamentoConfiguradoDaUnidade() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        DepartamentoUnidade destino = departamentoRemarcacao(DEPARTAMENTO_REMARCACAO_ID);
+        DepartamentoAtendente atendenteDestino =
+                vinculoAtendente(DEPARTAMENTO_REMARCACAO_ID);
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(fixture.departamentoUnidade, destino));
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_REMARCACAO_ID))
+                .thenReturn(List.of(atendenteDestino));
+
+        Conversa encaminhada = service.encaminharConversaParaDepartamentoRemarcacao(
+                CONVERSA_ID, SOLICITANTE, "Conclusao da simulacao de remarcacao.");
+
+        assertEquals(DEPARTAMENTO_REMARCACAO_ID, encaminhada.getDepartamentoUnidadeId());
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, encaminhada.getStatus());
+        assertEquals(DEPARTAMENTO_REMARCACAO_ID, fixture.fila.getDepartamentoUnidadeId());
+        assertEquals(StatusFila.AGUARDANDO, fixture.fila.getStatus());
+        verify(manager).post(
+                eq("chat-confianca/persistencia/conversa-transferencias"),
+                any(ConversaTransferencia.class),
+                eq(ConversaTransferencia.class));
+    }
+
+    @Test
+    void devePreservarEncaminhamentoHumanoComumNoDepartamentoAtual() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        when(manager.get(
+                "chat-confianca/persistencia/departamento-unidades/" + DEPARTAMENTO_UNIDADE_ID,
+                DepartamentoUnidade.class))
+                .thenReturn(fixture.departamentoUnidade);
+
+        Conversa encaminhada = service.encaminharConversaParaAtendente(
+                CONVERSA_ID, SOLICITANTE, "Atendimento humano solicitado.");
+
+        assertEquals(DEPARTAMENTO_UNIDADE_ID, encaminhada.getDepartamentoUnidadeId());
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, encaminhada.getStatus());
+        assertEquals(DEPARTAMENTO_UNIDADE_ID, fixture.fila.getDepartamentoUnidadeId());
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/conversa-transferencias"),
+                any(ConversaTransferencia.class),
+                eq(ConversaTransferencia.class));
+    }
+
+    @Test
+    void naoDeveAlterarConversaQuandoNaoHaDestinoDeRemarcacaoConfigurado() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(fixture.departamentoUnidade));
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.encaminharConversaParaDepartamentoRemarcacao(
+                        CONVERSA_ID, SOLICITANTE, "Remarcacao."));
+
+        assertEquals(409, erro.getStatus());
+        assertTrue(erro.getMessage().contains("nao possui departamento ativo configurado"));
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void naoDeveAlterarConversaQuandoHaMaisDeUmDestinoDeRemarcacao() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        DepartamentoUnidade primeiro = departamentoRemarcacao(DEPARTAMENTO_REMARCACAO_ID);
+        DepartamentoUnidade segundo = departamentoRemarcacao(201L);
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(primeiro, segundo));
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.encaminharConversaParaDepartamentoRemarcacao(
+                        CONVERSA_ID, SOLICITANTE, "Remarcacao."));
+
+        assertEquals(409, erro.getStatus());
+        assertTrue(erro.getMessage().contains("mais de um departamento ativo configurado"));
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void deveManterConversaQueJaAguardaNoDepartamentoDeRemarcacao() {
+        fixture.conversa = conversaParaRemarcacao(
+                DEPARTAMENTO_REMARCACAO_ID, StatusConversa.AGUARDANDO_ATENDENTE);
+        fixture.solicitanteParticipante = true;
+        DepartamentoUnidade destino = departamentoRemarcacao(DEPARTAMENTO_REMARCACAO_ID);
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(destino));
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_REMARCACAO_ID))
+                .thenReturn(List.of(vinculoAtendente(DEPARTAMENTO_REMARCACAO_ID)));
+
+        Conversa encaminhada = service.encaminharConversaParaDepartamentoRemarcacao(
+                CONVERSA_ID, SOLICITANTE, "Remarcacao.");
+
+        assertEquals(DEPARTAMENTO_REMARCACAO_ID, encaminhada.getDepartamentoUnidadeId());
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, encaminhada.getStatus());
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void naoDeveDirecionarRemarcacaoParaDepartamentoSemAtendenteHumano() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        DepartamentoUnidade destino = departamentoRemarcacao(DEPARTAMENTO_REMARCACAO_ID);
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(destino));
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_REMARCACAO_ID))
+                .thenReturn(Collections.emptyList());
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.encaminharConversaParaDepartamentoRemarcacao(
+                        CONVERSA_ID, SOLICITANTE, "Remarcacao."));
+
+        assertEquals(409, erro.getStatus());
+        assertTrue(erro.getMessage().contains("nao possui atendente humano ativo"));
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    private void verificarQueRoteamentoNaoFoiPersistido() {
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/filas"),
+                any(FilaAtendimento.class),
+                eq(FilaAtendimento.class));
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/conversas"),
+                any(Conversa.class),
+                eq(Conversa.class));
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/conversa-transferencias"),
+                any(ConversaTransferencia.class),
+                eq(ConversaTransferencia.class));
+    }
+
     private RegistrarLeituraRequest leitura(Integer codgUsuario, boolean gestor) {
         RegistrarLeituraRequest request = new RegistrarLeituraRequest();
         request.setConversaId(CONVERSA_ID);
@@ -529,6 +667,21 @@ class ChatConfiancaServiceTest {
         return conversa;
     }
 
+    private Conversa conversaParaRemarcacao(
+            Long departamentoUnidadeId,
+            StatusConversa status) {
+        Conversa conversa = new Conversa();
+        conversa.setId(CONVERSA_ID);
+        conversa.setDepartamentoUnidadeId(departamentoUnidadeId);
+        conversa.setCodgUnidade(CODG_UNIDADE);
+        conversa.setCodgAgencia(CODG_AGENCIA);
+        conversa.setSolicitanteCodgUsuario(SOLICITANTE);
+        conversa.setAssunto("Remarcacao aerea");
+        conversa.setStatus(status);
+        conversa.setPrioridade(PrioridadeConversa.NORMAL);
+        return conversa;
+    }
+
     private AtendenteStatus statusOnline() {
         AtendenteStatus status = new AtendenteStatus();
         status.setCodgUsuario(ATENDENTE);
@@ -606,6 +759,7 @@ class ChatConfiancaServiceTest {
         departamento.setNomeExibicao("Suporte");
         departamento.setPermiteChamadoAgencia(true);
         departamento.setPermiteChamadoInterno(false);
+        departamento.setRecebeRemarcacaoAerea(false);
         departamento.setExigeAssunto(true);
         departamento.setDistribuicao(DistribuicaoDepartamento.MANUAL);
         departamento.setLimiteChatsPorAtendente(3);
@@ -613,10 +767,22 @@ class ChatConfiancaServiceTest {
         return departamento;
     }
 
+    private static DepartamentoUnidade departamentoRemarcacao(Long id) {
+        DepartamentoUnidade departamento = departamentoUnidade();
+        departamento.setId(id);
+        departamento.setNomeExibicao("Aereo / Remarcacao");
+        departamento.setRecebeRemarcacaoAerea(true);
+        return departamento;
+    }
+
     private static DepartamentoAtendente vinculoAtendente() {
+        return vinculoAtendente(DEPARTAMENTO_UNIDADE_ID);
+    }
+
+    private static DepartamentoAtendente vinculoAtendente(Long departamentoUnidadeId) {
         DepartamentoAtendente vinculo = new DepartamentoAtendente();
         vinculo.setId(1L);
-        vinculo.setDepartamentoUnidadeId(DEPARTAMENTO_UNIDADE_ID);
+        vinculo.setDepartamentoUnidadeId(departamentoUnidadeId);
         vinculo.setCodgUsuario(ATENDENTE);
         vinculo.setPapel(PapelAtendente.ATENDENTE);
         vinculo.setRecebeChamados(true);

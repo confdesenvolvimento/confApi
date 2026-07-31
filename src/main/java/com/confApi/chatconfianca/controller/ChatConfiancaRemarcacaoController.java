@@ -31,6 +31,13 @@ public class ChatConfiancaRemarcacaoController {
         return service.selecionarTrecho(id, request);
     }
 
+    @PostMapping("/{id}/passageiros")
+    public RemarcacaoSimulacaoResponse selecionarPassageiros(
+            @PathVariable Long id,
+            @RequestBody RemarcacaoRequest.SelecionarPassageiros request) {
+        return service.selecionarPassageiros(id, request);
+    }
+
     @PostMapping("/{id}/pesquisar")
     public RemarcacaoSimulacaoResponse pesquisar(@PathVariable Long id,
                                                  @RequestBody RemarcacaoRequest.Pesquisar request) {
@@ -41,6 +48,13 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse simular(@PathVariable Long id,
                                                @RequestBody RemarcacaoRequest.Simular request) {
         return service.simular(id, request);
+    }
+
+    @PostMapping("/{id}/forma-pagamento")
+    public RemarcacaoSimulacaoResponse selecionarFormaPagamento(
+            @PathVariable Long id,
+            @RequestBody RemarcacaoRequest.SelecionarFormaPagamento request) {
+        return service.selecionarFormaPagamento(id, request);
     }
 
     @PostMapping("/{id}/encaminhar")

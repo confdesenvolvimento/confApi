@@ -69,16 +69,20 @@ public class LimitesService {
                     // evitar NPE para quem consome
                     body.setLimiteCredito(Collections.emptyList());
                 }
+                body.setConsultaConfirmada(true);
+                body.setMensagemConsulta(null);
                 return body;
             }
 
             LOG.log(Level.WARNING, "consultaLimiteApi retornou status {0} sem corpo válido",
                     response.getStatusCode());
-            return emptyDisponibilidade();
+            return indisponibilidadeTecnica(
+                    "Servico de limites retornou uma resposta sem dados validos.");
 
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Erro ao consultar limite de crédito", e);
-            return emptyDisponibilidade();
+            return indisponibilidadeTecnica(
+                    "Nao foi possivel consultar o servico de limites.");
         }
     }
 
@@ -137,9 +141,11 @@ public class LimitesService {
         return headers;
     }
 
-    private Disponibilidade emptyDisponibilidade() {
+    private Disponibilidade indisponibilidadeTecnica(String mensagem) {
         Disponibilidade d = new Disponibilidade();
         d.setLimiteCredito(Collections.emptyList());
+        d.setConsultaConfirmada(false);
+        d.setMensagemConsulta(mensagem);
         return d;
     }
 

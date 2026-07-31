@@ -23,6 +23,13 @@ public final class RemarcacaoRequest {
     }
 
     @Data
+    public static class SelecionarPassageiros {
+        private Integer codgUsuario;
+        private String escopo;
+        private Integer passageiroIndice;
+    }
+
+    @Data
     public static class Pesquisar {
         private Integer codgUsuario;
         private LocalDate data;
@@ -35,6 +42,12 @@ public final class RemarcacaoRequest {
         private Integer codgUsuario;
         private Integer opcaoIndice;
         private Integer familiaIndice;
+    }
+
+    @Data
+    public static class SelecionarFormaPagamento {
+        private Integer codgUsuario;
+        private Integer codigo;
     }
 
     @Data

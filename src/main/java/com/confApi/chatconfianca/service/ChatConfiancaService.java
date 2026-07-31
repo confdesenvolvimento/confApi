@@ -492,13 +492,13 @@ public class ChatConfiancaService {
         validarObrigatorio(codgUsuario, "Informe o usuario.");
 
         Conversa conversa = buscarConversaOuFalhar(conversaId);
-        boolean acessoGestor = ehGestorOuAdmin(codgUsuario, conversa.getCodgUnidade());
-        if (!acessoGestor && !usuarioParticipa(conversaId, codgUsuario)) {
-            throw regra(403, "Usuario nao participa da conversa.");
-        }
+        validarSolicitacaoAtendimentoHumano(conversa, codgUsuario);
         if (conversa.getStatus() == StatusConversa.EM_ATENDIMENTO
                 || conversa.getStatus() == StatusConversa.AGUARDANDO_ATENDENTE) {
             return conversa;
+        }
+        if (!aceitaMensagem(conversa.getStatus())) {
+            throw regra(409, "Conversa nao aceita encaminhamento para atendimento humano.");
         }
 
         DepartamentoUnidade departamentoUnidade = manager.get(
@@ -512,21 +512,120 @@ public class ChatConfiancaService {
             throw regra(400, "Este departamento nao possui atendente humano disponivel no momento.");
         }
 
+        return encaminharConversaParaAtendente(
+                conversa, departamentoUnidade, codgUsuario, motivo, false);
+    }
+
+    /**
+     * Direciona o handoff de remarcacao para o unico departamento ativo da
+     * unidade explicitamente configurado para receber remarcacoes aereas.
+     *
+     * <p>A configuracao e a existencia de atendente humano sao integralmente
+     * validadas antes da primeira escrita. Assim, configuracoes ausentes ou
+     * ambiguas nao alteram conversa, fila ou historico.</p>
+     */
+    public Conversa encaminharConversaParaDepartamentoRemarcacao(
+            Long conversaId,
+            Integer codgUsuario,
+            String motivo) {
+        validarObrigatorio(conversaId, "Informe a conversa.");
+        validarObrigatorio(codgUsuario, "Informe o usuario.");
+
+        Conversa conversa = buscarConversaOuFalhar(conversaId);
+        validarSolicitacaoAtendimentoHumano(conversa, codgUsuario);
+        if (!aceitaMensagem(conversa.getStatus())) {
+            throw regra(409, "Conversa nao aceita encaminhamento para atendimento humano.");
+        }
+        if (conversa.getCodgUnidade() == null) {
+            throw regra(409,
+                    "A conversa nao possui unidade definida para localizar o departamento de remarcacao aerea.");
+        }
+
+        List<DepartamentoUnidade> configurados =
+                configService.listarDepartamentoUnidadesPorUnidade(conversa.getCodgUnidade());
+        List<DepartamentoUnidade> destinos = (configurados == null
+                ? List.<DepartamentoUnidade>of()
+                : configurados).stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getId() != null)
+                .filter(item -> Objects.equals(item.getCodgUnidade(), conversa.getCodgUnidade()))
+                .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
+                .filter(item -> Boolean.TRUE.equals(item.getRecebeRemarcacaoAerea()))
+                .collect(Collectors.toList());
+
+        if (destinos.isEmpty()) {
+            throw regra(409,
+                    "A unidade da conversa nao possui departamento ativo configurado "
+                            + "para receber remarcacao aerea.");
+        }
+        if (destinos.size() > 1) {
+            throw regra(409,
+                    "A unidade da conversa possui mais de um departamento ativo configurado "
+                            + "para receber remarcacao aerea. Mantenha apenas um destino.");
+        }
+
+        DepartamentoUnidade destino = destinos.get(0);
+        if (!possuiAtendenteHumano(destino)) {
+            throw regra(409,
+                    "O departamento configurado para remarcacao aerea nao possui "
+                            + "atendente humano ativo para receber chamados.");
+        }
+
+        boolean mudouDepartamento =
+                !Objects.equals(conversa.getDepartamentoUnidadeId(), destino.getId());
+        if (!mudouDepartamento
+                && (conversa.getStatus() == StatusConversa.EM_ATENDIMENTO
+                || conversa.getStatus() == StatusConversa.AGUARDANDO_ATENDENTE)) {
+            return conversa;
+        }
+
+        return encaminharConversaParaAtendente(
+                conversa, destino, codgUsuario, motivo, mudouDepartamento);
+    }
+
+    private void validarSolicitacaoAtendimentoHumano(Conversa conversa, Integer codgUsuario) {
+        boolean acessoGestor = ehGestorOuAdmin(codgUsuario, conversa.getCodgUnidade());
+        if (!acessoGestor && !usuarioParticipa(conversa.getId(), codgUsuario)) {
+            throw regra(403, "Usuario nao participa da conversa.");
+        }
+    }
+
+    private Conversa encaminharConversaParaAtendente(
+            Conversa conversa,
+            DepartamentoUnidade departamentoUnidade,
+            Integer codgUsuario,
+            String motivo,
+            boolean registrarTransferencia) {
         LocalDateTime agora = LocalDateTime.now();
-        FilaAtendimento fila = buscarFilaPorConversa(conversaId);
+        Long departamentoOrigemId = conversa.getDepartamentoUnidadeId();
+        Integer atendenteOrigem = conversa.getAtendenteResponsavelCodgUsuario();
+        FilaAtendimento fila = buscarFilaPorConversa(conversa.getId());
         if (fila == null) {
             fila = new FilaAtendimento();
             fila.setConversaId(conversa.getId());
-            fila.setDepartamentoUnidadeId(conversa.getDepartamentoUnidadeId());
-            fila.setCodgUnidade(conversa.getCodgUnidade());
-            fila.setCodgAgencia(conversa.getCodgAgencia());
-            fila.setSolicitanteCodgUsuario(conversa.getSolicitanteCodgUsuario());
-            fila.setPrioridade(conversa.getPrioridade());
-            fila.setPosicao(calcularProximaPosicao(conversa.getDepartamentoUnidadeId()));
         }
+        fila.setDepartamentoUnidadeId(departamentoUnidade.getId());
+        fila.setCodgUnidade(departamentoUnidade.getCodgUnidade() == null
+                ? conversa.getCodgUnidade()
+                : departamentoUnidade.getCodgUnidade());
+        fila.setCodgAgencia(conversa.getCodgAgencia());
+        fila.setSolicitanteCodgUsuario(conversa.getSolicitanteCodgUsuario());
+        fila.setPrioridade(conversa.getPrioridade());
+        fila.setPosicao(calcularProximaPosicao(departamentoUnidade.getId()));
         fila.setStatus(StatusFila.AGUARDANDO);
+        fila.setAtendenteDestinoCodgUsuario(null);
+        fila.setChamadoEm(null);
+        fila.setSaiuEm(null);
+        fila.setMotivoSaida(null);
         fila = manager.post("chat-confianca/persistencia/filas", fila, FilaAtendimento.class);
 
+        conversa.setDepartamentoUnidadeId(departamentoUnidade.getId());
+        if (departamentoUnidade.getCodgUnidade() != null) {
+            conversa.setCodgUnidade(departamentoUnidade.getCodgUnidade());
+        }
+        if (registrarTransferencia) {
+            conversa.setAtendenteResponsavelCodgUsuario(null);
+        }
         conversa.setStatus(StatusConversa.AGUARDANDO_ATENDENTE);
         conversa.setUltimoEventoEm(agora);
         conversa = manager.post("chat-confianca/persistencia/conversas", conversa, Conversa.class);
@@ -534,6 +633,24 @@ public class ChatConfiancaService {
         String descricao = isBlank(motivo)
                 ? "Atendimento humano solicitado."
                 : motivo.trim();
+        if (registrarTransferencia) {
+            registrarTransferenciaAutomaticaRemarcacao(
+                    conversa,
+                    departamentoOrigemId,
+                    atendenteOrigem,
+                    departamentoUnidade.getId(),
+                    descricao,
+                    agora);
+            try {
+                atualizarCargaAtendente(atendenteOrigem);
+            } catch (RuntimeException ex) {
+                LOGGER.log(Level.WARNING,
+                        "Conversa " + conversa.getId()
+                                + " foi direcionada para remarcacao, mas a carga do atendente anterior "
+                                + "nao foi atualizada.",
+                        ex);
+            }
+        }
         registrarEvento(conversa.getId(), "ATENDIMENTO_HUMANO_SOLICITADO", codgUsuario, descricao);
         persistirResumoConfiaParaAtendimento(conversa, departamentoUnidade, descricao);
         persistirMensagem(conversa, null,
@@ -541,6 +658,35 @@ public class ChatConfiancaService {
                 false, TipoMensagem.SISTEMA, null, RemetenteTipo.SISTEMA);
 
         return distribuirAutomaticamenteSePossivel(conversa, fila, departamentoUnidade, agora);
+    }
+
+    private void registrarTransferenciaAutomaticaRemarcacao(
+            Conversa conversa,
+            Long departamentoOrigemId,
+            Integer atendenteOrigem,
+            Long departamentoDestinoId,
+            String motivo,
+            LocalDateTime agora) {
+        try {
+            ConversaTransferencia transferencia = new ConversaTransferencia();
+            transferencia.setConversaId(conversa.getId());
+            transferencia.setDepartamentoUnidadeOrigemId(departamentoOrigemId);
+            transferencia.setDepartamentoUnidadeDestinoId(departamentoDestinoId);
+            transferencia.setAtendenteOrigemCodgUsuario(atendenteOrigem);
+            transferencia.setAtendenteDestinoCodgUsuario(null);
+            transferencia.setMotivo(motivo);
+            transferencia.setStatus(StatusTransferencia.ACEITA);
+            transferencia.setRespondidoEm(agora);
+            manager.post(
+                    "chat-confianca/persistencia/conversa-transferencias",
+                    transferencia,
+                    ConversaTransferencia.class);
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.WARNING,
+                    "Conversa " + conversa.getId()
+                            + " foi direcionada para remarcacao, mas o historico de transferencia nao foi salvo.",
+                    ex);
+        }
     }
 
     private void persistirResumoConfiaParaAtendimento(Conversa conversa,

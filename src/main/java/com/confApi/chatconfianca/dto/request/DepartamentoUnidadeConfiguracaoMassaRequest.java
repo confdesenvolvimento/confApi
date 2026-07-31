@@ -16,6 +16,7 @@ public class DepartamentoUnidadeConfiguracaoMassaRequest {
     private Boolean alterarNomeExibicao;
     private Boolean alterarPermiteChamadoAgencia;
     private Boolean alterarPermiteChamadoInterno;
+    private Boolean alterarRecebeRemarcacaoAerea;
     private Boolean alterarExigeAssunto;
     private Boolean alterarDistribuicao;
     private Boolean alterarLimiteChatsPorAtendente;
@@ -25,6 +26,7 @@ public class DepartamentoUnidadeConfiguracaoMassaRequest {
     private String nomeExibicao;
     private Boolean permiteChamadoAgencia;
     private Boolean permiteChamadoInterno;
+    private Boolean recebeRemarcacaoAerea;
     private Boolean exigeAssunto;
     private DistribuicaoDepartamento distribuicao;
     private Integer limiteChatsPorAtendente;
@@ -35,6 +37,7 @@ public class DepartamentoUnidadeConfiguracaoMassaRequest {
         return Boolean.TRUE.equals(alterarNomeExibicao)
                 || Boolean.TRUE.equals(alterarPermiteChamadoAgencia)
                 || Boolean.TRUE.equals(alterarPermiteChamadoInterno)
+                || Boolean.TRUE.equals(alterarRecebeRemarcacaoAerea)
                 || Boolean.TRUE.equals(alterarExigeAssunto)
                 || Boolean.TRUE.equals(alterarDistribuicao)
                 || Boolean.TRUE.equals(alterarLimiteChatsPorAtendente)

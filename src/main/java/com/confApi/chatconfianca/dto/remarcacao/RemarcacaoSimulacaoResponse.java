@@ -17,9 +17,15 @@ public class RemarcacaoSimulacaoResponse {
     private String companhiaIata;
     private String titulo;
     private String mensagem;
+    private String motivoBloqueio;
     private LocalDateTime expiraEm;
     private boolean permiteEncaminhar;
+    private boolean permiteSelecionarTodos;
+    private boolean exigeFormaPagamento;
     private List<Trecho> trechos = new ArrayList<>();
+    private List<Passageiro> passageiros = new ArrayList<>();
+    private List<FormaPagamento> formasPagamento = new ArrayList<>();
+    private FormaPagamento formaPagamentoSelecionada;
     private Criterios criterios;
     private List<OpcaoVoo> opcoes = new ArrayList<>();
     private Previa previa;
@@ -36,6 +42,17 @@ public class RemarcacaoSimulacaoResponse {
         private String horaChegada;
         private String numeroVoos;
         private boolean selecionado;
+    }
+
+    @Data
+    public static class Passageiro {
+        private Integer indice;
+        private String identificador;
+        private String nome;
+        private String tipo;
+        private boolean selecionado;
+        private boolean elegivel;
+        private String motivoInelegibilidade;
     }
 
     @Data
@@ -93,9 +110,39 @@ public class RemarcacaoSimulacaoResponse {
         private BigDecimal diferencaTaxas;
         private BigDecimal taxaServico;
         private BigDecimal totalEstimado;
+        private BigDecimal totalSelecionado;
+        private List<PreviaPassageiro> passageiros = new ArrayList<>();
         private boolean calculoCompleto;
         private String regraResumo;
         private String aviso;
         private LocalDateTime validoAte;
+    }
+
+    @Data
+    public static class PreviaPassageiro {
+        private Integer indice;
+        private String identificador;
+        private String nome;
+        private String tipo;
+        private String familiaOriginal;
+        private BigDecimal tarifaOriginal;
+        private BigDecimal novaTarifa;
+        private BigDecimal multa;
+        private BigDecimal diferencaTarifaria;
+        private BigDecimal diferencaTaxaEmbarque;
+        private BigDecimal taxaDu;
+        private BigDecimal totalEstimado;
+        private boolean calculoCompleto;
+    }
+
+    @Data
+    public static class FormaPagamento {
+        private Integer codigo;
+        private String chave;
+        private String descricao;
+        private boolean disponivel;
+        private String status;
+        private String mensagem;
+        private LocalDateTime selecionadaEm;
     }
 }

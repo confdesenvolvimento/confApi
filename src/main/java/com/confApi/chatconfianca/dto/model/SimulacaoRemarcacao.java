@@ -27,6 +27,10 @@ public class SimulacaoRemarcacao {
     private String resultadosJson;
     private String ofertaSelecionadaJson;
     private String calculoJson;
+    private Integer formaPagamentoCodigo;
+    private String formaPagamentoDescricao;
+    private String pagamentoStatus;
+    private LocalDateTime pagamentoSelecionadoEm;
     private String motivoBloqueio;
     private LocalDateTime expiraEm;
     private LocalDateTime criadoEm;
