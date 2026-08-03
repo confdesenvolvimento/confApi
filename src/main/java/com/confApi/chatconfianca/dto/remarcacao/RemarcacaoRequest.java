@@ -12,6 +12,7 @@ public final class RemarcacaoRequest {
     public static class Iniciar {
         private Long conversaId;
         private Integer codgUsuario;
+        private Integer reservaId;
         private String localizador;
         private Integer codgAgenciaSessao;
     }

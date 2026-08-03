@@ -7,6 +7,8 @@ import com.confApi.aereo.dto.ConsultarLocalizadorRequest;
 import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
 import com.confApi.aereo.dto.Reserva;
 import com.confApi.aereo.dto.regrasAereas.RegrasAereasReservaResponse;
+import com.confApi.chatconfianca.dto.reserva.ReservasAereasRecentesResponse;
+import com.confApi.chatconfianca.service.ChatConfiancaReservaAereaService;
 import com.confApi.chatgpt.config.ChatHistoryUtil;
 import com.confApi.chatgpt.config.OpenAIProperties;
 import com.confApi.chatgpt.dto.*;
@@ -39,7 +41,6 @@ import com.confApi.db.confManager.faturas.dto.FaturaSicaRS;
 import com.confApi.db.confManager.faturas.dto.model.FaturaResponseIA;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
 import com.confApi.db.confManager.regraAereaReembolso.dto.RegraAereaReembolsoConsultaResponse;
-import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.hub.limites.LimitesService;
 import com.confApi.hub.limites.dto.Disponibilidade;
 import com.confApi.hub.limites.dto.LimiteCreditoRQ;
@@ -70,6 +71,8 @@ public class ChatService {
     private static final int LIMITE_PASSAGEIROS_RESUMO = 5;
     private static final int LIMITE_TRECHOS_RESUMO = 4;
     private static final int LIMITE_VOOS_RESUMO = 8;
+    private static final Set<String> COMPANHIAS_REMARCACAO_SUPORTADAS =
+            Set.of("G3", "LA", "JJ", "AD");
 
     private final OkHttpClient client;
     private final OpenAIProperties props;
@@ -81,12 +84,13 @@ public class ChatService {
     private final CheckinService checkinService;
     private final FamiliaService familiaService;
     private final AlertaTarifaService alertaTarifaService;
-    private final ReservaAereoApi reservaAereoApi;
+    private final ChatConfiancaReservaAereaService chatConfiancaReservaAereaService;
     private final AereoClient aereoClient;
     private final AereoRegrasReservaService regrasReservaService;
 
 
     private final ObjectMapper mapper = new ObjectMapper()
+            .findAndRegisterModules()
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
 
@@ -263,6 +267,7 @@ public class ChatService {
 
     public List<String> actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req) {
         String keyword = inferirKeywordOperacional(req.input());
+        boolean intencaoDeterministica = keyword != null;
         if (keyword == null) {
             keyword = "desconhecido";
             try {
@@ -274,8 +279,13 @@ public class ChatService {
         List<String> keywords = Optional.ofNullable(req.keywords()).orElseGet(ArrayList::new);
         String localizadorReserva = null;
         boolean contextoReservaAerea = keywords.contains("reserva_aerea_detalhes") || keywords.contains("reserva_aerea_regras");
-        if (deveTentarCarregarReservaAerea(req.input(), keyword) || contextoReservaAerea) {
-            localizadorReserva = extrairLocalizador(req.input());
+        if (isKeywordSeletorRemarcacao(keyword)) {
+            localizadorReserva = extrairLocalizadorDeterministico(req.input());
+            messages.add(montarMensagemSeletorRemarcacao(localizadorReserva));
+        } else if (deveTentarCarregarReservaAerea(req.input(), keyword) || contextoReservaAerea) {
+            localizadorReserva = intencaoDeterministica
+                    ? extrairLocalizadorDeterministico(req.input())
+                    : extrairLocalizador(req.input());
             if (localizadorReserva != null && "desconhecido".equals(keyword)) {
                 keyword = keywords.contains("reserva_aerea_regras") ? "reserva_aerea_regras" : "reserva_aerea_detalhes";
             } else if (localizadorReserva != null && "reserva_aerea_detalhes".equals(keyword)) {
@@ -332,9 +342,7 @@ public class ChatService {
             /*Consultar Checkin proximos 72 horas*/
             messages.add(buscarCheckinsProximos(req));
         }
-        System.out.println("keyword "+keyword);
         if ((keyword.equals("ultimas_reservas_aereas") || keyword.equals("ultimas_vendas")) && !keywords.contains(keyword)) {
-            System.out.println("Entrou nas reservas");
             /*Consultar ultimas reservas aereas do usuario*/
             messages.add(listarUltimasVendas(req));
         }
@@ -361,6 +369,70 @@ public class ChatService {
         return keywords;
     }
 
+    public boolean isListagemReservasRecentesDeterministica(String input) {
+        return isKeywordUltimasReservasAereas(classificarIntencaoOperacionalDeterministica(input));
+    }
+
+    String classificarIntencaoOperacionalDeterministica(String input) {
+        return inferirKeywordOperacional(input);
+    }
+
+    public String identificarAcaoSolicitadaDeterministica(String input) {
+        String keyword = classificarIntencaoOperacionalDeterministica(input);
+        if (keyword == null || isKeywordUltimasReservasAereas(keyword)) {
+            return null;
+        }
+
+        String localizador = extrairLocalizadorDeterministico(input);
+        if (localizador == null) {
+            return null;
+        }
+
+        String normalizado = normalizarTexto(input);
+        if (possuiNegacaoExplicitaDeAcao(normalizado)) {
+            return null;
+        }
+        if ("simular_remarcacao".equals(keyword)) {
+            return "simular_remarcacao";
+        }
+        if ("reserva_aerea_regras".equals(keyword)) {
+            return contemAlgum(normalizado, "cancelar", "cancele", "cancelamento")
+                    ? "preparar_cancelamento"
+                    : "consultar_regras";
+        }
+        if ("reserva_aerea_detalhes".equals(keyword)
+                && contemAlgum(normalizado, "abrir", "abra", "abre")) {
+            return "abrir_reserva";
+        }
+        return null;
+    }
+
+    private boolean possuiNegacaoExplicitaDeAcao(String textoNormalizado) {
+        if (textoNormalizado == null || textoNormalizado.isBlank()) {
+            return false;
+        }
+        return Pattern.compile(
+                        "\\bnao\\b(?:\\s+(?:quero|desejo|pretendo|vou|preciso))?"
+                                + "(?:\\s+[a-z0-9]+){0,3}\\s+"
+                                + "(?:abrir|abra|simular|simule|remarcar|remarque|cancelar|cancele)\\b")
+                .matcher(textoNormalizado)
+                .find();
+    }
+
+    public ChatResponseDTO responderListagemReservasRecentes(ConversationRequestDTO req) {
+        ChatMessageDTO payload = listarUltimasVendas(req);
+        List<ChatMessageDTO> structuredHistory = List.of(payload);
+        return new ChatResponseDTO(
+                null,
+                null,
+                new ArrayList<>(),
+                null,
+                List.of("ultimas_reservas_aereas"),
+                structuredHistory,
+                extrairAcoesDisponiveis(structuredHistory)
+        );
+    }
+
     public List<ChatActionDTO> extrairAcoesDisponiveis(List<ChatMessageDTO> messages) {
         List<ChatActionDTO> actions = new ArrayList<>();
         Set<String> adicionadas = new HashSet<>();
@@ -380,19 +452,30 @@ public class ChatService {
             String localizadorConsultado = root.path("localizadorConsultado").asText(null);
             String localizadorContexto = root.path("localizadorContexto").asText(localizadorConsultado);
             adicionarChatActions(actions, adicionadas, root.path("acoesDisponiveis"), localizadorContexto);
+            adicionarChatActions(actions, adicionadas, root.path("actions"), localizadorContexto);
+
+            JsonNode reservasRecentes = root.path("reservasRecentes").path("reservas");
+            adicionarAcoesReservas(actions, adicionadas, reservasRecentes, localizadorConsultado);
 
             JsonNode reservas = root.path("reservas");
-            if (!reservas.isArray()) {
-                continue;
-            }
-
-            for (JsonNode reserva : reservas) {
-                String localizador = reserva.path("localizador").asText(localizadorConsultado);
-                adicionarChatActions(actions, adicionadas, reserva.path("acoesDisponiveis"), localizador);
-            }
+            adicionarAcoesReservas(actions, adicionadas, reservas, localizadorConsultado);
         }
 
         return actions;
+    }
+
+    private void adicionarAcoesReservas(List<ChatActionDTO> actions,
+                                        Set<String> adicionadas,
+                                        JsonNode reservas,
+                                        String localizadorPadrao) {
+        if (reservas == null || !reservas.isArray()) {
+            return;
+        }
+        for (JsonNode reserva : reservas) {
+            String localizador = reserva.path("localizador").asText(localizadorPadrao);
+            adicionarChatActions(actions, adicionadas, reserva.path("acoesDisponiveis"), localizador);
+            adicionarChatActions(actions, adicionadas, reserva.path("actions"), localizador);
+        }
     }
 
     private void adicionarChatActions(List<ChatActionDTO> actions, Set<String> adicionadas, JsonNode acoes, String localizador) {
@@ -405,7 +488,7 @@ public class ChatService {
             if (action == null) {
                 continue;
             }
-            String chave = action.code() + "|" + action.localizador();
+            String chave = action.code() + "|" + action.localizador() + "|" + action.reservaId();
             if (adicionadas.add(chave)) {
                 actions.add(action);
             }
@@ -417,23 +500,32 @@ public class ChatService {
             return null;
         }
 
-        String code = acao.path("codigo").asText(null);
+        String code = textoAcao(acao, "codigo", "code");
         if (code == null || code.isBlank()) {
             return null;
         }
 
-        String label = acao.path("titulo").asText(code);
-        String description = acao.path("descricao").asText("");
-        Boolean requiresConfirmation = booleanNode(acao, "precisaConfirmacao");
-        Boolean requiresRules = booleanNode(acao, "exigeConsultaRegras");
-        Boolean sensitive = booleanNode(acao, "operacaoSensivel");
-        String prompt = montarPromptAcaoChat(code, label, localizador, requiresConfirmation, requiresRules, sensitive);
+        String label = primeiroTextoAcao(acao, code, "titulo", "label");
+        String description = primeiroTextoAcao(acao, "", "descricao", "description");
+        Boolean requiresConfirmation = primeiroBooleanAcao(
+                acao, "precisaConfirmacao", "requiresConfirmation");
+        Boolean requiresRules = primeiroBooleanAcao(
+                acao, "exigeConsultaRegras", "requiresRules");
+        Boolean sensitive = primeiroBooleanAcao(acao, "operacaoSensivel", "sensitive");
+        String localizadorAcao = primeiroTextoAcao(acao, localizador, "localizador");
+        Integer reservaId = acao.hasNonNull("reservaId") ? acao.path("reservaId").asInt() : null;
+        String prompt = primeiroTextoAcao(acao, null, "prompt");
+        if (prompt == null || prompt.isBlank()) {
+            prompt = montarPromptAcaoChat(code, label, localizadorAcao,
+                    requiresConfirmation, requiresRules, sensitive);
+        }
 
         return new ChatActionDTO(
                 code,
                 label,
                 description,
-                localizador,
+                localizadorAcao,
+                reservaId,
                 requiresConfirmation,
                 requiresRules,
                 sensitive,
@@ -441,8 +533,33 @@ public class ChatService {
         );
     }
 
-    private Boolean booleanNode(JsonNode node, String field) {
-        return node != null && node.has(field) ? node.path(field).asBoolean(false) : false;
+    private String textoAcao(JsonNode node, String... fields) {
+        return primeiroTextoAcao(node, null, fields);
+    }
+
+    private String primeiroTextoAcao(JsonNode node, String valorPadrao, String... fields) {
+        if (node != null) {
+            for (String field : fields) {
+                if (node.hasNonNull(field)) {
+                    String value = node.path(field).asText(null);
+                    if (value != null && !value.isBlank()) {
+                        return value;
+                    }
+                }
+            }
+        }
+        return valorPadrao;
+    }
+
+    private Boolean primeiroBooleanAcao(JsonNode node, String... fields) {
+        if (node != null) {
+            for (String field : fields) {
+                if (node.has(field)) {
+                    return node.path(field).asBoolean(false);
+                }
+            }
+        }
+        return false;
     }
 
     private String montarPromptAcaoChat(String code, String label, String localizador,
@@ -454,7 +571,8 @@ public class ChatService {
             case "abrir_reserva" ->
                     "Abrir a reserva" + loc + " no sistema.";
             case "preparar_emissao" ->
-                    "Quero preparar a emissao da reserva" + loc + ". Confira os dados e me diga o que falta antes de emitir.";
+                    "A emissao nao e executada pelo chat. Abra a reserva" + loc
+                            + " no sistema para consultar e concluir a emissao, se ela estiver disponivel.";
             case "consultar_bilhetes" ->
                     "Mostre os bilhetes e e-tickets da reserva" + loc + ".";
             case "preparar_reenvio_voucher" ->
@@ -469,8 +587,11 @@ public class ChatService {
                     "Quero preparar o reembolso da reserva" + loc + ". Consulte as regras antes.";
             case "preparar_alteracao" ->
                     "Quero preparar a alteracao ou remarcacao da reserva" + loc + ". Consulte as regras antes.";
+            case "selecionar_reserva_remarcacao" ->
+                    "Abra o seletor de reservas emitidas para eu escolher qual desejo remarcar.";
             case "simular_remarcacao" ->
-                    "Quero simular a alteracao da reserva" + loc + ".";
+                    "Abra o seletor de reservas emitidas e use o localizador" + loc
+                            + " apenas para preencher a busca. Nao inicie a simulacao antes da minha selecao.";
             default ->
                     label + " da reserva" + loc + ".";
         };
@@ -542,28 +663,66 @@ public class ChatService {
             return null;
         }
 
+        String localizadorDeterministico = extrairLocalizadorDeterministico(input);
+
+        boolean perguntaSobreRegra = contemAlgum(normalizado,
+                "multa", "regra", "taxa", "penalidade", "reembolso", "cancelamento", "cancelar",
+                "quanto custa", "qual valor");
+        boolean expressaoDeVontade = contemAlgum(normalizado,
+                "quero", "preciso", "desejo", "gostaria", "fazer", "iniciar");
+        boolean intencaoOperacionalRemarcacao = normalizado.contains("remarcar")
+                || (normalizado.contains("simular")
+                && contemAlgum(normalizado, "remarcacao", "alteracao", "alterar", "mudanca", "troca"))
+                || (normalizado.contains("remarcacao")
+                && expressaoDeVontade)
+                || (expressaoDeVontade && normalizado.contains("alterar")
+                && contemAlgum(normalizado, "data", "voo", "reserva", "passagem"));
+        boolean pedidoRemarcacao = intencaoOperacionalRemarcacao && !perguntaSobreRegra;
+        if (pedidoRemarcacao) {
+            return localizadorDeterministico == null
+                    ? "selecionar_reserva_remarcacao" : "simular_remarcacao";
+        }
+
         boolean assuntoReservaAerea = contemAlgum(normalizado,
                 "reserva", "localizador", "bilhete", "passagem", "aereo", "voo");
         boolean assuntoRegra = contemAlgum(normalizado,
                 "regra", "multa", "reembolso", "reembolsar", "alteracao", "alterar",
                 "remarcacao", "remarcar", "cancelamento", "cancelar", "penalidade");
+        boolean pedidoAbrir = contemAlgum(normalizado, "abrir", "abra", "abre");
+        boolean comandoDadosReserva = contemAlgum(normalizado,
+                "dados", "detalhe", "detalhes", "carrega", "carregar", "consulta", "consultar",
+                "ver", "mostre", "mostrar", "visualizar", "informacao", "informacoes", "status",
+                "emitir", "emissao", "assento", "assentos", "bilhete", "bilhetes", "eticket",
+                "voucher", "acoes", "acao", "fazer", "checkin");
+
+        if (localizadorDeterministico != null && assuntoRegra) {
+            return "reserva_aerea_regras";
+        }
+        if (localizadorDeterministico != null
+                && (pedidoAbrir || assuntoReservaAerea || comandoDadosReserva)) {
+            return "reserva_aerea_detalhes";
+        }
 
         if (assuntoReservaAerea && assuntoRegra) {
             return "reserva_aerea_regras";
         }
-        boolean pedidoListagemRecente = contemAlgum(normalizado,
-                "ultima", "ultimas", "recente", "recentes", "listar", "lista", "mostre", "mostrar", "minhas");
         boolean assuntoListagemReserva = contemAlgum(normalizado,
                 "reserva", "reservas", "venda", "vendas", "passagem", "passagens", "aereo", "aereas", "voo", "voos");
+        boolean referenciaRecencia = contemAlgum(normalizado,
+                "ultima", "ultimas", "recente", "recentes");
+        boolean assuntoPlural = contemAlgum(normalizado,
+                "reservas", "vendas", "passagens", "voos");
+        boolean comandoListagem = contemAlgum(normalizado,
+                "listar", "liste", "lista", "relacao", "mostre", "mostrar", "visualizar",
+                "exibir", "minhas", "meus", "quais");
+        boolean pedidoListagemRecente = referenciaRecencia
+                || (comandoListagem && assuntoPlural);
 
         if (pedidoListagemRecente && assuntoListagemReserva) {
             return "ultimas_reservas_aereas";
         }
-        boolean pedidoDadosReserva = assuntoReservaAerea && contemAlgum(normalizado,
-                "dados", "detalhe", "detalhes", "carrega", "carregar", "consulta", "consultar",
-                "ver", "mostrar", "informacao", "informacoes", "status", "emitir", "emissao",
-                "assento", "assentos", "bilhete", "bilhetes", "eticket", "voucher", "acoes",
-                "acao", "fazer", "checkin");
+        boolean pedidoDadosReserva = assuntoReservaAerea
+                && (pedidoAbrir || comandoDadosReserva);
 
         if (pedidoDadosReserva) {
             return "reserva_aerea_detalhes";
@@ -577,6 +736,10 @@ public class ChatService {
 
     private boolean isKeywordCarregarReservaAerea(String keyword) {
         return "reserva_aerea_regras".equals(keyword) || "reserva_aerea_detalhes".equals(keyword);
+    }
+
+    private boolean isKeywordSeletorRemarcacao(String keyword) {
+        return "selecionar_reserva_remarcacao".equals(keyword) || "simular_remarcacao".equals(keyword);
     }
 
     private boolean deveTentarCarregarReservaAerea(String input, String keyword) {
@@ -627,7 +790,8 @@ public class ChatService {
                     "Dado do sistema (reserva_aerea_regras): " + mapper.writeValueAsString(resumo) +
                             "\nResponda em texto claro. Traga os dados da reserva e informe regras de cancelamento, reembolso e alteracao/remarcacao quando os dados existirem. " +
                             "Se a consulta falhar ou faltarem dados, explique a limitacao e solicite o dado faltante. " +
-                            "Nao confirme cancelamento, reembolso ou remarcacao executados; apenas oriente e, se necessario, diga que precisa de confirmacao operacional.");
+                            "Nao confirme cancelamento, reembolso ou remarcacao executados. Para cancelamento, apenas prepare a solicitacao, " +
+                            "explique os impactos e exija confirmacao explicita antes de qualquer fluxo operacional.");
         } catch (Exception e) {
             return new ChatMessageDTO("system",
                     "Dado do sistema (reserva_aerea_regras): nao foi possivel carregar a reserva " + localizador +
@@ -655,7 +819,8 @@ public class ChatService {
                             "\nResponda em texto claro trazendo somente os dados da reserva encontrada: localizador, status, sistema, datas, prazo, passageiros, trechos/voos, bagagem, bilhetes e valores quando existirem. " +
                             "Quando existirem acoesDisponiveis ou alertasOperacionais, use esses dados para sugerir os proximos passos. " +
                             "Nao fale de regras, multa, reembolso, cancelamento ou remarcacao se estes dados nao foram solicitados nesta mensagem; nesse caso, ofereca apenas consultar as regras. " +
-                            "Nao confirme emissao, cancelamento, reembolso, remarcacao ou reenvio executados sem confirmacao explicita do usuario. " +
+                            "A emissao nao e executada no chat. Se o usuario pedir emissao e a reserva permitir, informe que ele deve usar Abrir reserva para concluir no sistema; " +
+                            "nao gere nem sugira uma acao preparar_emissao. Nao confirme cancelamento, reembolso, remarcacao ou reenvio executados sem confirmacao explicita do usuario. " +
                             "Se a consulta falhar ou faltarem dados, explique a limitacao e solicite o dado faltante.");
         } catch (Exception e) {
             return new ChatMessageDTO("system",
@@ -696,9 +861,96 @@ public class ChatService {
         }
     }
 
+    private ChatMessageDTO montarMensagemSeletorRemarcacao(String localizador) {
+        String codigo = localizador == null
+                ? "selecionar_reserva_remarcacao" : "simular_remarcacao";
+        List<Map<String, Object>> acoes = new ArrayList<>();
+        adicionarAcao(
+                acoes,
+                codigo,
+                localizador == null ? "Selecionar reserva" : "Simular alteracao",
+                localizador == null
+                        ? "Escolha uma reserva emitida da sua agencia para iniciar a simulacao."
+                        : "Abra o seletor com o localizador informado como filtro inicial.",
+                false,
+                false,
+                false);
+
+        Map<String, Object> contexto = new LinkedHashMap<>();
+        contexto.put("tipoConsulta", "seletor_remarcacao");
+        if (localizador != null) {
+            contexto.put("localizadorContexto", localizador);
+        }
+        contexto.put("acoesDisponiveis", acoes);
+        try {
+            return new ChatMessageDTO(
+                    "system",
+                    "Dado do sistema (seletor_remarcacao): " + mapper.writeValueAsString(contexto)
+                            + "\nOriente o usuario a escolher uma reserva no seletor. "
+                            + "Nao afirme que a simulacao foi iniciada apenas porque um localizador foi informado.");
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Nao foi possivel montar a acao de selecao da reserva.", ex);
+        }
+    }
+
+    private String extrairLocalizadorDeterministico(String input) {
+        if (input == null || input.isBlank()) {
+            return null;
+        }
+        String texto = normalizarTexto(input).toUpperCase(Locale.ROOT);
+        Matcher explicito = Pattern.compile(
+                "\\b(?:LOCALIZADOR|RESERVA|PNR)\\s*(?:N(?:O|RO)?\\.?\\s*)?[:#-]?\\s*([A-Z0-9]{5,8})\\b",
+                Pattern.CASE_INSENSITIVE)
+                .matcher(texto);
+        if (explicito.find()) {
+            String candidato = explicito.group(1).toUpperCase(Locale.ROOT);
+            if (!isPalavraComumLocalizador(candidato)) {
+                return candidato;
+            }
+        }
+
+        Matcher contextoOperacional = Pattern.compile(
+                "\\b(?:ABRIR|ABRA|CANCELAR|CANCELE|REGRA|REGRAS|REMARCAR|REMARCACAO|SIMULAR)\\b"
+                        + "(?:\\s+[A-Z]+){0,4}\\s+([A-Z0-9]{5,8})\\s*[?.!]*$")
+                .matcher(texto);
+        if (contextoOperacional.find()) {
+            String candidato = contextoOperacional.group(1).toUpperCase(Locale.ROOT);
+            if (!isPalavraComumLocalizador(candidato)) {
+                return candidato;
+            }
+        }
+
+        Matcher alfanumerico = Pattern.compile("\\b(?=[A-Z0-9]{5,8}\\b)(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*[0-9])[A-Z0-9]+\\b")
+                .matcher(texto);
+        while (alfanumerico.find()) {
+            String candidato = alfanumerico.group();
+            if (!isPalavraComumLocalizador(candidato)) {
+                return candidato;
+            }
+        }
+        return null;
+    }
+
+    private boolean isPalavraComumLocalizador(String candidato) {
+        return candidato == null || Set.of(
+                "QUERO", "REGRA", "REGRAS", "MULTA", "AEREO", "AEREA", "VOOS", "VOO",
+                "LOCALIZADOR", "RESERVA", "REEMBOLSO", "ALTERACAO", "REMARCACAO", "REMARCAR",
+                "SIMULAR", "BILHETE", "PASSAGEM", "CANCELAMENTO", "POSSUI", "TENHO", "SABER",
+                "DESEJO", "PRECISO", "GOSTARIA", "ALTERAR", "EMITIDA", "EMITIDO", "RECENTE",
+                "RECENTES", "DESEJADA", "DESEJADO", "CANCELAR", "CANCELE", "ABRIR", "ABRA",
+                "MOSTRAR", "MOSTRE", "VISUALIZAR", "ULTIMA", "ULTIMAS", "RESERVAS", "LISTAR",
+                "MINHA", "MINHAS", "CONSULTAR", "EMITIR", "AGORA"
+        ).contains(candidato);
+    }
+
     private String extrairLocalizador(String input) {
         if (input == null || input.isBlank()) {
             return null;
+        }
+
+        String localizadorDeterministico = extrairLocalizadorDeterministico(input);
+        if (localizadorDeterministico != null) {
+            return localizadorDeterministico;
         }
 
         String localizadorIA = extrairLocalizadorIA(input);
@@ -762,16 +1014,10 @@ public class ChatService {
             return null;
         }
 
-        Set<String> ignorar = Set.of(
-                "QUERO", "REGRA", "REGRAS", "MULTA", "AEREO", "AEREA", "VOOS", "VOO",
-                "LOCALIZADOR", "RESERVA", "REEMBOLSO", "ALTERACAO", "REMARCACAO", "BILHETE",
-                "PASSAGEM", "CANCELAMENTO", "POSSUI", "TENHO", "SABER"
-        );
-
         Matcher matcher = Pattern.compile("\\b[A-Z0-9]{5,8}\\b").matcher(input.toUpperCase(Locale.ROOT));
         while (matcher.find()) {
             String candidato = matcher.group();
-            if (!ignorar.contains(candidato)) {
+            if (!isPalavraComumLocalizador(candidato)) {
                 return candidato;
             }
         }
@@ -877,6 +1123,11 @@ public class ChatService {
                     "Pesquisar outro voo da mesma companhia e calcular uma previa da remarcacao.",
                     false, true, false);
         }
+        if (!isReservaCancelada(reserva) && Boolean.TRUE.equals(reserva.getPermiteCancelar())) {
+            adicionarAcao(acoes, "preparar_cancelamento", "Cancelar",
+                    "Consultar as regras e preparar a solicitacao de cancelamento.",
+                    true, true, true);
+        }
         return acoes;
     }
 
@@ -885,7 +1136,25 @@ public class ChatService {
                 && !isReservaCancelada(reserva)
                 && isReservaEmitida(reserva)
                 && possuiBilheteAtivo(reserva)
-                && possuiVooFuturo(reserva);
+                && possuiVooFuturo(reserva)
+                && companhiaSuportadaRemarcacao(reserva);
+    }
+
+    private boolean companhiaSuportadaRemarcacao(Reserva reserva) {
+        if (reserva == null || reserva.getViagens() == null) {
+            return false;
+        }
+        for (com.confApi.hub.aereo.dto.TrechoReserva trecho : reserva.getViagens()) {
+            if (trecho == null || trecho.getCompanhia() == null
+                    || trecho.getCompanhia().getCodigoIata() == null) {
+                continue;
+            }
+            String iata = trecho.getCompanhia().getCodigoIata().trim().toUpperCase(Locale.ROOT);
+            if (COMPANHIAS_REMARCACAO_SUPORTADAS.contains(iata)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean possuiBilheteAtivo(Reserva reserva) {
@@ -950,7 +1219,9 @@ public class ChatService {
         if (isReservaEmitida(reserva)) {
             adicionarAlerta(alertas, "RESERVA_EMITIDA", "Reserva possui emissao ou bilhete.", null);
         } else if (Boolean.TRUE.equals(reserva.getPermiteEmitir())) {
-            adicionarAlerta(alertas, "PENDENTE_EMISSAO", "Reserva pode ser emitida.", reserva.getPrazoEmissao());
+            adicionarAlerta(alertas, "PENDENTE_EMISSAO",
+                    "Reserva candidata a emissao. A emissao nao e executada pelo chat; abra a reserva no sistema.",
+                    reserva.getPrazoEmissao());
         }
         if (reserva.getPrazoEmissao() != null && !reserva.getPrazoEmissao().isBlank()) {
             adicionarAlerta(alertas, "PRAZO_EMISSAO", "Existe prazo de emissao informado.", reserva.getPrazoEmissao());
@@ -1479,41 +1750,49 @@ public class ChatService {
 
     public ChatMessageDTO listarUltimasVendas(ConversationRequestDTO req) {
         try {
-            if (req.codgUsuario() == null) {
-                return new ChatMessageDTO("system", "Dado do sistema: {\"erro\":\"Usuario nao informado para consultar reservas aereas.\"}");
+            if (req.codgAgencia() == null) {
+                return mensagemErroReservasRecentes(
+                        "A agencia da sessao nao foi identificada para consultar as reservas.");
             }
-                System.out.println("ConversationRequestDTO "+req.toString());
-            Integer codgUsuario = req.codgUsuario().intValue();
-            Integer codgAgencia = req.codgAgencia() == null ? null : req.codgAgencia().intValue();
-            String localizador =null;// extrairLocalizador(req.input());
-            List<ReservaAereo> reservas = reservaAereoApi.consultarReservasUsuario(codgUsuario, codgAgencia, localizador);
-
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("tipo", "ultimas_reservas_aereas_usuario");
-            response.put("fonte", "/reservaAereo/consultarReservas/localizador");
-            response.put("codgUsuario", codgUsuario);
-            putIfNotNull(response, "codgAgencia", codgAgencia);
-            putIfNotBlank(response, "localizadorConsultado", localizador);
-            response.put("filtroMinhasReservas", true);
-            response.put("filtroMinhaAgencia", true);
-            response.put("quantidadeRetornada", reservas == null ? 0 : reservas.size());
-            response.put("limiteContexto", LIMITE_ULTIMAS_RESERVAS_AEREAS);
-            List<Map<String, Object>> reservasResumo = resumirReservasAereasUsuario(reservas);
-            response.put("reservas", reservasResumo);
-            String localizadorContexto = extrairPrimeiroLocalizadorResumo(reservasResumo);
-            if (localizadorContexto != null && !localizadorContexto.isBlank()) {
-                response.put("localizadorContexto", localizadorContexto);
-                response.put("acoesDisponiveis", montarAcoesDisponiveisLocalizador(localizadorContexto));
-            }
+            Integer codgAgencia = req.codgAgencia().intValue();
+            ReservasAereasRecentesResponse recentes =
+                    chatConfiancaReservaAereaService.listarRecentes(
+                            codgAgencia, LIMITE_ULTIMAS_RESERVAS_AEREAS);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("schema", ChatConfiancaReservaAereaService.SCHEMA_RESERVAS_RECENTES);
+            payload.put("reservasRecentes", recentes);
+            payload.put("actions", chatConfiancaReservaAereaService.listarAcoes(recentes));
 
             return new ChatMessageDTO("system",
-                    "Dado do sistema (ultimas_reservas_aereas_usuario): " + mapper.writeValueAsString(response) +
-                            "\nUse estes dados para responder ao usuario listando as reservas encontradas. " +
-                            "Priorize localizador, status, datas, companhia, passageiros e trechos. " +
-                            "Se a lista estiver vazia, diga que nao foram encontradas reservas aereas para o usuario informado.");
+                    "Dado do sistema (reservas_aereas_recentes_agencia): "
+                            + mapper.writeValueAsString(payload)
+                            + "\nO painel estruturado exibira todos os detalhes e botoes. "
+                            + "Responda somente com uma introducao curta e a quantidade encontrada, "
+                            + "sem repetir cada reserva em texto. Se a lista estiver vazia, informe isso claramente. "
+                            + "A emissao nao e executada pelo chat; emissaoCandidata e apenas um aviso e a reserva "
+                            + "deve ser aberta no sistema para qualquer emissao.");
 
         } catch (Exception e) {
-            return new ChatMessageDTO("system", "Dado do sistema: " + "Nao foi possivel listar as reservas aereas do usuario.");
+            return mensagemErroReservasRecentes(
+                    "Nao foi possivel listar as reservas aereas recentes da agencia agora.");
+        }
+    }
+
+    private ChatMessageDTO mensagemErroReservasRecentes(String mensagem) {
+        try {
+            ReservasAereasRecentesResponse recentes = new ReservasAereasRecentesResponse();
+            recentes.setStatus("ERRO");
+            recentes.setMensagem(mensagem);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("schema", ChatConfiancaReservaAereaService.SCHEMA_RESERVAS_RECENTES);
+            payload.put("reservasRecentes", recentes);
+            payload.put("actions", List.of());
+            return new ChatMessageDTO("system",
+                    "Dado do sistema (reservas_aereas_recentes_agencia): "
+                            + mapper.writeValueAsString(payload)
+                            + "\nInforme claramente que a consulta nao pode ser concluida agora e sugira tentar novamente.");
+        } catch (JsonProcessingException ex) {
+            return new ChatMessageDTO("system", "Dado do sistema: " + mensagem);
         }
     }
 
@@ -2126,6 +2405,8 @@ Formato esperado:
                 - "alertas"
                 - "reserva_aerea_detalhes"
                 - "reserva_aerea_regras"
+                - "selecionar_reserva_remarcacao"
+                - "simular_remarcacao"
 
                 Exemplos:
                 - Pergunta: "Quais são meus limites de crédito?" → Resposta: "limites"
@@ -2140,6 +2421,8 @@ Formato esperado:
                 - Pergunta: "A reserva ABC123 tem multa para remarcação?" → Resposta: "reserva_aerea_regras"
                 - Pergunta: "Consulte o reembolso do localizador XYZ789" → Resposta: "reserva_aerea_regras"
                 - Pergunta: "Quero cancelar a reserva ABC123" → Resposta: "reserva_aerea_regras"
+                - Pergunta: "Quero simular uma remarcação" → Resposta: "selecionar_reserva_remarcacao"
+                - Pergunta: "Quero remarcar a reserva ABC123" → Resposta: "simular_remarcacao"
                 - Pergunta fora do contexto → Resposta: "desconhecido"
                 """;
     }

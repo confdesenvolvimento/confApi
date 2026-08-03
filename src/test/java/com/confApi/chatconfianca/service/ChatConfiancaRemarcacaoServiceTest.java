@@ -1,15 +1,18 @@
 package com.confApi.chatconfianca.service;
 
 import com.confApi.aereo.AereoClient;
+import com.confApi.aereo.dto.ConsultarLocalizadorRequest;
 import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
 import com.confApi.aereo.dto.Reserva;
 import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
+import com.confApi.chatconfianca.dto.enums.StatusConversa;
 import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.model.ConversaEvento;
 import com.confApi.chatconfianca.dto.model.RefAgencia;
 import com.confApi.chatconfianca.dto.model.SimulacaoRemarcacao;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
+import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.db.confManager.aeroporto.AeroportoService;
 import com.confApi.db.confManager.regraAereaAlteracao.RegraAereaAlteracaoManagerService;
@@ -25,8 +28,10 @@ import com.confApi.hub.limites.dto.StatusResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -38,7 +43,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -49,6 +56,7 @@ class ChatConfiancaRemarcacaoServiceTest {
     private static final Long SIMULACAO_ID = 70L;
     private static final Long CONVERSA_ID = 20L;
     private static final Integer USUARIO_ID = 101;
+    private static final Integer AGENCIA_ID = 321;
 
     private final ChatConfiancaManagerClient manager = mock(ChatConfiancaManagerClient.class);
     private final ChatConfiancaService chatService = mock(ChatConfiancaService.class);
@@ -62,6 +70,7 @@ class ChatConfiancaRemarcacaoServiceTest {
     private ChatConfiancaRemarcacaoService service;
     private SimulacaoRemarcacao simulacao;
     private SessaoChatResponse sessao;
+    private Conversa conversa;
 
     @BeforeEach
     void setUp() {
@@ -78,23 +87,395 @@ class ChatConfiancaRemarcacaoServiceTest {
         simulacao.setId(SIMULACAO_ID);
         simulacao.setConversaId(CONVERSA_ID);
         simulacao.setCodgUsuario(USUARIO_ID);
+        simulacao.setCodgAgencia(AGENCIA_ID);
         simulacao.setLocalizador("ABC123");
         simulacao.setTrechoIndice(0);
         simulacao.setStatus("AGUARDANDO_PASSAGEIROS");
         simulacao.setExpiraEm(LocalDateTime.now().plusMinutes(20));
 
-        Conversa conversa = new Conversa();
+        conversa = new Conversa();
         conversa.setId(CONVERSA_ID);
         conversa.setSolicitanteCodgUsuario(USUARIO_ID);
-        when(chatService.buscarConversa(CONVERSA_ID)).thenReturn(conversa);
+        conversa.setCodgAgencia(AGENCIA_ID);
+        conversa.setCodgUnidade(12);
+        conversa.setStatus(StatusConversa.AGUARDANDO_SOLICITANTE);
+        conversa.setMetadadosJson("{\"origem\":\"CONFIA\"}");
+        when(chatService.buscarConversa(CONVERSA_ID, USUARIO_ID, false)).thenReturn(conversa);
         sessao = new SessaoChatResponse();
         RefAgencia agencia = new RefAgencia();
+        agencia.setCodgAgencia(AGENCIA_ID);
         agencia.setCodgSistemaBackoffice("987");
         sessao.setAgencia(agencia);
         when(chatService.montarSessao(USUARIO_ID, null)).thenReturn(sessao);
+        when(chatService.montarSessao(USUARIO_ID, AGENCIA_ID)).thenReturn(sessao);
         when(manager.get(anyString(), any(Class.class))).thenReturn(simulacao);
         when(manager.post(anyString(), any(), any(Class.class)))
                 .thenAnswer(invocation -> invocation.getArgument(1));
+    }
+
+    @Test
+    void deveDerivarAgenciaDaConversaEPropagarFiltrosSemFiltrarPorCriador() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao());
+
+        service.listarReservasEmitidas(
+                CONVERSA_ID,
+                USUARIO_ID,
+                "ABC 123",
+                LocalDate.of(2026, 7, 1),
+                LocalDate.of(2026, 7, 31),
+                2,
+                25);
+
+        ArgumentCaptor<String> path = ArgumentCaptor.forClass(String.class);
+        verify(manager).get(path.capture(), eq(ReservasEmitidasRemarcacaoResponse.class));
+        assertTrue(path.getValue().contains("codgAgencia=" + AGENCIA_ID));
+        assertTrue(path.getValue().contains("busca=ABC+123"));
+        assertTrue(path.getValue().contains("dataEmissaoInicio=2026-07-01"));
+        assertTrue(path.getValue().contains("dataEmissaoFim=2026-07-31"));
+        assertTrue(path.getValue().contains("page=2"));
+        assertTrue(path.getValue().contains("size=25"));
+        assertFalse(path.getValue().contains("codgUsuario"));
+    }
+
+    @Test
+    void deveRejeitarUsuarioDeOutraAgenciaAntesDeConsultarReservas() {
+        sessao.getAgencia().setCodgAgencia(999);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.listarReservasEmitidas(
+                        CONVERSA_ID, USUARIO_ID, null, null, null, 0, 10));
+
+        assertEquals(403, erro.getStatus());
+        verify(manager, never()).get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class));
+    }
+
+    @Test
+    void deveRejeitarConversaDeOutroUsuario() {
+        Integer outroUsuario = 202;
+        Conversa conversa = new Conversa();
+        conversa.setId(CONVERSA_ID);
+        conversa.setSolicitanteCodgUsuario(USUARIO_ID);
+        conversa.setCodgAgencia(AGENCIA_ID);
+        when(chatService.buscarConversa(CONVERSA_ID, outroUsuario, false)).thenReturn(conversa);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.listarReservasEmitidas(
+                        CONVERSA_ID, outroUsuario, null, null, null, 0, 10));
+
+        assertEquals(403, erro.getStatus());
+        verify(manager, never()).get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class));
+    }
+
+    @Test
+    void naoDeveListarReservasQuandoConversaConfiaEstaEncerrada() {
+        conversa.setStatus(StatusConversa.ENCERRADA);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.listarReservasEmitidas(
+                        CONVERSA_ID, USUARIO_ID, null, null, null, 0, 10));
+
+        assertEquals(409, erro.getStatus());
+        verify(manager, never()).get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class));
+        verify(manager, never()).post(anyString(), any(), any(Class.class));
+    }
+
+    @Test
+    void naoDeveIniciarSimulacaoQuandoConversaJaEstaComAtendimentoHumano() {
+        conversa.setStatus(StatusConversa.EM_ATENDIMENTO);
+        conversa.setAtendenteResponsavelCodgUsuario(700);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.iniciar(iniciar(501, "ABC123")));
+
+        assertEquals(409, erro.getStatus());
+        verify(manager, never()).get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class));
+        verify(manager, never()).post(anyString(), any(), any(Class.class));
+        verify(aereoClient, never()).carregarReserva(any());
+    }
+
+    @Test
+    void naoDevePermitirMutacaoDepoisQueConversaSaiuDaConfia() {
+        conversa.setStatus(StatusConversa.AGUARDANDO_ATENDENTE);
+        conversa.setAtendenteResponsavelCodgUsuario(700);
+        RemarcacaoRequest.SelecionarPassageiros request = new RemarcacaoRequest.SelecionarPassageiros();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setEscopo("TODOS");
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.selecionarPassageiros(SIMULACAO_ID, request));
+
+        assertEquals(409, erro.getStatus());
+        verify(manager, never()).post(anyString(), any(), any(Class.class));
+        verify(aereoClient, never()).carregarReserva(any());
+    }
+
+    @Test
+    void devePermitirConsultarResultadoFinalDepoisDoHandoff() {
+        conversa.setStatus(StatusConversa.AGUARDANDO_ATENDENTE);
+        conversa.setAtendenteResponsavelCodgUsuario(700);
+        simulacao.setStatus("ENCAMINHADO");
+
+        RemarcacaoSimulacaoResponse response = service.consultar(SIMULACAO_ID, USUARIO_ID);
+
+        assertEquals("ENCAMINHADO", response.getStatus());
+        assertEquals("Solicitacao encaminhada", response.getTitulo());
+    }
+
+    @Test
+    void deveSelecionarReservaExatamentePorIdEPersistirReferencia() {
+        ReservasEmitidasRemarcacaoResponse.Item item = reservaEmitida(501, "ABC123", "G3", "Wooba");
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(item));
+        when(aereoClient.carregarReserva(any())).thenReturn(new ConsultarLocalizadorResponse());
+
+        service.iniciar(iniciar(501, "abc123"));
+
+        verify(manager).get(
+                contains("codgAgencia=" + AGENCIA_ID + "&reservaId=501"),
+                eq(ReservasEmitidasRemarcacaoResponse.class));
+        ArgumentCaptor<SimulacaoRemarcacao> captor = ArgumentCaptor.forClass(SimulacaoRemarcacao.class);
+        verify(manager, atLeastOnce()).post(
+                eq("chat-confianca/persistencia/simulacoes-remarcacao"),
+                captor.capture(),
+                eq(SimulacaoRemarcacao.class));
+        assertTrue(captor.getAllValues().stream()
+                .anyMatch(itemSalvo -> Integer.valueOf(501).equals(itemSalvo.getReservaAereoId())));
+    }
+
+    @Test
+    void deveAceitarReservasDasCompanhiasSuportadasIndependentementeDoSistema() {
+        when(aereoClient.carregarReserva(any())).thenReturn(new ConsultarLocalizadorResponse());
+
+        for (String companhia : List.of("G3", "LA", "JJ", "AD")) {
+            when(manager.get(
+                    contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                    eq(ReservasEmitidasRemarcacaoResponse.class)))
+                    .thenReturn(respostaSelecao(
+                            reservaEmitida(501, "ABC123", companhia, "Sistema sem integracao")));
+
+            RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
+
+            assertNotNull(response, "A companhia " + companhia + " deve ser aceita.");
+        }
+    }
+
+    @Test
+    void deveRejeitarReservaDeCompanhiaNaoSuportadaAntesDeConsultarHub() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "AA", "Wooba")));
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.iniciar(iniciar(501, "ABC123")));
+
+        assertEquals(409, erro.getStatus());
+        assertTrue(erro.getMessage().contains("G3, LA, JJ e AD"));
+        verify(aereoClient, never()).carregarReserva(any());
+    }
+
+    @Test
+    void deveRejeitarReservaIdInexistenteOuDeOutraAgencia() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao());
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.iniciar(iniciar(999, "ABC123")));
+
+        assertEquals(404, erro.getStatus());
+        verify(aereoClient, never()).carregarReserva(any());
+    }
+
+    @Test
+    void deveRejeitarQuandoIdNaoCorrespondeAoLocalizadorExato() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "G3", "Wooba")));
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.iniciar(iniciar(501, "XYZ999")));
+
+        assertEquals(409, erro.getStatus());
+        verify(aereoClient, never()).carregarReserva(any());
+    }
+
+    @Test
+    void legadoPorLocalizadorDeveRejeitarColisaoAmbigua() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(
+                        reservaEmitida(501, "ABC123", "G3", "Wooba"),
+                        reservaEmitida(502, "ABC123", "LA", "Wooba")));
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.iniciar(iniciar(null, "ABC123")));
+
+        assertEquals(409, erro.getStatus());
+        verify(aereoClient, never()).carregarReserva(any());
+    }
+
+    @Test
+    void naoDeveUsarPrimeiraReservaQuandoLocalizadorNaoCorresponde() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "G3", "Wooba")));
+        Reserva outraReserva = new Reserva();
+        outraReserva.setLocalizador("XYZ999");
+        outraReserva.setStatus("CANCELADA");
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(outraReserva));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+
+        RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
+
+        assertEquals("Nao foi possivel carregar a reserva informada.", response.getMensagem());
+    }
+
+    @Test
+    void deveRejeitarCorrespondenciaHubDeOutraCompanhia() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "G3", "Wooba")));
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(reservaHub("ABC123", "Amadeus", "LA")));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.iniciar(iniciar(501, "ABC123")));
+
+        assertEquals(409, erro.getStatus());
+    }
+
+    @Test
+    void deveIgnorarSistemaAoConferirReservaCarregadaEMantenRequestWooba() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "JJ", "Sabre")));
+        Reserva reservaCarregada = reservaHub("ABC123", "Amadeus", "LA");
+        reservaCarregada.setDataEmissao(new java.util.Date());
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(reservaCarregada));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+
+        RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
+
+        assertEquals("A reserva nao retornou passageiros.", response.getMensagem());
+        ArgumentCaptor<ConsultarLocalizadorRequest> request =
+                ArgumentCaptor.forClass(ConsultarLocalizadorRequest.class);
+        verify(aereoClient).carregarReserva(request.capture());
+        assertEquals("Wooba", request.getValue().getSistema());
+    }
+
+    @Test
+    void deveTratarLaDaReservaComoEquivalenteAJjRetornadaPeloHub() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "LA", "Outro sistema")));
+        Reserva reservaCarregada = reservaHub("ABC123", "Sistema diferente", "JJ");
+        reservaCarregada.setDataEmissao(new java.util.Date());
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(reservaCarregada));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+
+        RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
+
+        assertEquals("A reserva nao retornou passageiros.", response.getMensagem());
+    }
+
+    @Test
+    void deveManterLegadoSeguroQuandoLocalizadorTemUmaCorrespondenciaExata() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "G3", "Wooba")));
+        Reserva reserva = reservaHub("ABC123", "Wooba", "G3");
+        reserva.setDataEmissao(new java.util.Date());
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(reserva));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+
+        service.iniciar(iniciar(null, "abc123"));
+
+        verify(manager).get(
+                contains("codgAgencia=" + AGENCIA_ID + "&busca=ABC123"),
+                eq(ReservasEmitidasRemarcacaoResponse.class));
+        ArgumentCaptor<SimulacaoRemarcacao> captor = ArgumentCaptor.forClass(SimulacaoRemarcacao.class);
+        verify(manager, atLeastOnce()).post(
+                eq("chat-confianca/persistencia/simulacoes-remarcacao"),
+                captor.capture(),
+                eq(SimulacaoRemarcacao.class));
+        assertTrue(captor.getAllValues().stream()
+                .anyMatch(itemSalvo -> Integer.valueOf(501).equals(itemSalvo.getReservaAereoId())));
+    }
+
+    @Test
+    void deveDesambiguarHubSomenteComCompanhiaDaReservaSelecionada() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "G3", "Wooba")));
+
+        Reserva incorreta = reservaHub("ABC123", "Amadeus", "LA");
+        incorreta.setStatus("CANCELADA");
+        Reserva correta = reservaHub("ABC123", "Sabre", "G3");
+        correta.setDataEmissao(new java.util.Date());
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(incorreta, correta));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+
+        RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
+
+        assertEquals("A reserva nao retornou passageiros.", response.getMensagem());
+    }
+
+    @Test
+    void deveFalharQuandoCompanhiaAindaDeixaLocalizadorAmbiguoNoHub() {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "G3", "Wooba")));
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(
+                reservaHub("ABC123", "Wooba", "G3"),
+                reservaHub("ABC123", "Sabre", "G3")));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.iniciar(iniciar(501, "ABC123")));
+
+        assertEquals(409, erro.getStatus());
     }
 
     @Test
@@ -383,6 +764,56 @@ class ChatConfiancaRemarcacaoServiceTest {
                 () -> service.selecionarFormaPagamento(SIMULACAO_ID, formaPagamento(2)));
 
         assertEquals(409, erro.getStatus());
+    }
+
+    private RemarcacaoRequest.Iniciar iniciar(Integer reservaId, String localizador) {
+        RemarcacaoRequest.Iniciar request = new RemarcacaoRequest.Iniciar();
+        request.setConversaId(CONVERSA_ID);
+        request.setCodgUsuario(USUARIO_ID);
+        request.setReservaId(reservaId);
+        request.setLocalizador(localizador);
+        request.setCodgAgenciaSessao(999);
+        return request;
+    }
+
+    private ReservasEmitidasRemarcacaoResponse respostaSelecao(
+            ReservasEmitidasRemarcacaoResponse.Item... items) {
+        ReservasEmitidasRemarcacaoResponse response = new ReservasEmitidasRemarcacaoResponse();
+        response.setItems(List.of(items));
+        response.setPage(0);
+        response.setSize(50);
+        response.setTotalElements((long) items.length);
+        response.setTotalPages(items.length == 0 ? 0 : 1);
+        response.setHasNext(false);
+        return response;
+    }
+
+    private ReservasEmitidasRemarcacaoResponse.Item reservaEmitida(
+            int reservaId,
+            String localizador,
+            String companhia,
+            String sistema) {
+        ReservasEmitidasRemarcacaoResponse.Item item = new ReservasEmitidasRemarcacaoResponse.Item();
+        item.setReservaId(reservaId);
+        item.setLocalizador(localizador);
+        item.setStatus(3);
+        item.setDataEmissao(LocalDateTime.now().minusDays(1));
+        item.setCompanhiaIata(companhia);
+        item.setSistema(sistema);
+        item.setQuantidadeBilhetesAtivos(1);
+        item.setDisponivelSimulacao(true);
+        return item;
+    }
+
+    private Reserva reservaHub(String localizador, String sistema, String companhia) {
+        Reserva reserva = new Reserva();
+        reserva.setLocalizador(localizador);
+        reserva.setSistema(sistema);
+        TrechoReserva trecho = new TrechoReserva();
+        trecho.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, companhia, companhia));
+        trecho.setVoos(List.of());
+        reserva.setViagens(List.of(trecho));
+        return reserva;
     }
 
     private void prepararPrevia(String total) throws Exception {

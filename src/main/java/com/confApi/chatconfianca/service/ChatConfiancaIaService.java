@@ -85,9 +85,12 @@ public class ChatConfiancaIaService {
         response.setDepartamentoSugerido(departamento);
 
         ChatResponseDTO respostaConfia = chamarConfia(request, sessao, historico);
-        String resposta = respostaConfia == null || isBlank(respostaConfia.content())
+        JsonNode payloadReservasRecentes = extrairPayloadReservasRecentes(respostaConfia);
+        String resposta = payloadReservasRecentes != null
+                ? respostaReservasRecentesOuFallback(payloadReservasRecentes)
+                : (respostaConfia == null || isBlank(respostaConfia.content())
                 ? fallbackConfia()
-                : respostaConfia.content();
+                : respostaConfia.content());
 
         String jsonPesquisaAereo = extrairJsonPesquisaViagem(resposta);
         if (jsonPesquisaAereo != null) {
@@ -100,12 +103,19 @@ public class ChatConfiancaIaService {
         if (respostaConfia != null && respostaConfia.actions() != null) {
             response.getActions().addAll(respostaConfia.actions());
         }
+        String acaoSolicitada = chatService.identificarAcaoSolicitadaDeterministica(
+                request.getMensagem());
+        if (!isBlank(acaoSolicitada) && response.getActions().stream()
+                .filter(Objects::nonNull)
+                .anyMatch(action -> acaoSolicitada.equals(action.code()))) {
+            response.setAcaoSolicitada(acaoSolicitada);
+        }
         response.setSugerirAtendente(deveSugerirAtendente(request.getMensagem(), resposta));
 
         Mensagem mensagemBot = chatConfiancaService.registrarMensagemBot(
                 conversa.getId(),
                 resposta,
-                metadadosRespostaConfia(response)
+                metadadosRespostaConfia(response, payloadReservasRecentes)
         );
         response.setMensagemBot(mensagemBot);
 
@@ -145,18 +155,11 @@ public class ChatConfiancaIaService {
     private ChatResponseDTO chamarConfia(PerguntarConfiaRequest request,
                                          SessaoChatResponse sessao,
                                          List<Mensagem> historico) {
+        List<ChatMessageDTO> messages = new ArrayList<>();
         try {
             Long codgAgencia = sessao.getAgencia() == null || sessao.getAgencia().getCodgAgencia() == null
                     ? 0L
                     : sessao.getAgencia().getCodgAgencia().longValue();
-            List<ChatMessageDTO> messages = new ArrayList<>();
-            messages.add(new ChatMessageDTO("system", profiles.systemPrompt(
-                    "confia",
-                    codgAgencia,
-                    request.getCodgUsuario().longValue()
-            )));
-            messages.addAll(converterHistorico(historico, request.getCodgUsuario()));
-
             ConversationRequestDTO conversation = new ConversationRequestDTO(
                     "confia",
                     sessao.getUnidade() == null ? "Confianca" : sessao.getUnidade().getNomeUnidade(),
@@ -169,6 +172,17 @@ public class ChatConfiancaIaService {
                     false,
                     new ArrayList<>()
             );
+
+            if (chatService.isListagemReservasRecentesDeterministica(request.getMensagem())) {
+                return chatService.responderListagemReservasRecentes(conversation);
+            }
+
+            messages.add(new ChatMessageDTO("system", profiles.systemPrompt(
+                    "confia",
+                    codgAgencia,
+                    request.getCodgUsuario().longValue()
+            )));
+            messages.addAll(converterHistorico(historico, request.getCodgUsuario()));
 
             int firstActionMessageIndex = messages.size();
             List<String> keywords = chatService.actionApis(messages, conversation);
@@ -183,7 +197,7 @@ public class ChatConfiancaIaService {
             ChatResponseDTO resposta = chatService.chat(
                     new ChatRequestDTO(messages, null, false, tools(request.getMensagem()), metadata),
                     keywords,
-                    messages
+                    null
             );
             if (resposta == null) {
                 return null;
@@ -198,7 +212,14 @@ public class ChatConfiancaIaService {
                     actions
             );
         } catch (Exception ex) {
-            return null;
+            return new ChatResponseDTO(
+                    null,
+                    null,
+                    new ArrayList<>(),
+                    null,
+                    new ArrayList<>(),
+                    messages,
+                    chatService.extrairAcoesDisponiveis(messages));
         }
     }
 
@@ -394,11 +415,61 @@ public class ChatConfiancaIaService {
         }
         return json.path(campo).asText(null);
     }
-    private String metadadosRespostaConfia(ChatConfiancaIaResponse response) {
+    private JsonNode extrairPayloadReservasRecentes(ChatResponseDTO response) {
+        if (response == null || response.history() == null) {
+            return null;
+        }
+        List<ChatMessageDTO> history = response.history();
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessageDTO message = history.get(i);
+            if (message == null || !"system".equals(message.role())) {
+                continue;
+            }
+            JsonNode json = lerJsonRespostaConfia(message.content());
+            if (json != null
+                    && "chat.reservas-recentes.v1".equals(json.path("schema").asText())
+                    && json.path("reservasRecentes").isObject()) {
+                return json;
+            }
+        }
+        return null;
+    }
+
+    private String respostaReservasRecentesOuFallback(JsonNode payload) {
+        if (payload == null) {
+            return fallbackConfia();
+        }
+        JsonNode recentes = payload.path("reservasRecentes");
+        String status = recentes.path("status").asText("OK");
+        String mensagem = recentes.path("mensagem").asText(null);
+        if (!"OK".equalsIgnoreCase(status)) {
+            return isBlank(mensagem)
+                    ? "Nao foi possivel consultar as reservas recentes agora. Tente novamente."
+                    : mensagem;
+        }
+        int quantidade = recentes.path("quantidade").asInt(0);
+        if (quantidade == 0) {
+            return isBlank(mensagem)
+                    ? "Nao encontrei reservas aereas recentes para sua agencia."
+                    : mensagem;
+        }
+        return quantidade == 1
+                ? "Encontrei 1 reserva recente da sua agencia."
+                : "Encontrei " + quantidade + " reservas recentes da sua agencia.";
+    }
+
+    private String metadadosRespostaConfia(ChatConfiancaIaResponse response,
+                                           JsonNode payloadReservasRecentes) {
         Map<String, Object> dados = new HashMap<>();
         dados.put("origem", "CONFIA");
         dados.put("sugerirAtendente", response.isSugerirAtendente());
+        dados.put("acaoSolicitada", response.getAcaoSolicitada());
         dados.put("actions", response.getActions());
+        if (payloadReservasRecentes != null) {
+            dados.put("schema", payloadReservasRecentes.path("schema").asText());
+            dados.put("reservasRecentes", objectMapper.convertValue(
+                    payloadReservasRecentes.path("reservasRecentes"), Object.class));
+        }
         try {
             return objectMapper.writeValueAsString(dados);
         } catch (JsonProcessingException e) {

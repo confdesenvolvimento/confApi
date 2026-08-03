@@ -19,5 +19,6 @@ public class ChatConfiancaIaResponse {
     private boolean sugerirAtendente;
     private boolean atendenteSolicitado;
     private String mensagemAtendente;
+    private String acaoSolicitada;
     private List<ChatActionDTO> actions = new ArrayList<>();
 }

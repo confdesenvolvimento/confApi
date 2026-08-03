@@ -8,6 +8,7 @@ import com.confApi.chatconfianca.dto.enums.StatusAtendente;
 import com.confApi.chatconfianca.dto.enums.StatusConversa;
 import com.confApi.chatconfianca.dto.enums.StatusFila;
 import com.confApi.chatconfianca.dto.enums.StatusMensagem;
+import com.confApi.chatconfianca.dto.enums.RemetenteTipo;
 import com.confApi.chatconfianca.dto.enums.VisibilidadeMensagem;
 import com.confApi.chatconfianca.dto.model.AtendimentoAvaliacao;
 import com.confApi.chatconfianca.dto.model.AtendenteStatus;
@@ -143,6 +144,11 @@ class ChatConfiancaServiceTest {
         assertEquals(StatusConversa.ENCERRADA, encerrada.getStatus());
         assertEquals(ATENDENTE, encerrada.getEncerradoPorCodgUsuario());
         assertEquals("Resolvido - Tarifa explicada ao cliente.", encerrada.getMotivoEncerramento());
+        Mensagem avisoEncerramento = fixture.mensagens.get(fixture.mensagens.size() - 1);
+        assertEquals(RemetenteTipo.SISTEMA, avisoEncerramento.getRemetenteTipo());
+        assertEquals(VisibilidadeMensagem.PUBLICA, avisoEncerramento.getVisibilidade());
+        assertTrue(avisoEncerramento.getConteudo().contains("O atendente encerrou esta conversa."));
+        assertTrue(avisoEncerramento.getConteudo().contains("Tarifa explicada ao cliente."));
 
         AvaliarAtendimentoRequest avaliar = new AvaliarAtendimentoRequest();
         avaliar.setConversaId(CONVERSA_ID);
@@ -157,6 +163,26 @@ class ChatConfiancaServiceTest {
         assertEquals(SOLICITANTE, avaliacao.getCodgUsuarioAvaliador());
         assertEquals(5, avaliacao.getNota());
         assertEquals("Atendimento muito bom.", avaliacao.getComentario());
+    }
+
+    @Test
+    void encerramentoPeloUsuarioRegistraAvisoParaOAtendente() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.EM_ATENDIMENTO);
+        fixture.conversa.setAtendenteResponsavelCodgUsuario(ATENDENTE);
+        fixture.solicitanteParticipante = true;
+        fixture.atendenteParticipante = true;
+
+        EncerrarConversaRequest encerrar = new EncerrarConversaRequest();
+        encerrar.setConversaId(CONVERSA_ID);
+        encerrar.setCodgUsuario(SOLICITANTE);
+        encerrar.setMotivo("Cliente encerrou a solicitacao.");
+
+        Conversa encerrada = service.encerrarConversa(encerrar);
+
+        assertEquals(StatusConversa.ENCERRADA, encerrada.getStatus());
+        Mensagem avisoEncerramento = fixture.mensagens.get(fixture.mensagens.size() - 1);
+        assertEquals(RemetenteTipo.SISTEMA, avisoEncerramento.getRemetenteTipo());
+        assertTrue(avisoEncerramento.getConteudo().contains("O usuário encerrou esta conversa."));
     }
 
     @Test

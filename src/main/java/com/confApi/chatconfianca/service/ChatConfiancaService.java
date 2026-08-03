@@ -1095,6 +1095,11 @@ public class ChatConfiancaService {
         conversa.setUltimoEventoEm(agora);
         conversa = manager.post("chat-confianca/persistencia/conversas", conversa, Conversa.class);
 
+        // O encerramento precisa ser percebido pelos dois participantes. A mensagem
+        // e publica (e do tipo SISTEMA), portanto aparece no historico do usuario e
+        // do atendente mesmo depois que a conversa deixou de aceitar novas mensagens.
+        registrarAvisoEncerramento(conversa, request, motivoEncerramento);
+
         FilaAtendimento fila = buscarFilaPorConversa(request.getConversaId());
         if (fila != null && fila.getSaiuEm() == null) {
             fila.setStatus(StatusFila.CANCELADO);
@@ -1106,6 +1111,46 @@ public class ChatConfiancaService {
         registrarEvento(request.getConversaId(), "CONVERSA_ENCERRADA", request.getCodgUsuario(), motivoEncerramento);
         atualizarCargaAtendente(conversa.getAtendenteResponsavelCodgUsuario());
         return conversa;
+    }
+
+    private void registrarAvisoEncerramento(Conversa conversa,
+                                             EncerrarConversaRequest request,
+                                             String motivo) {
+        if (conversa == null || conversa.getId() == null) {
+            return;
+        }
+        String autor = autorEncerramento(conversa, request);
+        StringBuilder texto = new StringBuilder(autor).append(" encerrou esta conversa.");
+        if (!isBlank(motivo)) {
+            texto.append(" Motivo: ").append(motivo.trim());
+        }
+        try {
+            persistirMensagem(conversa, null, texto.toString(), false,
+                    TipoMensagem.SISTEMA, null, RemetenteTipo.SISTEMA);
+            conversa.setUltimoEventoEm(LocalDateTime.now());
+            manager.post("chat-confianca/persistencia/conversas", conversa, Conversa.class);
+        } catch (RuntimeException ex) {
+            // O status de encerramento ja foi confirmado. Nao reverta a operacao por
+            // uma falha eventual ao registrar a mensagem; o evento segue no historico.
+            LOGGER.log(java.util.logging.Level.WARNING,
+                    "Conversa encerrada, mas nao foi possivel registrar o aviso no chat " + conversa.getId(), ex);
+        }
+    }
+
+    private String autorEncerramento(Conversa conversa, EncerrarConversaRequest request) {
+        Integer autor = request == null ? null : request.getCodgUsuario();
+        if (Objects.equals(autor, conversa.getSolicitanteCodgUsuario())) {
+            String categoria = request == null ? null : request.getCategoria();
+            if (categoria != null && categoria.toUpperCase().contains("IA")) {
+                return "A ConfIA";
+            }
+            return "O usuário";
+        }
+        if (Boolean.TRUE.equals(request == null ? null : request.getGestor())
+                || Objects.equals(autor, conversa.getAtendenteResponsavelCodgUsuario())) {
+            return "O atendente";
+        }
+        return "Um participante";
     }
 
     public int encerrarConversasIaInativas(int minutosInatividade) {

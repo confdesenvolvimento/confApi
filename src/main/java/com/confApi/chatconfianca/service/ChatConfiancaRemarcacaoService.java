@@ -25,11 +25,13 @@ import com.confApi.aereo.eNums.TipoConsulta;
 import com.confApi.aereo.eNums.TipoPesquisa;
 import com.confApi.aereo.eNums.TipoTarifa;
 import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
+import com.confApi.chatconfianca.dto.enums.StatusConversa;
 import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.model.ConversaEvento;
 import com.confApi.chatconfianca.dto.model.SimulacaoRemarcacao;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
+import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
 import com.confApi.chatconfianca.dto.request.AdicionarTagConversaRequest;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.db.confManager.aeroporto.AeroportoService;
@@ -53,12 +55,15 @@ import com.confApi.hub.limites.dto.StatusResponse;
 import com.confApi.model.IdentificacaoAgenciaModel;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -97,6 +102,7 @@ public class ChatConfiancaRemarcacaoService {
     private static final String NAO_ELEGIVEL = "NAO_ELEGIVEL";
     private static final String ERRO = "ERRO";
     private static final String EXPIRADO = "EXPIRADO";
+    private static final String CANCELADO = "CANCELADO";
     private static final String ESCOPO_TODOS = "TODOS";
     private static final String ESCOPO_INDIVIDUAL = "INDIVIDUAL";
     private static final int PAGAMENTO_FATURA = 1;
@@ -111,6 +117,16 @@ public class ChatConfiancaRemarcacaoService {
     private static final String FORMA_SUJEITA_VALIDACAO = "SUJEITA_VALIDACAO";
     private static final DateTimeFormatter DATA_BR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final int LIMITE_OPCOES = 5;
+    private static final int STATUS_RESERVA_EMITIDA = 3;
+    private static final int PAGINA_PADRAO_RESERVAS = 0;
+    private static final int TAMANHO_PADRAO_RESERVAS = 10;
+    private static final int TAMANHO_MAXIMO_RESERVAS = 50;
+    private static final String CAMINHO_RESERVAS_EMITIDAS =
+            "chat-confianca/consultas/remarcacoes/reservas-emitidas";
+    private static final Set<String> COMPANHIAS_SUPORTADAS_REMARCACAO =
+            Set.of("G3", "LA", "JJ", "AD");
+    private static final Set<String> STATUS_FINAIS_CONSULTAVEIS = Set.of(
+            ENCAMINHADO, NAO_ELEGIVEL, ERRO, EXPIRADO, CANCELADO);
 
     private final ChatConfiancaManagerClient manager;
     private final ChatConfiancaService chatService;
@@ -136,6 +152,31 @@ public class ChatConfiancaRemarcacaoService {
         this.mapper = mapper;
     }
 
+    public ReservasEmitidasRemarcacaoResponse listarReservasEmitidas(
+            Long conversaId,
+            Integer codgUsuario,
+            String busca,
+            LocalDate dataEmissaoInicio,
+            LocalDate dataEmissaoFim,
+            Integer page,
+            Integer size) {
+        Conversa conversa = validarConversaSolicitante(conversaId, codgUsuario);
+        validarConversaConfiaAtiva(conversa);
+        validarSessaoConversa(conversa, codgUsuario);
+        validarPeriodoEmissao(dataEmissaoInicio, dataEmissaoFim);
+
+        int pagina = normalizarPagina(page);
+        int tamanho = normalizarTamanhoPagina(size);
+        return consultarReservasEmitidasManager(
+                conversa.getCodgAgencia(),
+                null,
+                busca,
+                dataEmissaoInicio,
+                dataEmissaoFim,
+                pagina,
+                tamanho);
+    }
+
     public RemarcacaoSimulacaoResponse iniciar(RemarcacaoRequest.Iniciar request) {
         if (request == null || request.getConversaId() == null || request.getCodgUsuario() == null
                 || vazio(request.getLocalizador())) {
@@ -143,21 +184,31 @@ public class ChatConfiancaRemarcacaoService {
         }
 
         Conversa conversa = validarConversaSolicitante(request.getConversaId(), request.getCodgUsuario());
-        SessaoChatResponse sessao = chatService.montarSessao(request.getCodgUsuario(), request.getCodgAgenciaSessao());
+        validarConversaConfiaAtiva(conversa);
+        SessaoChatResponse sessao = validarSessaoConversa(conversa, request.getCodgUsuario());
+        String localizador = request.getLocalizador().trim().toUpperCase(Locale.ROOT);
+        ReservasEmitidasRemarcacaoResponse.Item reservaSelecionada = resolverReservaSelecionada(
+                conversa.getCodgAgencia(), request.getReservaId(), localizador);
 
         SimulacaoRemarcacao simulacao = new SimulacaoRemarcacao();
         simulacao.setConversaId(conversa.getId());
-        simulacao.setLocalizador(request.getLocalizador().trim().toUpperCase(Locale.ROOT));
+        simulacao.setReservaAereoId(reservaSelecionada.getReservaId());
+        simulacao.setLocalizador(reservaSelecionada.getLocalizador().trim().toUpperCase(Locale.ROOT));
         simulacao.setCodgUsuario(request.getCodgUsuario());
-        simulacao.setCodgAgencia(sessao.getAgencia() == null ? conversa.getCodgAgencia() : sessao.getAgencia().getCodgAgencia());
-        simulacao.setCodgUnidade(sessao.getUnidade() == null ? conversa.getCodgUnidade() : sessao.getUnidade().getCodgUnidade());
+        simulacao.setCodgAgencia(conversa.getCodgAgencia());
+        Integer codgUnidade = conversa.getCodgUnidade();
+        if (codgUnidade == null && sessao.getUnidade() != null) {
+            codgUnidade = sessao.getUnidade().getCodgUnidade();
+        }
+        simulacao.setCodgUnidade(codgUnidade);
+        simulacao.setCompanhiaIata(reservaSelecionada.getCompanhiaIata());
         simulacao.setStatus(VALIDANDO);
         simulacao.setExpiraEm(LocalDateTime.now().plusMinutes(30));
         simulacao = salvar(simulacao);
         registrarEvento(simulacao, "REMARCACAO_SIMULACAO_INICIADA",
                 "Simulacao de alteracao iniciada para a reserva " + simulacao.getLocalizador() + ".", null);
 
-        Reserva reserva = carregarReserva(simulacao, sessao);
+        Reserva reserva = carregarReserva(simulacao, sessao, reservaSelecionada);
         String impedimento = validarReserva(reserva);
         if (impedimento != null) {
             return bloquear(simulacao, impedimento);
@@ -561,7 +612,7 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     public RemarcacaoSimulacaoResponse consultar(Long id, Integer codgUsuario) {
-        SimulacaoRemarcacao simulacao = buscarValidar(id, codgUsuario);
+        SimulacaoRemarcacao simulacao = buscarValidarParaConsulta(id, codgUsuario);
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
                 tituloStatus(simulacao.getStatus()), mensagemStatus(simulacao));
         if (AGUARDANDO_PASSAGEIROS.equals(simulacao.getStatus())
@@ -590,6 +641,9 @@ public class ChatConfiancaRemarcacaoService {
             response.getCriterios().setDataSugerida(criterios.getData());
             response.getCriterios().setPeriodo(criterios.getPeriodo());
             response.getCriterios().setSomenteDireto(Boolean.TRUE.equals(criterios.getSomenteDireto()));
+        }
+        if (AGUARDANDO_CRITERIOS.equals(simulacao.getStatus())) {
+            preencherTrechoOriginal(response, simulacao);
         }
         if (!vazio(simulacao.getResultadosJson())) {
             response.setOpcoes(montarOpcoes(lerOpcoes(simulacao.getResultadosJson())));
@@ -948,20 +1002,230 @@ public class ChatConfiancaRemarcacaoService {
         return false;
     }
 
+    private ReservasEmitidasRemarcacaoResponse.Item resolverReservaSelecionada(
+            Integer codgAgencia,
+            Integer reservaId,
+            String localizador) {
+        if (codgAgencia == null) {
+            throw regra(409, "A conversa nao possui agencia vinculada.");
+        }
+        if (vazio(localizador)) {
+            throw regra(400, "Informe o localizador exato da reserva selecionada.");
+        }
+        String localizadorExato = localizador.trim().toUpperCase(Locale.ROOT);
+
+        if (reservaId != null) {
+            ReservasEmitidasRemarcacaoResponse response = consultarReservasEmitidasManager(
+                    codgAgencia,
+                    reservaId,
+                    null,
+                    null,
+                    null,
+                    PAGINA_PADRAO_RESERVAS,
+                    TAMANHO_PADRAO_RESERVAS);
+            List<ReservasEmitidasRemarcacaoResponse.Item> itens = itensReserva(response).stream()
+                    .filter(item -> item != null && reservaId.equals(item.getReservaId()))
+                    .collect(Collectors.toList());
+            if (itens.isEmpty()) {
+                throw regra(404, "Reserva emitida nao encontrada para a agencia desta conversa.");
+            }
+            if (itens.size() != 1) {
+                throw regra(409, "A selecao da reserva ficou ambigua. Atualize a lista e selecione novamente.");
+            }
+            return validarReservaSelecionada(itens.get(0), localizadorExato);
+        }
+
+        ReservasEmitidasRemarcacaoResponse response = consultarReservasEmitidasManager(
+                codgAgencia,
+                null,
+                localizadorExato,
+                null,
+                null,
+                PAGINA_PADRAO_RESERVAS,
+                TAMANHO_MAXIMO_RESERVAS);
+        if (response.getTotalElements() != null
+                && response.getTotalElements() > itensReserva(response).size()) {
+            throw regra(409,
+                    "A busca retornou muitas reservas. Selecione a reserva pelo identificador exibido.");
+        }
+        List<ReservasEmitidasRemarcacaoResponse.Item> exatas = itensReserva(response).stream()
+                .filter(java.util.Objects::nonNull)
+                .filter(item -> !vazio(item.getLocalizador()))
+                .filter(item -> localizadorExato.equalsIgnoreCase(item.getLocalizador().trim()))
+                .collect(Collectors.toList());
+        if (exatas.isEmpty()) {
+            throw regra(404, "Reserva emitida nao encontrada para a agencia desta conversa.");
+        }
+        if (exatas.size() != 1) {
+            throw regra(409,
+                    "Existe mais de uma reserva com este localizador. Selecione uma opcao da lista.");
+        }
+        return validarReservaSelecionada(exatas.get(0), localizadorExato);
+    }
+
+    private ReservasEmitidasRemarcacaoResponse.Item validarReservaSelecionada(
+            ReservasEmitidasRemarcacaoResponse.Item item,
+            String localizadorExato) {
+        if (item == null || item.getReservaId() == null
+                || vazio(item.getLocalizador())
+                || !localizadorExato.equalsIgnoreCase(item.getLocalizador().trim())) {
+            throw regra(409, "A reserva selecionada nao corresponde ao localizador informado.");
+        }
+        if (!Integer.valueOf(STATUS_RESERVA_EMITIDA).equals(item.getStatus())
+                || item.getDataEmissao() == null) {
+            throw regra(409, "A reserva selecionada nao esta emitida.");
+        }
+        if (!companhiaSuportadaRemarcacao(item.getCompanhiaIata())) {
+            throw regra(409,
+                    "A simulacao automatica esta disponivel somente para as companhias G3, LA, JJ e AD.");
+        }
+        if (!item.isDisponivelSimulacao()
+                || item.getQuantidadeBilhetesAtivos() == null
+                || item.getQuantidadeBilhetesAtivos() < 1) {
+            throw regra(409, primeiro(
+                    item.getMotivoIndisponibilidade(),
+                    "A reserva selecionada nao esta disponivel para simulacao."));
+        }
+        return item;
+    }
+
+    private ReservasEmitidasRemarcacaoResponse consultarReservasEmitidasManager(
+            Integer codgAgencia,
+            Integer reservaId,
+            String busca,
+            LocalDate dataEmissaoInicio,
+            LocalDate dataEmissaoFim,
+            int page,
+            int size) {
+        if (codgAgencia == null) {
+            throw regra(409, "A conversa nao possui agencia vinculada.");
+        }
+        StringBuilder path = new StringBuilder(CAMINHO_RESERVAS_EMITIDAS);
+        adicionarParametroConsulta(path, "codgAgencia", codgAgencia);
+        adicionarParametroConsulta(path, "reservaId", reservaId);
+        adicionarParametroConsulta(path, "busca", normalizarBusca(busca));
+        adicionarParametroConsulta(path, "dataEmissaoInicio", dataEmissaoInicio);
+        adicionarParametroConsulta(path, "dataEmissaoFim", dataEmissaoFim);
+        adicionarParametroConsulta(path, "page", page);
+        adicionarParametroConsulta(path, "size", size);
+
+        ReservasEmitidasRemarcacaoResponse response = manager.get(
+                path.toString(), ReservasEmitidasRemarcacaoResponse.class);
+        if (response == null) {
+            response = new ReservasEmitidasRemarcacaoResponse();
+            response.setPage(page);
+            response.setSize(size);
+            response.setTotalElements(0L);
+            response.setTotalPages(0);
+            response.setHasNext(false);
+        } else if (response.getItems() == null) {
+            response.setItems(new ArrayList<>());
+        }
+        return response;
+    }
+
+    private List<ReservasEmitidasRemarcacaoResponse.Item> itensReserva(
+            ReservasEmitidasRemarcacaoResponse response) {
+        return response == null || response.getItems() == null
+                ? Collections.emptyList() : response.getItems();
+    }
+
+    private void adicionarParametroConsulta(StringBuilder path, String nome, Object valor) {
+        if (valor == null) {
+            return;
+        }
+        path.append(path.indexOf("?") < 0 ? '?' : '&')
+                .append(nome)
+                .append('=')
+                .append(URLEncoder.encode(String.valueOf(valor), StandardCharsets.UTF_8));
+    }
+
+    private String normalizarBusca(String busca) {
+        if (vazio(busca)) {
+            return null;
+        }
+        String normalizada = busca.trim();
+        if (normalizada.length() > 120) {
+            throw regra(400, "A busca deve possuir no maximo 120 caracteres.");
+        }
+        return normalizada;
+    }
+
+    private void validarPeriodoEmissao(LocalDate inicio, LocalDate fim) {
+        if (inicio != null && fim != null && inicio.isAfter(fim)) {
+            throw regra(400, "A data inicial de emissao nao pode ser posterior a data final.");
+        }
+    }
+
+    private int normalizarPagina(Integer page) {
+        int valor = page == null ? PAGINA_PADRAO_RESERVAS : page;
+        if (valor < 0) {
+            throw regra(400, "A pagina nao pode ser negativa.");
+        }
+        return valor;
+    }
+
+    private int normalizarTamanhoPagina(Integer size) {
+        int valor = size == null ? TAMANHO_PADRAO_RESERVAS : size;
+        if (valor < 1 || valor > TAMANHO_MAXIMO_RESERVAS) {
+            throw regra(400, "O tamanho da pagina deve estar entre 1 e 50.");
+        }
+        return valor;
+    }
+
     private Reserva carregarReserva(SimulacaoRemarcacao simulacao, SessaoChatResponse sessao) {
+        ReservasEmitidasRemarcacaoResponse.Item reservaSelecionada = null;
+        if (simulacao.getReservaAereoId() != null) {
+            reservaSelecionada = resolverReservaSelecionada(
+                    simulacao.getCodgAgencia(),
+                    simulacao.getReservaAereoId(),
+                    simulacao.getLocalizador());
+        }
+        return carregarReserva(simulacao, sessao, reservaSelecionada);
+    }
+
+    private Reserva carregarReserva(
+            SimulacaoRemarcacao simulacao,
+            SessaoChatResponse sessao,
+            ReservasEmitidasRemarcacaoResponse.Item reservaSelecionada) {
         ConsultarLocalizadorResponse response = aereoClient.carregarReserva(
-                montarConsultaLocalizador(simulacao, sessao));
+                montarConsultaLocalizador(simulacao, sessao, reservaSelecionada));
         if (response == null || response.getException() != null || response.getReservas() == null) {
             return null;
         }
-        return response.getReservas().stream()
+
+        List<Reserva> correspondenciasExatas = response.getReservas().stream()
                 .filter(item -> item != null && simulacao.getLocalizador().equalsIgnoreCase(item.getLocalizador()))
-                .findFirst()
-                .orElse(response.getReservas().stream().filter(java.util.Objects::nonNull).findFirst().orElse(null));
+                .collect(Collectors.toList());
+        if (correspondenciasExatas.isEmpty()) {
+            return null;
+        }
+        if (correspondenciasExatas.size() == 1) {
+            Reserva unica = correspondenciasExatas.get(0);
+            if (reservaSelecionada == null
+                    || correspondeCompanhia(unica, reservaSelecionada.getCompanhiaIata())) {
+                return unica;
+            }
+            throw regra(409,
+                    "A reserva carregada nao corresponde a companhia da opcao selecionada.");
+        }
+
+        if (reservaSelecionada != null) {
+            List<Reserva> desambiguadas = correspondenciasExatas.stream()
+                    .filter(item -> correspondeCompanhia(item, reservaSelecionada.getCompanhiaIata()))
+                    .collect(Collectors.toList());
+            if (desambiguadas.size() == 1) {
+                return desambiguadas.get(0);
+            }
+        }
+
+        throw regra(409,
+                "Existe mais de uma reserva com este localizador. Selecione a reserva pelo identificador exibido.");
     }
 
     private ConsultarLocalizadorRequest montarConsultaLocalizador(SimulacaoRemarcacao simulacao,
-                                                                   SessaoChatResponse sessao) {
+                                                                   SessaoChatResponse sessao,
+                                                                   ReservasEmitidasRemarcacaoResponse.Item reservaSelecionada) {
         ConsultarLocalizadorRequest request = new ConsultarLocalizadorRequest();
         request.setSistema("Wooba");
         request.setLocalizador(simulacao.getLocalizador());
@@ -979,6 +1243,32 @@ public class ChatConfiancaRemarcacaoService {
         identificacao.setCodgErp(inteiro(sessao.getAgencia() == null ? null : sessao.getAgencia().getCodgSistemaBackoffice()));
         request.setIdentificacaoAgenciaModel(identificacao);
         return request;
+    }
+
+    private boolean correspondeCompanhia(Reserva reserva, String companhiaEsperada) {
+        if (vazio(companhiaEsperada) || reserva == null || reserva.getViagens() == null) {
+            return false;
+        }
+        String companhiaCanonicaEsperada = companhiaCanonica(companhiaEsperada);
+        return reserva.getViagens().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(this::companhiaTrecho)
+                .map(this::companhiaCanonica)
+                .anyMatch(companhiaCanonicaEsperada::equals);
+    }
+
+    private boolean companhiaSuportadaRemarcacao(String companhiaIata) {
+        return !vazio(companhiaIata)
+                && COMPANHIAS_SUPORTADAS_REMARCACAO.contains(
+                companhiaIata.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private String companhiaCanonica(String companhiaIata) {
+        if (vazio(companhiaIata)) {
+            return "";
+        }
+        String codigo = companhiaIata.trim().toUpperCase(Locale.ROOT);
+        return "JJ".equals(codigo) || "LA".equals(codigo) ? "LATAM" : codigo;
     }
 
     private PesquisaRequestDTO montarPesquisa(SimulacaoRemarcacao simulacao,
@@ -1245,6 +1535,8 @@ public class ChatConfiancaRemarcacaoService {
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
                 "Quando deseja viajar?", mensagem);
         response.setCriterios(montarCriterios(trecho, dataOriginal(trecho), "QUALQUER", false));
+        // Mantem no card os dados reais de cada voo do trecho original, inclusive conexoes.
+        response.setTrechos(List.of(montarTrecho(trecho, simulacao.getTrechoIndice(), true)));
         return response;
     }
 
@@ -1295,7 +1587,37 @@ public class ChatConfiancaRemarcacaoService {
         dto.setDataChegada(formatarData(ultimo.getDataChegada()));
         dto.setHoraChegada(ultimo.getHoraChegada());
         dto.setNumeroVoos(numerosVoos(item));
+        for (Voo voo : item.getVoos()) {
+            dto.getVoos().add(montarVoo(voo, dto.getCompanhia()));
+        }
         dto.setSelecionado(selecionado);
+        return dto;
+    }
+
+    private String companhiaVoo(Voo voo, String fallback) {
+        if (voo != null && voo.getCiaMandatoria() != null
+                && !vazio(voo.getCiaMandatoria().getCodigoIata())) {
+            return voo.getCiaMandatoria().getCodigoIata().toUpperCase(Locale.ROOT);
+        }
+        if (voo != null && voo.getCiaOperadora() != null
+                && !vazio(voo.getCiaOperadora().getCodigoIata())) {
+            return voo.getCiaOperadora().getCodigoIata().toUpperCase(Locale.ROOT);
+        }
+        return fallback;
+    }
+
+    private RemarcacaoSimulacaoResponse.Voo montarVoo(Voo voo, String companhiaFallback) {
+        RemarcacaoSimulacaoResponse.Voo dto = new RemarcacaoSimulacaoResponse.Voo();
+        dto.setCompanhia(companhiaVoo(voo, companhiaFallback));
+        dto.setNumero(voo == null ? null : voo.getNumeroVoo());
+        dto.setOrigem(voo == null ? null : iata(voo.getOrigem()));
+        dto.setDestino(voo == null ? null : iata(voo.getDestino()));
+        dto.setDataPartida(voo == null ? null : formatarData(voo.getDataPartida()));
+        dto.setHoraPartida(voo == null ? null : voo.getHoraPartida());
+        dto.setDataChegada(voo == null ? null : formatarData(voo.getDataChegada()));
+        dto.setHoraChegada(voo == null ? null : voo.getHoraChegada());
+        dto.setDuracao(voo == null ? null : voo.getDuracao());
+        dto.setEquipamento(voo == null ? null : voo.getEquipamento());
         return dto;
     }
 
@@ -1321,6 +1643,9 @@ public class ChatConfiancaRemarcacaoService {
         dto.setDuracao(primeiro(trecho.getTempoDeDuracao(), primeiro.getDuracao()));
         dto.setParadas(trecho.getNumeroParadas() == null ? Math.max(0, trecho.getVoos().size() - 1) : trecho.getNumeroParadas());
         dto.setNumerosVoos(numerosVoos(trecho));
+        for (Voo voo : trecho.getVoos()) {
+            dto.getVoos().add(montarVoo(voo, dto.getCompanhia()));
+        }
         dto.setMenorValor(valorMenor(trecho));
         for (int i = 0; i < trecho.getFamilias().size(); i++) {
             dto.getFamilias().add(montarFamilia(trecho.getFamilias().get(i), i));
@@ -1415,8 +1740,7 @@ public class ChatConfiancaRemarcacaoService {
                 novaFormaPagamento(PAGAMENTO_CARTAO, "CARTAO", "Cartao");
         cartao.setDisponivel(true);
         cartao.setStatus(FORMA_DISPONIVEL);
-        cartao.setMensagem(
-                "Nenhum dado do cartao sera solicitado no chat. O atendente orientara o pagamento.");
+        cartao.setMensagem("Pagamento orientado pelo atendente.");
         formas.add(cartao);
         return formas;
     }
@@ -1425,7 +1749,7 @@ public class ChatConfiancaRemarcacaoService {
             SimulacaoRemarcacao simulacao,
             BigDecimal total) {
         RemarcacaoSimulacaoResponse.FormaPagamento fatura =
-                novaFormaPagamento(PAGAMENTO_FATURA, "FATURA", "Fatura corporativa");
+                novaFormaPagamento(PAGAMENTO_FATURA, "FATURA", "Faturado");
         String codgErp;
         try {
             SessaoChatResponse sessao = montarSessao(simulacao);
@@ -1462,7 +1786,7 @@ public class ChatConfiancaRemarcacaoService {
             if (limitesFaturados.isEmpty()) {
                 fatura.setDisponivel(false);
                 fatura.setStatus(FORMA_INDISPONIVEL);
-                fatura.setMensagem("A agencia nao possui limite faturado disponivel.");
+                fatura.setMensagem("Sem limite faturado disponivel.");
                 return fatura;
             }
 
@@ -1478,11 +1802,11 @@ public class ChatConfiancaRemarcacaoService {
             if (disponivel.compareTo(zero(total)) >= 0) {
                 fatura.setDisponivel(true);
                 fatura.setStatus(FORMA_DISPONIVEL);
-                fatura.setMensagem("Limite faturado confirmado para o valor estimado.");
+                fatura.setMensagem("Limite disponivel para o valor.");
             } else {
                 fatura.setDisponivel(false);
                 fatura.setStatus(FORMA_INDISPONIVEL);
-                fatura.setMensagem("O limite faturado confirmado nao cobre o valor estimado.");
+                fatura.setMensagem("Limite insuficiente para o valor.");
             }
             return fatura;
         } catch (Exception ex) {
@@ -1497,8 +1821,7 @@ public class ChatConfiancaRemarcacaoService {
             RemarcacaoSimulacaoResponse.FormaPagamento fatura) {
         fatura.setDisponivel(true);
         fatura.setStatus(FORMA_SUJEITA_VALIDACAO);
-        fatura.setMensagem(
-                "Nao foi possivel confirmar o limite agora. A fatura ficara sujeita a validacao do atendente.");
+        fatura.setMensagem("Sujeito a validacao do atendente.");
         return fatura;
     }
 
@@ -1524,12 +1847,12 @@ public class ChatConfiancaRemarcacaoService {
                 codigo,
                 codigo == PAGAMENTO_FATURA ? "FATURA" : "CARTAO",
                 primeiro(simulacao.getFormaPagamentoDescricao(),
-                        codigo == PAGAMENTO_FATURA ? "Fatura corporativa" : "Cartao"));
+                        codigo == PAGAMENTO_FATURA ? "Faturado" : "Cartao"));
         forma.setDisponivel(true);
         forma.setStatus(simulacao.getPagamentoStatus());
         forma.setMensagem(PAGAMENTO_PREFERENCIA_SUJEITA_VALIDACAO.equals(simulacao.getPagamentoStatus())
-                ? "Preferencia registrada e sujeita a validacao do limite pelo atendente. Nenhuma cobranca foi realizada."
-                : "Preferencia registrada. Nenhuma cobranca foi realizada; o atendente confirmara o pagamento.");
+                ? "Sujeito a validacao do atendente."
+                : "Registrado para confirmacao do atendente.");
         forma.setSelecionadaEm(simulacao.getPagamentoSelecionadoEm());
         return forma;
     }
@@ -1646,12 +1969,27 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     private SimulacaoRemarcacao buscarValidar(Long id, Integer codgUsuario) {
+        return buscarValidar(id, codgUsuario, true);
+    }
+
+    private SimulacaoRemarcacao buscarValidarParaConsulta(Long id, Integer codgUsuario) {
+        return buscarValidar(id, codgUsuario, false);
+    }
+
+    private SimulacaoRemarcacao buscarValidar(Long id, Integer codgUsuario, boolean mutacao) {
         if (id == null || codgUsuario == null) throw regra(400, "Informe a simulacao e o usuario.");
         SimulacaoRemarcacao simulacao = manager.get(
                 "chat-confianca/persistencia/simulacoes-remarcacao/" + id, SimulacaoRemarcacao.class);
         if (simulacao == null) throw regra(404, "Simulacao nao encontrada.");
         if (!codgUsuario.equals(simulacao.getCodgUsuario())) throw regra(403, "Usuario nao pertence a simulacao.");
-        validarConversaSolicitante(simulacao.getConversaId(), codgUsuario);
+        Conversa conversa = validarConversaSolicitante(simulacao.getConversaId(), codgUsuario);
+        if (mutacao || !STATUS_FINAIS_CONSULTAVEIS.contains(simulacao.getStatus())) {
+            validarConversaConfiaAtiva(conversa);
+            validarSessaoConversa(conversa, codgUsuario);
+            if (!java.util.Objects.equals(conversa.getCodgAgencia(), simulacao.getCodgAgencia())) {
+                throw regra(409, "A agencia da simulacao nao corresponde mais a agencia da conversa.");
+            }
+        }
         if (EXPIRADO.equals(simulacao.getStatus())
                 || (simulacao.getExpiraEm() != null && simulacao.getExpiraEm().isBefore(LocalDateTime.now()))) {
             throw regra(409, "A simulacao expirou. Inicie uma nova pesquisa para obter valores atuais.");
@@ -1660,12 +1998,53 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     private Conversa validarConversaSolicitante(Long conversaId, Integer codgUsuario) {
-        Conversa conversa = chatService.buscarConversa(conversaId);
+        if (conversaId == null || codgUsuario == null) {
+            throw regra(400, "Informe a conversa e o usuario.");
+        }
+        Conversa conversa = chatService.buscarConversa(conversaId, codgUsuario, false);
         if (conversa == null) throw regra(404, "Conversa nao encontrada.");
         if (!codgUsuario.equals(conversa.getSolicitanteCodgUsuario())) {
             throw regra(403, "Usuario nao e o solicitante da conversa.");
         }
         return conversa;
+    }
+
+    private void validarConversaConfiaAtiva(Conversa conversa) {
+        boolean statusAtivo = conversa != null
+                && (conversa.getStatus() == StatusConversa.NOVA
+                || conversa.getStatus() == StatusConversa.AGUARDANDO_SOLICITANTE);
+        if (!statusAtivo || conversa.getAtendenteResponsavelCodgUsuario() != null
+                || !metadadosOrigemConfia(conversa.getMetadadosJson())) {
+            throw regra(409,
+                    "A simulacao de remarcacao somente pode continuar em uma conversa ativa com a ConfIA.");
+        }
+    }
+
+    private boolean metadadosOrigemConfia(String metadadosJson) {
+        if (vazio(metadadosJson)) {
+            return false;
+        }
+        try {
+            JsonNode metadados = mapper.readTree(metadadosJson);
+            JsonNode origem = metadados == null ? null : metadados.get("origem");
+            return origem != null && origem.isTextual()
+                    && "CONFIA".equalsIgnoreCase(origem.asText().trim());
+        } catch (JsonProcessingException exception) {
+            return false;
+        }
+    }
+
+    private SessaoChatResponse validarSessaoConversa(Conversa conversa, Integer codgUsuario) {
+        if (conversa == null || conversa.getCodgAgencia() == null) {
+            throw regra(409, "A conversa nao possui agencia vinculada.");
+        }
+        SessaoChatResponse sessao = chatService.montarSessao(codgUsuario, conversa.getCodgAgencia());
+        Integer agenciaSessao = sessao == null || sessao.getAgencia() == null
+                ? null : sessao.getAgencia().getCodgAgencia();
+        if (!conversa.getCodgAgencia().equals(agenciaSessao)) {
+            throw regra(403, "Usuario nao pertence a agencia da conversa.");
+        }
+        return sessao;
     }
 
     private SessaoChatResponse montarSessao(SimulacaoRemarcacao simulacao) {

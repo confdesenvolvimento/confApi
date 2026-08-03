@@ -41,7 +41,23 @@ public class RemarcacaoSimulacaoResponse {
         private String dataChegada;
         private String horaChegada;
         private String numeroVoos;
+        /** Detalhamento dos voos que compoem o trecho (inclui conexoes). */
+        private List<Voo> voos = new ArrayList<>();
         private boolean selecionado;
+    }
+
+    @Data
+    public static class Voo {
+        private String companhia;
+        private String numero;
+        private String origem;
+        private String destino;
+        private String dataPartida;
+        private String horaPartida;
+        private String dataChegada;
+        private String horaChegada;
+        private String duracao;
+        private String equipamento;
     }
 
     @Data
@@ -82,6 +98,7 @@ public class RemarcacaoSimulacaoResponse {
         private String duracao;
         private Integer paradas;
         private String numerosVoos;
+        private List<Voo> voos = new ArrayList<>();
         private BigDecimal menorValor;
         private String moeda = "BRL";
         private List<Familia> familias = new ArrayList<>();
