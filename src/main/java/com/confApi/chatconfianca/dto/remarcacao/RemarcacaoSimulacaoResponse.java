@@ -144,6 +144,10 @@ public class RemarcacaoSimulacaoResponse {
         private String familiaOriginal;
         private BigDecimal tarifaOriginal;
         private BigDecimal novaTarifa;
+        private BigDecimal taxaEmbarqueOriginal;
+        private BigDecimal novaTaxaEmbarque;
+        private BigDecimal taxaServicoOriginal;
+        private BigDecimal novaTaxaServico;
         private BigDecimal multa;
         private BigDecimal diferencaTarifaria;
         private BigDecimal diferencaTaxaEmbarque;
