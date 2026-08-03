@@ -20,6 +20,7 @@ import com.confApi.exception.RegraDeNegocioException;
 import com.confApi.hub.aereo.dto.Bilhete;
 import com.confApi.hub.aereo.dto.Passageiro;
 import com.confApi.hub.aereo.dto.TrechoReserva;
+import com.confApi.hub.aereo.dto.Voo;
 import com.confApi.hub.enumerador.TipoLimite;
 import com.confApi.hub.limites.LimitesService;
 import com.confApi.hub.limites.dto.Disponibilidade;
@@ -855,7 +856,24 @@ class ChatConfiancaRemarcacaoServiceTest {
         Reserva reserva = new Reserva();
         reserva.setLocalizador("ABC123");
         reserva.setPassageiros(List.of(passageiros));
-        reserva.setViagens(List.of(new TrechoReserva()));
+
+        TrechoReserva trecho = new TrechoReserva();
+        trecho.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, "G3", "GOL"));
+        trecho.setOrigem(new com.confApi.hub.aereo.dto.Aeroporto("CGB", "Cuiaba"));
+        trecho.setDestino(new com.confApi.hub.aereo.dto.Aeroporto("BSB", "Brasilia"));
+
+        Voo voo = new Voo();
+        voo.setCiaMandatoria(new com.confApi.hub.aereo.dto.Companhia(1, "G3", "GOL"));
+        voo.setNumeroVoo("1234");
+        voo.setOrigem(new com.confApi.hub.aereo.dto.Aeroporto("CGB", "Cuiaba"));
+        voo.setDestino(new com.confApi.hub.aereo.dto.Aeroporto("BSB", "Brasilia"));
+        voo.setDataPartida(new java.util.Date());
+        voo.setHoraPartida("10:30");
+        voo.setDataChegada(new java.util.Date());
+        voo.setHoraChegada("12:00");
+        trecho.setVoos(List.of(voo));
+
+        reserva.setViagens(List.of(trecho));
         ConsultarLocalizadorResponse response = new ConsultarLocalizadorResponse();
         response.setReservas(List.of(reserva));
         return response;
