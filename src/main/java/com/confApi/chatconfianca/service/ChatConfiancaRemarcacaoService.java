@@ -39,6 +39,9 @@ import com.confApi.db.confManager.regraAereaAlteracao.RegraAereaAlteracaoManager
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoCalculoResponse;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaRequest;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
+import com.confApi.db.confManager.reservaAereo.ReservaAereo;
+import com.confApi.db.confManager.reservaValor.ReservaValor;
+import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.exception.RegraDeNegocioException;
 import com.confApi.hub.aereo.dto.Aeroporto;
 import com.confApi.hub.aereo.dto.Bilhete;
@@ -58,6 +61,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -135,6 +139,14 @@ public class ChatConfiancaRemarcacaoService {
     private final RegraAereaAlteracaoManagerService regraService;
     private final LimitesService limitesService;
     private final ObjectMapper mapper;
+    private final ReservaAereoApi reservaAereoApi;
+
+    /**
+     * Mantem o rateio dos valores originais por trecho disponivel para testes
+     * com fornecedores. Por padrao, a simulacao usa o valor integral da reserva.
+     */
+    @Value("${chat-confianca.remarcacao.ratear-valores-originais-por-trecho:false}")
+    private boolean ratearValoresOriginaisPorTrecho;
 
     public ChatConfiancaRemarcacaoService(ChatConfiancaManagerClient manager,
                                           ChatConfiancaService chatService,
@@ -142,7 +154,8 @@ public class ChatConfiancaRemarcacaoService {
                                           AeroportoService aeroportoService,
                                           RegraAereaAlteracaoManagerService regraService,
                                           LimitesService limitesService,
-                                          ObjectMapper mapper) {
+                                          ObjectMapper mapper,
+                                          ReservaAereoApi reservaAereoApi) {
         this.manager = manager;
         this.chatService = chatService;
         this.aereoClient = aereoClient;
@@ -150,6 +163,7 @@ public class ChatConfiancaRemarcacaoService {
         this.regraService = regraService;
         this.limitesService = limitesService;
         this.mapper = mapper;
+        this.reservaAereoApi = reservaAereoApi;
     }
 
     public ReservasEmitidasRemarcacaoResponse listarReservasEmitidas(
@@ -1414,6 +1428,7 @@ public class ChatConfiancaRemarcacaoService {
         request.setValorNovasTaxas(novasTaxas);
         request.setTaxaServico(zero(taxaServico));
         request.setValorTotalReserva(totalOriginal);
+        request.setDataEmissaoReserva(reserva == null ? null : reserva.getDataEmissao());
         request.setQuantidadePassageiros(Math.max(1, quantidadePassageiros));
         request.setQuantidadeTrechos(1);
         request.setExigirRegraAprovada(true);
@@ -1447,14 +1462,27 @@ public class ChatConfiancaRemarcacaoService {
         boolean houveRateioOriginal = false;
         String resumoRegra = null;
         String familiaOriginal = familiaOriginal(trecho);
+        Map<Integer, List<BigDecimal>> taxasEmbarquePorTrecho =
+                carregarTaxasEmbarquePorTrecho(reserva);
         for (Passageiro passageiro : passageirosSelecionados) {
             int indice = reserva.getPassageiros().indexOf(passageiro);
             ValoresPassageiro originais = valoresOriginaisPassageiro(reserva, passageiro, indice);
             houveRateioOriginal = houveRateioOriginal || originais.isRateado();
             PrecoTipo novoPreco = precoTipo(preco, tipoPassageiro(passageiro));
             BigDecimal novaTarifa = decimal(novoPreco == null ? null : novoPreco.getValorTarifa());
-            BigDecimal novaTaxaEmbarque = novasTaxasPassageiro(novoPreco);
-            BigDecimal taxaDu = novaTaxaServicoPassageiro(novoPreco);
+            BigDecimal novaTaxaEmbarqueTrecho = novasTaxasPassageiro(novoPreco);
+            BigDecimal novaTaxaEmbarque = novaTaxaEmbarqueComTrechos(
+                    novaTaxaEmbarqueTrecho,
+                    originais,
+                    taxasEmbarquePorTrecho.get(indice),
+                    simulacao.getTrechoIndice(),
+                    reserva.getViagens() == null ? 0 : reserva.getViagens().size());
+            // O valor enviado ao Manager representa somente o acréscimo de DU/taxas
+            // de serviço. A tarifa original já pode conter DU, RC e RAV.
+            BigDecimal taxaServicoNova = novaTaxaServicoPassageiro(novoPreco);
+            BigDecimal taxaServicoOriginal = taxaServicoOriginal(originais);
+            BigDecimal diferencaTaxaServico = diferencaNaoNegativa(
+                    taxaServicoNova, taxaServicoOriginal);
 
             RegraAereaAlteracaoConsultaRequest regraRequest = montarRequestRegra(
                     reserva,
@@ -1463,7 +1491,7 @@ public class ChatConfiancaRemarcacaoService {
                     originais.getTaxaEmbarque(),
                     novaTarifa,
                     novaTaxaEmbarque,
-                    taxaDu,
+                    diferencaTaxaServico,
                     originais.getTotal(),
                     1);
             RegraAereaAlteracaoConsultaResponse regra = regraService.simular(regraRequest);
@@ -1495,9 +1523,16 @@ public class ChatConfiancaRemarcacaoService {
             item.setFamiliaOriginal(familiaOriginal);
             item.setTarifaOriginal(zero(calculo.getValorTarifaBase()));
             item.setNovaTarifa(zero(calculo.getValorNovaTarifa()));
+            item.setTaxaEmbarqueOriginal(zero(calculo.getValorTaxasBase()));
+            item.setNovaTaxaEmbarque(zero(calculo.getValorNovasTaxas()));
+            item.setTaxaServicoOriginal(taxaServicoOriginal);
+            item.setNovaTaxaServico(taxaServicoNova);
             item.setMulta(zero(calculo.getValorMulta()));
+            item.setMultaIsentaPorAntecedencia(Boolean.TRUE.equals(calculo.getMultaIsentaPorAntecedencia()));
+            item.setLimiteHorasIsencaoMulta(calculo.getLimiteHorasIsencaoMulta());
             item.setDiferencaTarifaria(zero(calculo.getDiferencaTarifaria()));
-            item.setDiferencaTaxaEmbarque(zero(calculo.getDiferencaTaxas()));
+            item.setDiferencaTaxaEmbarque(diferencaNaoNegativa(
+                    calculo.getValorNovasTaxas(), calculo.getValorTaxasBase()));
             item.setTaxaDu(zero(calculo.getTaxaServico()));
             item.setTotalEstimado(zero(calculo.getTotalPrevisto()));
             item.setCalculoCompleto(true);
@@ -2107,6 +2142,7 @@ public class ChatConfiancaRemarcacaoService {
 
     private BigDecimal ratear(BigDecimal valor, Reserva reserva) {
         if (valor == null) return null;
+        if (!ratearValoresOriginaisPorTrecho) return valor;
         int trechos = reserva.getViagens() == null || reserva.getViagens().isEmpty() ? 1 : reserva.getViagens().size();
         return valor.divide(BigDecimal.valueOf(trechos), 2, RoundingMode.HALF_UP);
     }
@@ -2136,11 +2172,143 @@ public class ChatConfiancaRemarcacaoService {
                 .add(zero(decimal(preco.getValorTaxaMenorDesacompanhado())));
     }
 
+    private BigDecimal novaTaxaEmbarqueComTrechos(
+            BigDecimal novaTaxaTrecho,
+            ValoresPassageiro originais,
+            List<BigDecimal> taxasPorTrecho,
+            Integer trechoSelecionado,
+            int quantidadeTrechos) {
+        BigDecimal nova = zero(novaTaxaTrecho);
+        if (quantidadeTrechos <= 1 || originais == null) {
+            return nova;
+        }
+        if (ratearValoresOriginaisPorTrecho) {
+            // Modo de teste: preserva o comportamento legado, sem recompor
+            // os trechos a partir do valor integral da reserva.
+            return nova;
+        }
+
+        BigDecimal originalTotal = zero(originais.getTaxaEmbarqueIntegral());
+        if (originalTotal.signum() == 0) {
+            originalTotal = zero(originais.getTaxaEmbarque());
+        }
+
+        BigDecimal originalTrecho = null;
+        if (taxasPorTrecho != null
+                && trechoSelecionado != null
+                && trechoSelecionado >= 0
+                && trechoSelecionado < taxasPorTrecho.size()) {
+            originalTrecho = zero(taxasPorTrecho.get(trechoSelecionado));
+        }
+
+        // Reservas antigas podem nao possuir os valores separados por trecho.
+        // Nesse caso, a melhor aproximacao disponivel e distribuir apenas a taxa
+        // original para identificar o valor que permanece no trecho nao alterado.
+        if (originalTrecho == null) {
+            originalTrecho = originalTotal.divide(
+                    BigDecimal.valueOf(quantidadeTrechos), 2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal originalNaoAlterado = originalTotal.subtract(originalTrecho);
+        if (originalNaoAlterado.signum() < 0) {
+            originalNaoAlterado = BigDecimal.ZERO;
+        }
+        return nova.add(originalNaoAlterado).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private Map<Integer, List<BigDecimal>> carregarTaxasEmbarquePorTrecho(Reserva reserva) {
+        Map<Integer, List<BigDecimal>> resultado = new HashMap<>();
+        if (reserva == null
+                || vazio(reserva.getLocalizador())
+                || reserva.getViagens() == null
+                || reserva.getViagens().size() <= 1
+                || reserva.getPassageiros() == null
+                || reservaAereoApi == null) {
+            return resultado;
+        }
+
+        try {
+            ReservaAereo reservaDb = reservaAereoApi
+                    .reservaAereoConsultaLocalizadorDb(reserva.getLocalizador());
+            if (reservaDb == null || reservaDb.getPassageiros() == null) {
+                return resultado;
+            }
+
+            int quantidadeTrechos = reserva.getViagens().size();
+            for (int indice = 0; indice < reserva.getPassageiros().size(); indice++) {
+                Passageiro passageiro = reserva.getPassageiros().get(indice);
+                com.confApi.db.confManager.passageiro.Passageiro passageiroDb =
+                        localizarPassageiroDb(reservaDb, passageiro, indice);
+                if (passageiroDb == null
+                        || passageiroDb.getReservaValores() == null
+                        || passageiroDb.getReservaValores().size() != quantidadeTrechos) {
+                    continue;
+                }
+
+                List<BigDecimal> taxas = new ArrayList<>();
+                for (ReservaValor valor : passageiroDb.getReservaValores()) {
+                    taxas.add(decimal(valor == null ? null : valor.getValorTaxaEmbarque()));
+                }
+                resultado.put(indice, taxas);
+            }
+        } catch (Exception ex) {
+            LOG.log(Level.FINE,
+                    "Nao foi possivel carregar taxas de embarque por trecho para a remarcacao.", ex);
+        }
+        return resultado;
+    }
+
+    private com.confApi.db.confManager.passageiro.Passageiro localizarPassageiroDb(
+            ReservaAereo reservaDb,
+            Passageiro passageiro,
+            int indice) {
+        if (reservaDb == null || reservaDb.getPassageiros() == null) {
+            return null;
+        }
+
+        String cpf = somenteDigitos(passageiro == null ? null : passageiro.getCpf());
+        if (!vazio(cpf)) {
+            com.confApi.db.confManager.passageiro.Passageiro porCpf = reservaDb.getPassageiros().stream()
+                    .filter(java.util.Objects::nonNull)
+                    .filter(item -> cpf.equals(somenteDigitos(item.getCpf())))
+                    .findFirst()
+                    .orElse(null);
+            if (porCpf != null) {
+                return porCpf;
+            }
+        }
+
+        String nome = normalizar(nomePassageiro(passageiro, Math.max(0, indice)));
+        return reservaDb.getPassageiros().stream()
+                .filter(java.util.Objects::nonNull)
+                .filter(item -> nome.equals(normalizar(
+                        (item.getNomePassageiro() == null ? "" : item.getNomePassageiro())
+                                + " "
+                                + (item.getSobrenomePassageiro() == null ? "" : item.getSobrenomePassageiro()))))
+                .findFirst()
+                .orElse(null);
+    }
+
     private BigDecimal novaTaxaServicoPassageiro(PrecoTipo preco) {
         if (preco == null) return BigDecimal.ZERO;
         return zero(decimal(preco.getValorTaxaServico()))
                 .add(zero(decimal(preco.getValorFee())))
                 .add(zero(decimal(preco.getValorRav())));
+    }
+
+    private BigDecimal taxaServicoOriginal(ValoresPassageiro valores) {
+        if (valores == null) return BigDecimal.ZERO;
+        return zero(valores.getTaxaDu())
+                .add(zero(valores.getTaxaRc()))
+                .add(zero(valores.getRav()))
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal diferencaNaoNegativa(BigDecimal novo, BigDecimal original) {
+        BigDecimal diferenca = zero(novo).subtract(zero(original));
+        return diferenca.signum() > 0
+                ? diferenca.setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
     }
 
     private ValoresPassageiro valoresOriginaisPassageiro(
@@ -2152,9 +2320,14 @@ public class ChatConfiancaRemarcacaoService {
                 ? null : reserva.getValorReserva().getValorBase();
         ValorPassageiro valorPassageiro = localizarValorPassageiro(base, passageiro, indice);
         if (valorPassageiro != null) {
+            resultado.setTaxaEmbarqueIntegral(
+                    zero(decimal(valorPassageiro.getTaxaEmbarque())));
             resultado.setTarifa(ratear(decimal(valorPassageiro.getTarifa()), reserva));
             resultado.setTaxaEmbarque(ratear(
                     zero(decimal(valorPassageiro.getTaxaEmbarque())), reserva));
+            resultado.setTaxaDu(ratear(decimal(valorPassageiro.getTaxaDU()), reserva));
+            resultado.setTaxaRc(ratear(decimal(valorPassageiro.getRC()), reserva));
+            resultado.setRav(ratear(decimal(valorPassageiro.getRAV()), reserva));
             resultado.setTotal(ratear(decimal(valorPassageiro.getTotal()), reserva));
             if (resultado.getTotal() == null && resultado.getTarifa() != null) {
                 resultado.setTotal(somar(resultado.getTarifa(), resultado.getTaxaEmbarque()));
@@ -2164,10 +2337,19 @@ public class ChatConfiancaRemarcacaoService {
 
         int quantidadePassageiros = Math.max(
                 1, reserva.getPassageiros() == null ? 0 : reserva.getPassageiros().size());
+        resultado.setTaxaEmbarqueIntegral(
+                zero(decimal(base == null ? null : base.getTaxaEmbarque()))
+                        .divide(BigDecimal.valueOf(quantidadePassageiros), 2, RoundingMode.HALF_UP));
         resultado.setTarifa(ratearPorPassageiro(
                 decimal(base == null ? null : base.getTarifa()), reserva, quantidadePassageiros));
         resultado.setTaxaEmbarque(ratearPorPassageiro(
                 decimal(base == null ? null : base.getTaxaEmbarque()), reserva, quantidadePassageiros));
+        resultado.setTaxaDu(ratearPorPassageiro(
+                decimal(base == null ? null : base.getTaxaDU()), reserva, quantidadePassageiros));
+        resultado.setTaxaRc(ratearPorPassageiro(
+                decimal(base == null ? null : base.getRC()), reserva, quantidadePassageiros));
+        resultado.setRav(ratearPorPassageiro(
+                decimal(base == null ? null : base.getRAV()), reserva, quantidadePassageiros));
         resultado.setTotal(ratearPorPassageiro(
                 decimal(base == null ? null : base.getTotal()), reserva, quantidadePassageiros));
         resultado.setRateado(true);
@@ -2471,6 +2653,10 @@ public class ChatConfiancaRemarcacaoService {
     private static class ValoresPassageiro {
         private BigDecimal tarifa;
         private BigDecimal taxaEmbarque;
+        private BigDecimal taxaEmbarqueIntegral;
+        private BigDecimal taxaDu;
+        private BigDecimal taxaRc;
+        private BigDecimal rav;
         private BigDecimal total;
         private boolean rateado;
     }

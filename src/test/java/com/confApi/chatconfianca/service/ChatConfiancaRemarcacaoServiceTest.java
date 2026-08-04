@@ -16,6 +16,7 @@ import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoRespon
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.db.confManager.aeroporto.AeroportoService;
 import com.confApi.db.confManager.regraAereaAlteracao.RegraAereaAlteracaoManagerService;
+import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.exception.RegraDeNegocioException;
 import com.confApi.hub.aereo.dto.Bilhete;
 import com.confApi.hub.aereo.dto.Passageiro;
@@ -66,6 +67,7 @@ class ChatConfiancaRemarcacaoServiceTest {
     private final RegraAereaAlteracaoManagerService regraService =
             mock(RegraAereaAlteracaoManagerService.class);
     private final LimitesService limitesService = mock(LimitesService.class);
+    private final ReservaAereoApi reservaAereoApi = mock(ReservaAereoApi.class);
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     private ChatConfiancaRemarcacaoService service;
@@ -82,7 +84,8 @@ class ChatConfiancaRemarcacaoServiceTest {
                 aeroportoService,
                 regraService,
                 limitesService,
-                mapper);
+                mapper,
+                reservaAereoApi);
 
         simulacao = new SimulacaoRemarcacao();
         simulacao.setId(SIMULACAO_ID);

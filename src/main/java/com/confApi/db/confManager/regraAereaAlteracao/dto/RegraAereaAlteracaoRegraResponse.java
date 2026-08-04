@@ -34,6 +34,7 @@ public class RegraAereaAlteracaoRegraResponse {
     private BigDecimal valorMultaFixoEuropa;
     private BigDecimal valorMultaFixoDemaisInternacionais;
     private BigDecimal percentualMulta;
+    private Integer multaIsentaAbaixoDeHoras;
     private String baseCalculoMulta;
     private Boolean porPassageiro;
     private Boolean porTrecho;
