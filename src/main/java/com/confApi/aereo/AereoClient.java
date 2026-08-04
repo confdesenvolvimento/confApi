@@ -17,7 +17,9 @@ import org.springframework.web.client.RestTemplate;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -134,6 +136,20 @@ public class AereoClient {
                 consultarRequest,
                 ConsultarLocalizadorResponse.class,
                 new ConsultarLocalizadorResponse()
+        );
+    }
+
+    /**
+     * Expõe ao cliente apenas a configuração de emissão retornada pelo HUB.
+     * Ela contém as formas de pagamento permitidas para o PNR consultado.
+     */
+    public Map<String, Object> iniciarEmissao(ConsultarLocalizadorRequest consultarRequest) {
+        return post(
+                "Aéreo - Iniciar Emissão",
+                API_AEREO + "/iniciaremissao",
+                consultarRequest,
+                Map.class,
+                new LinkedHashMap<>()
         );
     }
 
@@ -315,8 +331,6 @@ public class AereoClient {
                 Level.SEVERE,
                 operacao + " - Erro HTTP ao consumir HUB. URL: " + url
                         + ", Status: " + e.getRawStatusCode()
-                        + ", ResponseBody: " + e.getResponseBodyAsString(),
-                e
         );
     }
 

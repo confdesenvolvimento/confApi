@@ -165,12 +165,12 @@ public class RecebimentoModel implements Serializable {
                 ", valorEntrada=" + valorEntrada +
                 ", valorPagamento=" + valorPagamento +
                 ", formaDePagamento=" + formaDePagamento +
-                ", cartaoSelecionado=" + cartaoSelecionado +
                 ", statusRecebimento=" + statusRecebimento +
                 ", dataRecebimento=" + dataRecebimento +
                 ", codgRecebimento=" + codgRecebimento +
-                ", assinatura='" + assinatura + '\'' +
-                ", link='" + link + '\'' +
+                ", possuiCartao=" + (cartaoSelecionado != null) +
+                ", possuiAssinatura=" + (assinatura != null && !assinatura.isBlank()) +
+                ", possuiLink=" + (link != null && !link.isBlank()) +
                 '}';
     }
 }

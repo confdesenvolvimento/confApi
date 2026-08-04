@@ -114,11 +114,11 @@ public class WoobaWebhookRequest {
         return "Api=" + safe(api)
                 + ", TransactionType=" + safe(transactionType)
                 + ", TransactionTypeDescription=" + safe(transactionTypeDescription)
-                + ", Id=" + safe(id)
-                + ", UniqueId=" + safe(uniqueId)
-                + ", Locator=" + safe(locator)
-                + ", Ticket=" + safe(ticket)
-                + ", LastUpdate=" + safe(lastUpdate);
+                + ", possuiId=" + hasText(id)
+                + ", possuiUniqueId=" + hasText(uniqueId)
+                + ", possuiLocator=" + hasText(locator)
+                + ", possuiTicket=" + hasText(ticket)
+                + ", possuiLastUpdate=" + hasText(lastUpdate);
     }
 
     private String safe(Object value) {
@@ -129,18 +129,12 @@ public class WoobaWebhookRequest {
         return text.trim().isEmpty() ? "vazio" : text;
     }
 
+    private boolean hasText(Object value) {
+        return value != null && !value.toString().trim().isEmpty();
+    }
+
     @Override
     public String toString() {
-        return "WoobaWebhookRequest{" +
-                "api='" + api + '\'' +
-                ", transactionType=" + transactionType +
-                ", transactionTypeDescription='" + transactionTypeDescription + '\'' +
-                ", id=" + id +
-                ", uniqueId='" + uniqueId + '\'' +
-                ", locator='" + locator + '\'' +
-                ", ticket='" + ticket + '\'' +
-                ", lastUpdate='" + lastUpdate + '\'' +
-                ", additionalFields=" + additionalFields +
-                '}';
+        return "WoobaWebhookRequest{" + resumo() + '}';
     }
 }

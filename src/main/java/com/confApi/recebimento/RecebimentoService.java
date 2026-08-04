@@ -60,7 +60,6 @@ public class RecebimentoService {
         }
 
         Recebimento recebimento = new Recebimento(req.getRecebimento());
-        System.out.println("recebimento.getCodgReservaCarro():: "+ recebimento.getCodgReservaCarro());
 
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));

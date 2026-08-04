@@ -56,13 +56,11 @@ public class HotelServiceV2 {
     public List<HotelResponse> pesquisar(HotelPesquisaModelFront req) {
         try {
             HotelPesquisaModel hubRequest = HotelPesquisaMapper.toHub(req);
-            System.out.println("URL: " + UrlConfig.URL_CONFIANCA_HUB + " - " + API_ACTION);
             ConfAppResp token = confAppService.token();
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_HUB)
                     .path(API_ACTION + "/disponibilidade")
                     .toUriString();
-            System.out.println("URL DOIDA: " + url);
             HttpHeaders headers = defaultHeaders(token.getToken());
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<HotelPesquisaModel> entity =
@@ -77,7 +75,6 @@ public class HotelServiceV2 {
                             }
                     );
 
-            System.out.println("RESPONSE HUB: " + hubResponse.getBody());
 
             List<HotelResponse> hoteis = hubResponse.getBody();
             return hoteis;
@@ -91,7 +88,6 @@ public class HotelServiceV2 {
 
     public HotelReserva efetuarReserva(ReservarRequestFront req) {
         try {
-            System.out.println("ReservarRequestFront: ");
             ReservarRequest hubRequest = HotelReservaMapper.toHubV2(req);
             ConfAppResp token = confAppService.token();
 
@@ -104,7 +100,6 @@ public class HotelServiceV2 {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<ReservarRequest> entity = new HttpEntity<>(hubRequest, headers);
 
-            System.out.println("URL RESERVA: " + url + " - " + "ReservarRequest: " + hubRequest + " -");
 
             ResponseEntity<HotelReserva> hubResponse = restTemplate.exchange(
                     url,
@@ -153,7 +148,6 @@ public class HotelServiceV2 {
 
     public HotelReserva carregarReserva(HotelCarregaModelFront req) {
         try {
-            System.out.println("HotelCarregaModelFront: " + req);
             ConfAppResp token = confAppService.token();
 
             String url = UriComponentsBuilder
@@ -161,7 +155,6 @@ public class HotelServiceV2 {
                     .path(API_ACTION + "/carregarReserva") // ajuste aqui se o HUB usar outro path
                     .toUriString();
 
-            System.out.println("URL RESERVA: " + url);
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -180,7 +173,6 @@ public class HotelServiceV2 {
             }
 
             HotelReserva reserva = hubResponse.getBody();
-            System.out.println("Resultado consulda API: " + reserva);
 
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
 
@@ -193,7 +185,6 @@ public class HotelServiceV2 {
                     );
 
             ReservaHotel reservaHotel = response.getBody();
-            System.out.println("Resultado consulta db: " + reservaHotel.getStatus());
 
             String statusStr = reserva.getReservasHotelRsList().get(0).getStatus();
 
@@ -235,14 +226,12 @@ public class HotelServiceV2 {
 
     public Boolean cancelarReserva(CancelarReservaRequestHotelFront req) {
         try {
-            System.out.println("URL: " + UrlConfig.URL_CONFIANCA_HUB + " - " + API_ACTION);
             ConfAppResp token = confAppService.token();
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_HUB)
                     .path(API_ACTION + "/cancelaHotel")
                     .toUriString();
 
-            System.out.println("URL CANCELAMENTO: " + url);
             HttpHeaders headers = defaultHeaders(token.getToken());
             headers.setContentType(MediaType.APPLICATION_JSON);
 
@@ -263,7 +252,6 @@ public class HotelServiceV2 {
             }
 
             String resposta = hubResponse.getBody();
-            System.out.println("Resultado cancelarReserva: " + resposta);
 
             if (!resposta.equalsIgnoreCase("Cancelado com sucesso!")) {
                 return false;
@@ -280,7 +268,6 @@ public class HotelServiceV2 {
 
     public void cancelarReservaDB(ReservaHotelModel req) {
         Usuario usuario = usuarioApi.consultaUsuarioByLogin(req.getUsuarioCancelamento());
-        System.out.println("USUARIO CONSLTA CANCELAR HOTEL: " + usuario);
         ReservaHotelCancelamentoDto reservaHotelCancelamentoDto =
                 new ReservaHotelCancelamentoDto(req, usuario);
 

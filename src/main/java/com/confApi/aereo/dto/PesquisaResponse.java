@@ -23,7 +23,7 @@ public class PesquisaResponse  implements Serializable {
     private Integer quantidadeBebes;
     private Integer quantidadeCriancas;
     private FamiliaPreco familiaPreco;
-    private Object viagensMultiplosTrechos;
+    private List<Trecho> viagensMultiplosTrechos;
     private List<Trecho> trechos1;
     private List<Trecho> trechos2;
     private Resumo resumo;

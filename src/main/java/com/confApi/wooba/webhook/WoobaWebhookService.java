@@ -68,18 +68,18 @@ public class WoobaWebhookService {
         if (transactionType.isEmpty()) {
             LOG.log(
                     Level.WARNING,
-                    "Webhook Wooba recebido com tipo de transacao desconhecido. Payload: {0}",
-                    request
+                    "Webhook Wooba recebido com tipo de transacao desconhecido. TransactionType: {0}",
+                    request.getTransactionType()
             );
-            alertarErro("Webhook Wooba recebido com tipo de transacao desconhecido. UniqueId: "
-                    + request.getUniqueId() + ", TransactionType: " + request.getTransactionType());
+            alertarErro("Webhook Wooba recebido com tipo de transacao desconhecido. TransactionType: "
+                    + request.getTransactionType());
             alertarEvento("Webhook Wooba ignorado por tipo desconhecido. " + request.resumo());
             return WoobaWebhookResponse.ignored(request, "Tipo de transacao Wooba nao mapeado.");
         }
 
         if (!isReservaAerea(request, transactionType.get())) {
-            logInfo("Webhook Wooba recebido e ignorado por nao ser reserva aerea. Tipo: {0}, UniqueId: {1}",
-                    new Object[]{transactionType.get().getDescription(), request.getUniqueId()});
+            logInfo("Webhook Wooba recebido e ignorado por nao ser reserva aerea. Tipo: {0}",
+                    new Object[]{transactionType.get().getDescription()});
             alertarEvento("Webhook Wooba ignorado por nao ser aereo. " + request.resumo());
             return WoobaWebhookResponse.ignored(request, "Evento recebido, mas ainda nao processado para este produto.");
         }
@@ -127,12 +127,8 @@ public class WoobaWebhookService {
         WoobaAirReservationSyncResult syncResult = airReservationService.processarWebhook(request);
         ReservaAereo reservaAereo = syncResult.getReserva();
 
-        logInfo("Webhook Wooba de reserva aerea processado. UniqueId: {0}, Locator: {1}, Id: {2}, LastUpdate: {3}, Action: {4}, Created: {5}, Updated: {6}, Passageiros: {7}, Trechos: {8}",
+        logInfo("Webhook Wooba de reserva aerea processado. Action: {0}, Created: {1}, Updated: {2}, Passageiros: {3}, Trechos: {4}",
                 new Object[]{
-                        request.getUniqueId(),
-                        request.getLocator(),
-                        request.getId(),
-                        lastUpdate,
                         syncResult.getAction(),
                         syncResult.isCreated(),
                         syncResult.isUpdated(),
@@ -174,7 +170,7 @@ public class WoobaWebhookService {
             }
         }
 
-        LOG.log(Level.WARNING, "Nao foi possivel converter LastUpdate do webhook Wooba: {0}", lastUpdate);
+        LOG.log(Level.WARNING, "Nao foi possivel converter LastUpdate do webhook Wooba.");
         return null;
     }
 

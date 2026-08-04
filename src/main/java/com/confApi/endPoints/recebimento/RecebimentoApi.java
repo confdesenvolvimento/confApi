@@ -118,17 +118,12 @@ public class RecebimentoApi {
                     .buildAndExpand(codgRecebimento)
                     .toUriString();
 
-            System.out.println("url: " + url);
-            System.out.println("recebimento: " + recebimento);
-
             ResponseEntity<List<CancelarResponse>> response = restTemplate.exchange(
                     url,
                     HttpMethod.PUT,
                     new HttpEntity<>(recebimento, defaultHeaders(token.getToken())),
                     new ParameterizedTypeReference<List<CancelarResponse>>() {}
             );
-
-            System.out.println("response CANCELAR BILHETE DB: " + response.getBody());
 
             return response.getBody();
 

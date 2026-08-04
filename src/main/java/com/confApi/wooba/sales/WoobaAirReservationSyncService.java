@@ -58,8 +58,7 @@ public class WoobaAirReservationSyncService {
     public WoobaAirReservationSyncResult sincronizar(ReservaAereo reservaWooba) {
         String motivoIgnorar = motivoIgnorar(reservaWooba);
         if (motivoIgnorar != null) {
-            alertarErro("Reserva Wooba ignorada. Localizador: "
-                    + safeLocalizador(reservaWooba) + ". Motivo: " + motivoIgnorar);
+            alertarErro("Reserva Wooba ignorada. Motivo: " + motivoIgnorar);
             return WoobaAirReservationSyncResult.ignored(motivoIgnorar, reservaWooba);
         }
 
@@ -68,8 +67,7 @@ public class WoobaAirReservationSyncService {
         String motivoValidacao = validarReserva(reservaWooba);
         if (motivoValidacao != null) {
             LOG.log(Level.WARNING, "Reserva Wooba nao sincronizada: {0}", motivoValidacao);
-            alertarErro("Reserva Wooba nao sincronizada. Localizador: "
-                    + safeLocalizador(reservaWooba) + ". Motivo: " + motivoValidacao);
+            alertarErro("Reserva Wooba nao sincronizada. Motivo: " + motivoValidacao);
             return WoobaAirReservationSyncResult.ignored(motivoValidacao, reservaWooba);
         }
 
@@ -248,10 +246,8 @@ public class WoobaAirReservationSyncService {
         for (Map.Entry<String, List<BilheteAereo>> entry : bilhetesWooba.entrySet()) {
             Passageiro passageiroDb = passageirosDb.get(entry.getKey());
             if (passageiroDb == null || passageiroDb.getCodgPassageiro() <= 0) {
-                LOG.log(Level.WARNING, "Passageiro nao localizado para sincronizar bilhete. Localizador: {0}, chavePax: {1}",
-                        new Object[]{reservaDb.getLocalizador(), entry.getKey()});
-                alertarErro("Passageiro nao localizado para sincronizar bilhete. Localizador: "
-                        + reservaDb.getLocalizador() + ", chavePax: " + entry.getKey());
+                LOG.log(Level.WARNING, "Passageiro nao localizado para sincronizar bilhete.");
+                alertarErro("Passageiro nao localizado para sincronizar bilhete.");
                 continue;
             }
 
@@ -361,10 +357,8 @@ public class WoobaAirReservationSyncService {
         int atualizados = 0;
         for (Recebimento recebimentoWooba : recebimentosWooba) {
             if (!recebimentoValidoParaPersistir(recebimentoWooba)) {
-                LOG.log(Level.WARNING, "Recebimento Wooba ignorado por falta de forma de pagamento resolvida. Localizador: {0}",
-                        reservaDb.getLocalizador());
-                alertarErro("Recebimento Wooba ignorado por falta de forma de pagamento resolvida. Localizador: "
-                        + reservaDb.getLocalizador());
+                LOG.log(Level.WARNING, "Recebimento Wooba ignorado por falta de forma de pagamento resolvida.");
+                alertarErro("Recebimento Wooba ignorado por falta de forma de pagamento resolvida.");
                 continue;
             }
 

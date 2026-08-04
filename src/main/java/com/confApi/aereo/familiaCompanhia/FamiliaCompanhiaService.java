@@ -299,8 +299,6 @@ public class FamiliaCompanhiaService {
                 Level.SEVERE,
                 operacao + " - Erro HTTP ao consumir HUB. URL: " + url
                         + ", Status: " + e.getRawStatusCode()
-                        + ", ResponseBody: " + e.getResponseBodyAsString(),
-                e
         );
     }
 

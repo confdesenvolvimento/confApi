@@ -14,6 +14,7 @@ import com.confApi.model.RecebimentoModel;
 import com.confApi.recebimento.RecebimentoService;
 import org.hibernate.event.spi.SaveOrUpdateEvent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,10 @@ import org.springframework.web.client.RestTemplate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.net.InetAddress;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Set;
 
 @Service
 public class CarroReservaService {
@@ -37,6 +42,9 @@ public class CarroReservaService {
 
     @Autowired
     private HubCarroClient hubCarroClient;
+
+    @Value("${CARRO_IP_EMISSAO:}")
+    private String ipEmissaoConfigurado;
 
     public CarroReservaService(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
@@ -87,7 +95,7 @@ public class CarroReservaService {
                 );
             }
 
-            System.out.println("Criando recebimento::");
+            req.getReservaCarro().setIpEmissao(obterIpServidor());
 
             /*
              * 1. Cria recebimento.
@@ -109,8 +117,6 @@ public class CarroReservaService {
              */
             req.setRecebimento(new RecebimentoModel(recebimento.getCodgRecebimento()));
 
-            System.out.println("Reserva no fornecedor::");
-
             /*
              * 2. Reserva/emite no fornecedor.
              * HubCarroClient continua retornando o DTO do fornecedor internamente.
@@ -122,7 +128,8 @@ public class CarroReservaService {
                 recebimentoService.cancelarRecebimento(recebimento);
 
                 return CarroReservaOperacaoResponseDTO.erro(
-                        "ERRO: Pagamento cancelado. Não foi possível concluir a reserva de carro no fornecedor."
+                        codigoErroEmissao(emissoes),
+                        "ERRO: Pagamento cancelado. " + mensagemErroEmissao(emissoes)
                 );
             }
 
@@ -149,8 +156,6 @@ public class CarroReservaService {
                         "ERRO: Pagamento cancelado. Não foi possível consultar a reserva emitida para salvar no banco."
                 );
             }
-
-            System.out.println("Salva no Manager::");
 
             /*
              * 4. Salva no Manager.
@@ -247,6 +252,8 @@ public class CarroReservaService {
                 return erroCancelamento("ERRO: Dados de cancelamento não informados.");
             }
 
+            req.getCancelarReservaCarroRequestDTO().setIp(obterIpServidor());
+
             List<CancelarReservaCarroResponseDTO> resultadoHub =
                     hubCarroClient.cancelarReserva(req.getCancelarReservaCarroRequestDTO());
 
@@ -256,7 +263,14 @@ public class CarroReservaService {
                 );
             }
 
-            cancelarReservaNoManager(req);
+            boolean cancelamentoConfirmado = resultadoHub.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .anyMatch(resultado -> Boolean.TRUE.equals(resultado.getSuccess())
+                            && (resultado.getError() == null || resultado.getError().isEmpty()));
+
+            if (cancelamentoConfirmado) {
+                cancelarReservaNoManager(req);
+            }
 
             return resultadoHub;
 
@@ -431,8 +445,6 @@ public class CarroReservaService {
         List<ReservarCarroResponseDTO> responseFornecedor =
                 hubCarroClient.consultarReserva(req);
 
-        System.out.println("responseFornecedor:: " + responseFornecedor);
-
         if (responseFornecedor == null || responseFornecedor.isEmpty()) {
             return null;
         }
@@ -498,6 +510,22 @@ public class CarroReservaService {
 
             dto.setTelefoneLojaDevolucao(
                     lojaDevolucao != null ? lojaDevolucao.getTelefone() : null
+            );
+
+            dto.setLatitudeLojaRetirada(
+                    lojaRetirada != null ? lojaRetirada.getLatitude() : null
+            );
+
+            dto.setLongitudeLojaRetirada(
+                    lojaRetirada != null ? lojaRetirada.getLongitude() : null
+            );
+
+            dto.setLatitudeLojaDevolucao(
+                    lojaDevolucao != null ? lojaDevolucao.getLatitude() : null
+            );
+
+            dto.setLongitudeLojaDevolucao(
+                    lojaDevolucao != null ? lojaDevolucao.getLongitude() : null
             );
 
 
@@ -801,6 +829,61 @@ public class CarroReservaService {
         return false;
     }
 
+    private String obterIpServidor() {
+        if (!isBlank(ipEmissaoConfigurado)) {
+            return ipEmissaoConfigurado.trim();
+        }
+        try {
+            String ip = InetAddress.getLocalHost().getHostAddress();
+            if (!isBlank(ip)) {
+                return ip;
+            }
+        } catch (Exception ignored) {
+            // fallback determinístico abaixo para nunca enviar IssuingIP vazio.
+        }
+        return "127.0.0.1";
+    }
+
+    private String codigoErroEmissao(List<EmitirCarroResponseDTO> emissoes) {
+        String mensagem = mensagemErroEmissao(emissoes).toLowerCase(Locale.ROOT);
+        if (mensagem.contains("select a car")
+                || mensagem.contains("selecionar um carro")
+                || mensagem.contains("session expired")
+                || mensagem.contains("sessão expirada")
+                || mensagem.contains("invalid token")
+                || mensagem.contains("token inválido")) {
+            return "CAR_SESSION_INVALID";
+        }
+        return "CAR_PROVIDER_ERROR";
+    }
+
+    private String mensagemErroEmissao(List<EmitirCarroResponseDTO> emissoes) {
+        Set<String> mensagens = new LinkedHashSet<>();
+        if (emissoes != null) {
+            for (EmitirCarroResponseDTO emissao : emissoes) {
+                if (emissao == null) {
+                    continue;
+                }
+                if (emissao.getError() != null) {
+                    for (ErrorResponse erro : emissao.getError()) {
+                        if (erro != null && !isBlank(erro.getErrorDescription())) {
+                            mensagens.add(erro.getErrorDescription().trim());
+                        }
+                    }
+                }
+                if (!isBlank(emissao.getReturnMessage())) {
+                    mensagens.add(emissao.getReturnMessage().trim());
+                }
+                if (!isBlank(emissao.getMensagem())) {
+                    mensagens.add(emissao.getMensagem().trim());
+                }
+            }
+        }
+        return mensagens.isEmpty()
+                ? "Não foi possível concluir a reserva de carro no fornecedor."
+                : String.join(" | ", mensagens);
+    }
+
     private Sistema montarSistemaReferencia(SistemaCarroHub sistemaHub) {
         if (sistemaHub == null) {
             return null;
@@ -837,4 +920,3 @@ public class CarroReservaService {
         return value == null || value.trim().isEmpty();
     }
 }
-

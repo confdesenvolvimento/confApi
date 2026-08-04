@@ -37,7 +37,6 @@ public class ReservaAereoCancelamentoDto {
                 ? new Timestamp(reservaAereoModel.getDataEmissao().getTime())
                 : null;
         this.descMotivoCancelamento = reservaAereoModel.getDescMotivoCancelamento();
-        System.out.println("USUARIO: " + usuario);
         this.codgUsuarioCancelamento = Math.toIntExact(Long.valueOf(usuario.getCodgUsuario()));
     }
 

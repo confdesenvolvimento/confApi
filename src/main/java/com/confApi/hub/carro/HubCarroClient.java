@@ -4,7 +4,6 @@ import com.confApi.carros.dto.*;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
-import com.confApi.hub.seguro.HubSeguroClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -14,6 +13,8 @@ import org.springframework.web.client.RestTemplate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -21,7 +22,7 @@ import java.util.logging.Logger;
 public class HubCarroClient {
     private final RestTemplate restTemplate;
 
-    private static final Logger LOG = Logger.getLogger(HubSeguroClient.class.getName());
+    private static final Logger LOG = Logger.getLogger(HubCarroClient.class.getName());
 
     @Autowired
     private ConfAppService confAppService;
@@ -61,6 +62,10 @@ public class HubCarroClient {
 
     public List<SelecionarCarroResponseDTO> selecionarCarro(SelecionarCarroRequestDTO selecionarCarroRequestDTO) {
         SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
+        LOG.log(Level.INFO,
+                "carro etapa=selecionarCarro request session={0} index={1} supplier={2}",
+                new Object[]{fingerprint(selecionarCarroRequestDTO.getToken()),
+                        selecionarCarroRequestDTO.getIndex(), selecionarCarroRequestDTO.getSupplier()});
 
         try {
             ConfAppResp token = confAppService.token();
@@ -77,6 +82,14 @@ public class HubCarroClient {
 
             List<SelecionarCarroResponseDTO> body = response.getBody();
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
+                for (SelecionarCarroResponseDTO item : body) {
+                    if (item != null) {
+                        LOG.log(Level.INFO,
+                                "carro etapa=selecionarCarro response requestSession={0} selectedSession={1} success={2} carSelected={3}",
+                                new Object[]{fingerprint(selecionarCarroRequestDTO.getToken()),
+                                        fingerprint(item.getTokenSession()), item.getSuccess(), item.getCarro() != null});
+                    }
+                }
                 return body;
             }
             LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
@@ -89,7 +102,10 @@ public class HubCarroClient {
     }
 
     public List<EmitirCarroResponseDTO> reservar(ReservarCarroRequestDTO reservarCarroRequestDTO) {
-//        SelecionarCarroRequestHub selecionarCarroRequestHub = new SelecionarCarroRequestHub(selecionarCarroRequestDTO);
+        LOG.log(Level.INFO,
+                "carro etapa=reservar request session={0} pickupStore={1} returnStore={2}",
+                new Object[]{fingerprint(reservarCarroRequestDTO.getToken()),
+                        reservarCarroRequestDTO.getIdLocalRetirada(), reservarCarroRequestDTO.getIdLocalEntrega()});
 
         try {
             ConfAppResp token = confAppService.token();
@@ -109,8 +125,15 @@ public class HubCarroClient {
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 List<EmitirCarroResponseDTO> listResponse = new ArrayList<>();
                 for(ReservarCarroResponseDTO reserva : body) {
+                    if (!reservaValida(reserva)) {
+                        listResponse.add(converterErroReserva(reserva));
+                        continue;
+                    }
                     EmitirCarroRequestDTO emitirCarroRequestDTO = new EmitirCarroRequestDTO(reserva, reservarCarroRequestDTO);
-                    listResponse.addAll(emitir(emitirCarroRequestDTO));
+                    List<EmitirCarroResponseDTO> emissao = emitir(emitirCarroRequestDTO);
+                    if (emissao != null) {
+                        listResponse.addAll(emissao);
+                    }
                 }
                 return listResponse;
             }
@@ -140,8 +163,6 @@ public class HubCarroClient {
                     );
 
             List<ReservarCarroResponseDTO> body = response.getBody();
-
-            System.out.println("body: " + body);
 
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 return body;
@@ -173,8 +194,6 @@ public class HubCarroClient {
 
             List<CancelarReservaCarroResponseDTO> body = response.getBody();
 
-            System.out.println("body: " + body);
-
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 return body;
             }
@@ -204,8 +223,6 @@ public class HubCarroClient {
                     );
 
             List<FormasPagamentoCarroResponseDTO> body = response.getBody();
-
-            System.out.println("body: " + body);
 
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 return body;
@@ -237,8 +254,6 @@ public class HubCarroClient {
 
             List<EmitirCarroResponseDTO> body = response.getBody();
 
-            System.out.println("body: " + body);
-
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 return body;
             }
@@ -257,5 +272,49 @@ public class HubCarroClient {
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.setBearerAuth(bearerToken);
         return headers;
+    }
+
+    private boolean reservaValida(ReservarCarroResponseDTO reserva) {
+        return reserva != null
+                && !Boolean.FALSE.equals(reserva.getSuccess())
+                && (reserva.getError() == null || reserva.getError().isEmpty())
+                && reserva.getReservaCarro() != null
+                && reserva.getReservaCarro().getBookingID() != null
+                && !reserva.getReservaCarro().getBookingID().trim().isEmpty();
+    }
+
+    private EmitirCarroResponseDTO converterErroReserva(ReservarCarroResponseDTO reserva) {
+        EmitirCarroResponseDTO erro = new EmitirCarroResponseDTO();
+        erro.setSuccess(false);
+        if (reserva == null) {
+            erro.setMensagem("Resposta vazia ao criar a reserva no fornecedor.");
+            return erro;
+        }
+        erro.setMensagem(reserva.getMensagem());
+        erro.setReturnMessage(reserva.getReturnMessage() != null ? String.valueOf(reserva.getReturnMessage()) : null);
+        erro.setError(reserva.getError());
+        erro.setTokenSession(reserva.getTokenSession());
+        erro.setTokenSessionExpiresIn(reserva.getTokenSessionExpiresIn());
+        LOG.log(Level.WARNING,
+                "carro etapa=reservar fornecedorRejeitou session={0} success={1} bookingPresent={2}",
+                new Object[]{fingerprint(reserva.getTokenSession()), reserva.getSuccess(), reserva.getReservaCarro() != null});
+        return erro;
+    }
+
+    private String fingerprint(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            return "empty";
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8));
+            StringBuilder value = new StringBuilder();
+            for (int i = 0; i < 6; i++) {
+                value.append(String.format("%02x", digest[i]));
+            }
+            return value.toString();
+        } catch (Exception ignored) {
+            return "unavailable";
+        }
     }
 }

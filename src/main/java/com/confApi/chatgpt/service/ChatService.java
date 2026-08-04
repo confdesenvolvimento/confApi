@@ -41,6 +41,7 @@ import com.confApi.db.confManager.faturas.dto.FaturaSicaRS;
 import com.confApi.db.confManager.faturas.dto.model.FaturaResponseIA;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
 import com.confApi.db.confManager.regraAereaReembolso.dto.RegraAereaReembolsoConsultaResponse;
+import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.hub.limites.LimitesService;
 import com.confApi.hub.limites.dto.Disponibilidade;
 import com.confApi.hub.limites.dto.LimiteCreditoRQ;
@@ -87,6 +88,7 @@ public class ChatService {
     private final ChatConfiancaReservaAereaService chatConfiancaReservaAereaService;
     private final AereoClient aereoClient;
     private final AereoRegrasReservaService regrasReservaService;
+    private final ReservaAereoApi reservaAereoApi;
 
 
     private final ObjectMapper mapper = new ObjectMapper()
@@ -1753,11 +1755,37 @@ public class ChatService {
             if (req.codgAgencia() == null) {
                 return mensagemErroReservasRecentes(
                         "A agencia da sessao nao foi identificada para consultar as reservas.");
+
             }
-            Integer codgAgencia = req.codgAgencia().intValue();
+            if (req.codgUsuario() == null) {
+                return new ChatMessageDTO("system", "Dado do sistema: {\"erro\":\"Usuario nao informado para consultar reservas aereas.\"}");
+            }
+            Integer codgUsuario = req.codgUsuario().intValue();
+            Integer codgAgencia = req.codgAgencia() == null ? null : req.codgAgencia().intValue();
+            String localizador =null;// extrairLocalizador(req.input());
+            List<ReservaAereo> reservas = reservaAereoApi.consultarReservasUsuario(codgUsuario, codgAgencia, localizador);
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("tipo", "ultimas_reservas_aereas_usuario");
+            response.put("fonte", "/reservaAereo/consultarReservas/localizador");
+            response.put("codgUsuario", codgUsuario);
+            putIfNotNull(response, "codgAgencia", codgAgencia);
+            putIfNotBlank(response, "localizadorConsultado", localizador);
+            response.put("filtroMinhasReservas", true);
+            response.put("filtroMinhaAgencia", true);
+            response.put("quantidadeRetornada", reservas == null ? 0 : reservas.size());
+            response.put("limiteContexto", LIMITE_ULTIMAS_RESERVAS_AEREAS);
+            List<Map<String, Object>> reservasResumo = resumirReservasAereasUsuario(reservas);
+            response.put("reservas", reservasResumo);
+            String localizadorContexto = extrairPrimeiroLocalizadorResumo(reservasResumo);
+            if (localizadorContexto != null && !localizadorContexto.isBlank()) {
+                response.put("localizadorContexto", localizadorContexto);
+                response.put("acoesDisponiveis", montarAcoesDisponiveisLocalizador(localizadorContexto));
+            }
+            Integer codgAgencia1 = req.codgAgencia().intValue();
             ReservasAereasRecentesResponse recentes =
                     chatConfiancaReservaAereaService.listarRecentes(
-                            codgAgencia, LIMITE_ULTIMAS_RESERVAS_AEREAS);
+                            codgAgencia1, LIMITE_ULTIMAS_RESERVAS_AEREAS);
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("schema", ChatConfiancaReservaAereaService.SCHEMA_RESERVAS_RECENTES);
             payload.put("reservasRecentes", recentes);

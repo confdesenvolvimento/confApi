@@ -96,18 +96,15 @@ public class HotelClientV2 {
         Boolean result = hotelService.cancelarReserva(cancelarReservaRequestHotelFront);
         List<CancelarResponse> cancelarResponseList = new ArrayList<>();
         for (RecebimentoModel recebimento : req.getRecebimentos()) {
-            System.err.println("Codigo cancelamento: " + recebimento.getCodgRecebimento());
             if (recebimento.getStatusRecebimento() != 0) {
                 List<CancelarResponse> cancelarResponses = recebimentoApi.cancelar(
                         recebimento.getCodgRecebimento(),
                         new Recebimento(recebimento));
-                System.out.println("CANCELAR RESPONSE: " + cancelarResponses);
                 cancelarResponseList.addAll(cancelarResponses);
             }
         }
 
         if(result) {
-            System.out.println("REQUEST: " + req);
             hotelService.cancelarReservaDB(req);
         }
 

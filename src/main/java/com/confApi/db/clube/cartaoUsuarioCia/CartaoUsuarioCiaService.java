@@ -37,36 +37,27 @@ public class CartaoUsuarioCiaService {
 
     public List<CartaoUsuarioCia> lista(int idUsuarioManger) {
         try {
-            System.out.println("lista---");
-            System.out.println("idUsuarioManger --- "+ idUsuarioManger);
             // 1. Busca usuario do clube pelo ID do Manager
             UsuarioClube usuarioClube = usuarioClubeApi.consultaUsuarioIDExiste(idUsuarioManger);
-            System.out.println("usuarioClube: " + usuarioClube);
 
             if (usuarioClube == null || usuarioClube.getCodgUsuario() == null) {
-                System.out.println("usuarioClube nulo ou sem codgUsuario");
                 return new ArrayList<>();
             }
 
             // 2. Busca cartões do usuario
             List<CartaoUsuarioCia> cartoes = cartaoUsuarioCiaApi.getAllByUsuario(usuarioClube.getCodgUsuario());
-            System.out.println("cartoes size: " + (cartoes != null ? cartoes.size() : "null"));
-
             if (cartoes == null || cartoes.isEmpty()) {
-                System.out.println("cartoes vazio ou nulo");
                 return new ArrayList<>();
             }
 
             // 3. Para cada cartão verifica benefício utilizado
             for (CartaoUsuarioCia cartao : cartoes) {
-                System.out.println("cartao: " + cartao.getCodgCartaoUsuarioCia());
                 if (cartao.getCartaoCia() != null && cartao.getCartaoCia().getBeneficios() != null) {
                     for (BeneficioCartao beneficio : cartao.getCartaoCia().getBeneficios()) {
                         boolean utilizado = beneficioCartaoUsuarioService.verificaBeneficio(
                                 cartao.getCodgCartaoUsuarioCia(),
                                 beneficio.getCodgBeneficioCartao()
                         );
-                        System.out.println("beneficio: " + beneficio.getCodgBeneficioCartao() + " utilizado: " + utilizado);
                         beneficio.setUtilizado(utilizado);
                     }
                 }

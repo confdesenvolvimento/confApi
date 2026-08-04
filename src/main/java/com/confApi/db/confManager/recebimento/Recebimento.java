@@ -162,7 +162,6 @@ public class Recebimento implements Serializable {
     }
 
     public Recebimento(com.confApi.hub.aereo.RecebimentoModel recebimentoModel) {
-        System.out.println("RecebimentoModel: " + recebimentoModel);
         this.codgRecebimento = recebimentoModel.getCodgRecebimento() != null ? recebimentoModel.getCodgRecebimento() : null;
         this.valrRecebimento = recebimentoModel.getValorPagamento();
         if(recebimentoModel.getCartaoSelecionado() != null){
@@ -468,34 +467,18 @@ public class Recebimento implements Serializable {
         return "Recebimento{" +
                 "codgRecebimento=" + codgRecebimento +
                 ", valrRecebimento=" + valrRecebimento +
-                ", numrCartao='" + numrCartao + '\'' +
-                ", validadeCartao='" + validadeCartao + '\'' +
-                ", codgSegCartao='" + codgSegCartao + '\'' +
-                ", titularCartao='" + titularCartao + '\'' +
                 ", qtdeParcela=" + qtdeParcela +
                 ", valrPrimeiraParcela=" + valrPrimeiraParcela +
                 ", valrDemaisParcela=" + valrDemaisParcela +
-                ", codgAutCartao='" + codgAutCartao + '\'' +
-                ", codgTransacao='" + codgTransacao + '\'' +
-                ", orderGatewayCartao='" + orderGatewayCartao + '\'' +
                 ", status=" + status +
                 ", valrEntrada=" + valrEntrada +
                 ", dataRecebimento=" + dataRecebimento +
-                ", codgBandeira=" + codgBandeira +
-                ", codgGatewayCartao=" + codgGatewayCartao +
                 ", codgFormaPagto=" + codgFormaPagto +
                 ", valrCancelado=" + valrCancelado +
-                ", codgReservaAereo=" + codgReservaAereo +
-                ", link='" + link + '\'' +
-                ", codgReservaHotel=" + codgReservaHotel +
-                ", assinaturaEletronica='" + assinaturaEletronica + '\'' +
-                ", mensagem='" + mensagem + '\'' +
-                ", qrcodePix='" + qrcodePix + '\'' +
-                ", copiacolaPix='" + copiacolaPix + '\'' +
-                ", codgReservaPacote=" + codgReservaPacote +
-                ", codgReservaSeguro=" + codgReservaSeguro +
-                ",getCodgReservaCarro=" + codgReservaCarro +
+                ", possuiCartao=" + (numrCartao != null && !numrCartao.isBlank()) +
+                ", possuiPix=" + ((qrcodePix != null && !qrcodePix.isBlank())
+                        || (copiacolaPix != null && !copiacolaPix.isBlank())) +
+                ", possuiLink=" + (link != null && !link.isBlank()) +
                 '}';
     }
 }
-

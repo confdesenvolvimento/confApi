@@ -123,57 +123,87 @@ public class AereoClientV2 {
     }
 
     public ConsultarEticketResponse cancelarBilhete(ReservaAereoModel reservaAereoModel) {
-        ConsultarEticketResponse consultarEticketResponse = null;
+        ConsultarEticketResponse consultarEticketResponse = new ConsultarEticketResponse();
+        if (reservaAereoModel.getPassageiros() == null) {
+            return respostaCancelamentoBilheteComErro("A reserva não possui bilhetes para cancelar.");
+        }
+
+        boolean possuiBilhete = false;
         for (PassageiroModel passageiro : reservaAereoModel.getPassageiros()) {
+            if (passageiro == null || passageiro.getBilhetes() == null) {
+                continue;
+            }
+
             for (BilheteModel bilhete : passageiro.getBilhetes()) {
-                consultarEticketResponse = post(
+                String numeroBilhete = bilhete != null ? bilhete.getNumeroBilhete() : null;
+                if (numeroBilhete == null || numeroBilhete.trim().isEmpty()) {
+                    return respostaCancelamentoBilheteComErro("Um dos bilhetes não possui número para cancelamento.");
+                }
+
+                possuiBilhete = true;
+                try {
+                    consultarEticketResponse = postConfirmado(
                         "Aéreo - Cancelar Bilhete",
                         UrlConfig.URL_CONFIANCA_HUB + "api/aereo" + "/cancelarbilhete",
                         new CancelarBilheteRequest(reservaAereoModel, bilhete),
-                        ConsultarEticketResponse.class,
-                        new ConsultarEticketResponse()
-                );
+                        ConsultarEticketResponse.class
+                    );
+                } catch (RuntimeException e) {
+                    return respostaCancelamentoBilheteComErro("O HUB não confirmou o cancelamento do bilhete.");
+                }
+
+                if (consultarEticketResponse.getException() != null
+                        || !"Cancelado".equalsIgnoreCase(consultarEticketResponse.getStatus())) {
+                    return respostaCancelamentoBilheteComErro("O fornecedor não confirmou o cancelamento do bilhete.");
+                }
 
                 BilheteAereo bilheteAereo = new BilheteAereo(passageiro, bilhete);
                 bilheteAereo.setDataCancelamento(new Date());
                 bilheteAereo.setStatus(0);
 
-                put(
+                if (!putSemCorpoConfirmado(
                         "Aéreo - Cancelar Bilhete DB",
-                        UrlConfig.URL_CONFIANCA_MANAGER + "bilheteAereo/cancelar/"
-                                + bilhete.getNumeroBilhete(),
-                        bilheteAereo,
-                        Void.class,
-                        null
-                );
+                        UrlConfig.URL_CONFIANCA_MANAGER + "bilheteAereo/cancelar/" + numeroBilhete,
+                        bilheteAereo
+                ) || !bilheteCanceladoNoManager(reservaAereoModel.getLocalizador(), numeroBilhete)) {
+                    return respostaCancelamentoBilheteComErro(
+                            "O fornecedor cancelou o bilhete, mas o ConfiancaManager não confirmou a atualização."
+                    );
+                }
             }
+        }
+
+        if (!possuiBilhete) {
+            return respostaCancelamentoBilheteComErro("A reserva não possui bilhetes para cancelar.");
         }
 
         List<CancelarResponse> cancelarResponseList = new ArrayList<>();
-        for (RecebimentoModel recebimentoModel : reservaAereoModel.getRecebimentos()) {
-            if (recebimentoModel.getStatusRecebimento() == 1) {
-                System.out.println("CHAMANDO CANCELAR RECEBIMENTO: " + recebimentoModel);
-                System.out.println("CHAMANDO CANCELAR NEW RECEBIMENTO: " + new Recebimento(recebimentoModel));
-                List<CancelarResponse> cancelarResponses = recebimentoApi.cancelar(recebimentoModel.getCodgRecebimento(), new Recebimento(recebimentoModel));
-                cancelarResponseList.addAll(cancelarResponses);
+        if (reservaAereoModel.getRecebimentos() != null) {
+            for (RecebimentoModel recebimentoModel : reservaAereoModel.getRecebimentos()) {
+                if (recebimentoModel.getStatusRecebimento() == 1) {
+                    List<CancelarResponse> cancelarResponses = recebimentoApi.cancelar(recebimentoModel.getCodgRecebimento(), new Recebimento(recebimentoModel));
+                    cancelarResponseList.addAll(cancelarResponses);
+                }
             }
         }
-
-        System.out.println("CANCELAR RECEBIMENTOS: " + cancelarResponseList);
-
         return consultarEticketResponse;
     }
 
     public Boolean cancelarReserva(ReservaAereoModel reservaAereoModel) {
-        CancelarReservaResponse cancelarReservaResponse = post(
-                "Aéreo - Cancelar Reserva",
-                UrlConfig.URL_CONFIANCA_HUB + "api/aereo" + "/cancelar",
-                new CancelarReservaRequest(reservaAereoModel),
-                CancelarReservaResponse.class,
-                new CancelarReservaResponse()
-        );
+        CancelarReservaResponse cancelarReservaResponse;
+        try {
+            cancelarReservaResponse = postConfirmado(
+                    "Aéreo - Cancelar Reserva",
+                    UrlConfig.URL_CONFIANCA_HUB + "api/aereo" + "/cancelar",
+                    new CancelarReservaRequest(reservaAereoModel),
+                    CancelarReservaResponse.class
+            );
+        } catch (RuntimeException e) {
+            return false;
+        }
 
-        if (cancelarReservaResponse.getException() == null) {
+        if (cancelarReservaResponse.getException() == null
+                && "Cancelado".equalsIgnoreCase(cancelarReservaResponse.getStatus())) {
             String reservaAereoResponse = put(
                     "Aéreo - Cancelar Banco de Dados Reserva Aereo",
                     UrlConfig.URL_CONFIANCA_MANAGER + "reservaAereo/cancelar/" + reservaAereoModel.getCodgReservaAereoDB(),
@@ -204,24 +234,45 @@ public class AereoClientV2 {
     }
 
     public ReservaAereoModel emitir(ReservaAereoModel reservaAerea, Boolean isLink) {
-        System.out.println("EMITIR RESERVA AEREAS: " + reservaAerea);
         ReservaAereoModel reservaAereaBase = new ReservaAereoModel(reservaAerea);
         Usuario usuarioEmissao = usuarioApi.consultaUsuarioByLogin(reservaAerea.getUsuarioCriacao());
 
-        EmitirResponse emitirResponse = post(
-                "Aéreo - Emitir",
-                UrlConfig.URL_CONFIANCA_HUB + "api/aereo/emitir",
-                new EmitirRequest(reservaAerea),
-                EmitirResponse.class,
-                new EmitirResponse()
-        );
+        EmitirResponse emitirResponse;
+        try {
+            emitirResponse = postConfirmado(
+                    "Aéreo - Emitir",
+                    UrlConfig.URL_CONFIANCA_HUB + "api/aereo/emitir",
+                    new EmitirRequest(reservaAerea),
+                    EmitirResponse.class
+            );
+        } catch (RuntimeException e) {
+            reservaAerea.setMsg("O HUB não confirmou a emissão da reserva.");
+            return reservaAerea;
+        }
 
         if (emitirResponse.getException() != null) {
             reservaAerea.setMsg(emitirResponse.getException().getMessage());
             return reservaAerea;
         }
 
-        System.out.println("EMITIR RESPONSE: " + emitirResponse);
+        ConsultarLocalizadorResponse consultarLocalizadorResponse;
+        try {
+            consultarLocalizadorResponse = postConfirmado(
+                    "Aéreo - Confirmar Emissão",
+                    UrlConfig.URL_CONFIANCA_HUB + "api/aereo/consultar",
+                    new ConsultarLocalizadorRequest(reservaAerea),
+                    ConsultarLocalizadorResponse.class
+            );
+        } catch (RuntimeException e) {
+            reservaAerea.setMsg("Não foi possível confirmar a emissão no fornecedor.");
+            return reservaAerea;
+        }
+
+        reservaAerea = aereoService.convertToReservaAereoModel(consultarLocalizadorResponse, reservaAerea, true);
+        if (!emissaoConfirmada(reservaAerea)) {
+            reservaAerea.setMsg("O fornecedor não retornou bilhetes para esta emissão.");
+            return reservaAerea;
+        }
 
         put(
                 "Aéreo - Atualizar Banco de Dados Reserva Aereo",
@@ -231,11 +282,6 @@ public class AereoClientV2 {
                 EmitirResponse.class,
                 new EmitirResponse()
         );
-
-        ConsultarLocalizadorResponse consultarLocalizadorResponse =
-                carregarReservaAereaModel(reservaAerea);
-
-        reservaAerea = aereoService.convertToReservaAereoModel(consultarLocalizadorResponse, reservaAerea, true);
         ReservaAereo reservaDB = get(
                 "Aéreo - Buscar Reserva Aereo Banco",
                 UrlConfig.URL_CONFIANCA_MANAGER + "reservaAereo/localizador/" + reservaAerea.getLocalizador(),
@@ -317,10 +363,6 @@ public class AereoClientV2 {
                         null
                 );
             } else {
-                System.out.println("CRIAR RECEBIMENTO NO DB: " + reservaAerea);
-                System.out.println("RECEBIMENTO: " + reservaAerea.getRecebimento());
-                System.out.println("RECEBIMENTO: " + reservaAerea.getRecebimentos());
-                System.out.println(new Recebimento(reservaAerea));
                 Boolean autorizacao = false;
                 post(
                         "Aéreo - Atualizar Banco de Dados Recebimento Reserva Aereo",
@@ -337,7 +379,6 @@ public class AereoClientV2 {
     }
 
     public ReservaAereoModel carregarReservaAerea(ReservaAereo reservaAerea) {
-        System.out.println("CARREGAR RESERVA AEREAS: " + reservaAerea);
         ConsultarLocalizadorRequest consultarLocalizadorRequest = new ConsultarLocalizadorRequest(reservaAerea);
         ConsultarLocalizadorResponse consultarLocalizadorResponse = post(
                 "Aéreo - Consultar Localizador",
@@ -347,8 +388,6 @@ public class AereoClientV2 {
                 new ConsultarLocalizadorResponse()
         );
 
-        System.out.println("CARREGAR RESERVA AEREAS RESPONSE: " + consultarLocalizadorResponse);
-
         ReservaAereo reservaDB = get(
                 "Aéreo - Buscar Reserva Aereo Banco",
                 UrlConfig.URL_CONFIANCA_MANAGER + "reservaAereo/localizador/" + reservaAerea.getLocalizador(),
@@ -356,12 +395,8 @@ public class AereoClientV2 {
                 null
         );
 
-        System.out.println("RESERVA AEREAS DB1212: " + reservaDB);
-
         ReservaAereoModel reservaAereoModel = new ReservaAereoModel(consultarLocalizadorResponse, reservaDB);
-        System.out.println("RESERVA AEREAS333222: " + reservaAereoModel);
         ReservaAereo reservaAereoUpdate = new ReservaAereo(reservaAereoModel);
-        System.out.println("RESERVA AEREAS UPDATE: " + reservaAereoUpdate);
 
         put(
                 "Aéreo - Atualizar Reserva DB",
@@ -412,8 +447,6 @@ public class AereoClientV2 {
                     new ReservaAereo()
             );
 
-            System.out.println("RESERVA AEREAS DB: " + reservaAereoResponse);
-
             NotificacaoConfig notificacaoConfig =
                     new NotificacaoConfig(
                             "Localizador: " + reserva.getLocalizador() + " criado.",
@@ -430,27 +463,27 @@ public class AereoClientV2 {
                     },
                     Collections.emptyList()
             );
-
-            System.out.println("NOTIFICACAO: " + notificacaoControleList);
         }
         return reservarResponse;
     }
 
     public PreReserva tarifar(PreReserva preReserva) {
-
-        TarifarResponse response = post(
+        TarifarResponse response = postConfirmado(
                 "Aéreo - Tarifar",
                 UrlConfig.URL_CONFIANCA_HUB + "/api/aereo/tarifar",
                 new TarifarRequest(preReserva),
-                TarifarResponse.class,
-                new TarifarResponse()
+                TarifarResponse.class
         );
 
-        return aereoService.montarPreReservaTarifada(preReserva, response);
+        PreReserva tarifaConfirmada = aereoService.montarPreReservaTarifada(preReserva, response);
+        if (tarifaConfirmada == null || tarifaConfirmada.getValorTotalGeral() == null
+                || tarifaConfirmada.getValorTotalGeral() <= 0) {
+            throw new IllegalStateException("O HUB não retornou um preço válido para a tarifa.");
+        }
+        return tarifaConfirmada;
     }
 
     public PesquisaResponse pesquisarDisponibilidade(PesquisaRequestDTOV2 pesquisaRequestDTO) {
-        System.out.println("TESTE DISPOSNIBILIDADE");
         PesquisaResponse responseAjustado = new PesquisaResponse();
         List<PesquisaResponse> resposta = post(
                 "Aéreo - Pesquisar Disponibilidade",
@@ -470,6 +503,12 @@ public class AereoClientV2 {
                 if (p.getDestino() != null) {
                     responseAjustado.setDestino(p.getDestino());
                 }
+                if (p.getViagensMultiplosTrechos() != null && !p.getViagensMultiplosTrechos().isEmpty()) {
+                    if (responseAjustado.getViagensMultiplosTrechos() == null) {
+                        responseAjustado.setViagensMultiplosTrechos(new ArrayList<>());
+                    }
+                    responseAjustado.getViagensMultiplosTrechos().addAll(p.getViagensMultiplosTrechos());
+                }
                 if (p.getTrechos1() != null && !p.getTrechos1().isEmpty()) {
                     if (responseAjustado.getTrechos1() == null) {
                         responseAjustado.setTrechos1(new ArrayList<>());
@@ -487,8 +526,117 @@ public class AereoClientV2 {
             }
         }
 
-        System.out.println("PEQUISAR INTERNACIONAL RESPONSE: " + responseAjustado);
         return responseAjustado;
+    }
+
+    private ConsultarEticketResponse respostaCancelamentoBilheteComErro(String mensagem) {
+        ExceptionDetail erro = new ExceptionDetail();
+        erro.setMessage(mensagem);
+
+        ConsultarEticketResponse resposta = new ConsultarEticketResponse();
+        resposta.setException(erro);
+        return resposta;
+    }
+
+    private boolean emissaoConfirmada(ReservaAereoModel reservaAerea) {
+        if (reservaAerea == null
+                || !StatusReservaEnum.Emitida.getDescricao().equalsIgnoreCase(reservaAerea.getStatusReserva())
+                || reservaAerea.getPassageiros() == null) {
+            return false;
+        }
+
+        for (PassageiroModel passageiro : reservaAerea.getPassageiros()) {
+            if (passageiro == null || passageiro.getBilhetes() == null) {
+                continue;
+            }
+            for (BilheteModel bilhete : passageiro.getBilhetes()) {
+                if (bilhete != null && bilhete.getNumeroBilhete() != null
+                        && !bilhete.getNumeroBilhete().trim().isEmpty()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * O Manager responde 200 sem corpo ao cancelar um bilhete. O helper
+     * genérico de PUT não consegue distinguir esse sucesso de uma falha,
+     * porque espera um body não nulo. Para esta operação, o código HTTP é a
+     * confirmação da gravação.
+     */
+    private <REQ> boolean putSemCorpoConfirmado(String operacao, String endpoint, REQ request) {
+        long inicio = System.currentTimeMillis();
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpEntity<REQ> entity = new HttpEntity<>(request, defaultHeaders(token.getToken()));
+
+            JsonLogUtil.logRequest(operacao, request);
+            ResponseEntity<Void> response = restTemplate.exchange(endpoint, HttpMethod.PUT, entity, Void.class);
+            logTempoExecucao(operacao, inicio);
+
+            return response.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            tratarErro(operacao, endpoint, inicio, e);
+            return false;
+        }
+    }
+
+    private boolean bilheteCanceladoNoManager(String localizador, String numeroBilhete) {
+        if (localizador == null || localizador.trim().isEmpty()) {
+            return false;
+        }
+
+        ReservaAereo reserva = get(
+                "Aéreo - Confirmar Bilhete Cancelado no DB",
+                UrlConfig.URL_CONFIANCA_MANAGER + "reservaAereo/localizador/" + localizador,
+                ReservaAereo.class,
+                null
+        );
+
+        if (reserva == null || reserva.getPassageiros() == null) {
+            return false;
+        }
+
+        for (Passageiro passageiro : reserva.getPassageiros()) {
+            if (passageiro == null || passageiro.getBilhetes() == null) {
+                continue;
+            }
+            for (BilheteAereo bilhete : passageiro.getBilhetes()) {
+                if (bilhete != null
+                        && equalsIgnoreCase(bilhete.getNumrBilhete(), numeroBilhete)
+                        && Integer.valueOf(0).equals(bilhete.getStatus())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private <REQ, RES> RES postConfirmado(
+            String operacao,
+            String endpoint,
+            REQ request,
+            Class<RES> responseClass
+    ) {
+        long inicio = System.currentTimeMillis();
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpEntity<REQ> entity = new HttpEntity<>(request, defaultHeaders(token.getToken()));
+
+            JsonLogUtil.logRequest(operacao, request);
+            ResponseEntity<RES> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, responseClass);
+            JsonLogUtil.logResponse(operacao, response.getBody());
+            logTempoExecucao(operacao, inicio);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return response.getBody();
+            }
+            throw new IllegalStateException(operacao + " retornou uma resposta vazia ou inválida.");
+        } catch (Exception e) {
+            tratarErro(operacao, endpoint, inicio, e);
+            throw new IllegalStateException(operacao + " não foi confirmado pelo HUB.", e);
+        }
     }
 
     private <REQ, RES> RES post(
@@ -724,8 +872,6 @@ public class AereoClientV2 {
                 Level.SEVERE,
                 operacao + " - Erro HTTP ao consumir HUB. URL: " + url
                         + ", Status: " + e.getRawStatusCode()
-                        + ", ResponseBody: " + e.getResponseBodyAsString(),
-                e
         );
     }
 

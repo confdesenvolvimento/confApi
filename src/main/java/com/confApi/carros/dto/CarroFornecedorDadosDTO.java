@@ -27,6 +27,10 @@ public class CarroFornecedorDadosDTO {
 
     private String telefoneLojaRetirada;
     private String telefoneLojaDevolucao;
+    private String latitudeLojaRetirada;
+    private String longitudeLojaRetirada;
+    private String latitudeLojaDevolucao;
+    private String longitudeLojaDevolucao;
 
     private List<PolicyHub> policies = new ArrayList<>();
 

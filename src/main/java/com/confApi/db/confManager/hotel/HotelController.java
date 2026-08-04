@@ -15,17 +15,11 @@ public class HotelController {
 
    /* @PostMapping("/reservaAereo")
     public void geradorPdf2(@RequestBody GeradorAereoPDFModel geradorAereoPDFModel) throws IOException {
-        System.out.println("getUsuarioConfDto :  "+geradorAereoPDFModel.getUsuarioConfDto());
-        System.out.println("plano viagem :  "+geradorAereoPDFModel.getPlanoViagemReservaAereoPDF());
-        System.out.println("reserva :  "+geradorAereoPDFModel.getReservaAereoModel().getUsuarioCriacao2().getCodigoWooba());
 
         // byte[] pdfBytes = aereoPDFService.gerarPdfReserva(new ReservaAereoModelPDF(geradorAereoPDFModel.getReservaAereoModel()));
 
         // new EnvioPdfService().envioPDF(new EnvioPlanoViagemReservaAereoPDF(geradorAereoPDFModel));
         EnvioReservaAereoPDF envio = new EnvioReservaAereoPDF(geradorAereoPDFModel);
-        System.out.println("reserva : "+envio.getReservaAereoModelPDF().getLocalizador());
-        System.out.println("reserva : "+envio.getReservaAereoModelPDF().getUsuarioCriacao().getLoginUsuario());
-        System.out.println("reserva : "+envio.getReservaAereoModelPDF().getUsuarioCriacao().getNomeCompleto());
         new EnvioPdfService().envioPDF2(new EnvioReservaAereoPDF(geradorAereoPDFModel));
     }*/
 }

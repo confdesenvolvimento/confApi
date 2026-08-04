@@ -70,8 +70,8 @@ public class WoobaAirReservationManagerResolver {
     private void resolverAgencia(ReservaAereo reserva) {
         Agencia agenciaWooba = reserva.getCodgAgencia();
         if (agenciaWooba == null || agenciaWooba.getIdWoobaAgencia() == null) {
-            LOG.log(Level.WARNING, "Reserva Wooba sem Agency.Id para localizar agencia. Localizador: {0}", reserva.getLocalizador());
-            alertarErro("Reserva Wooba sem Agency.Id para localizar agencia. Localizador: " + reserva.getLocalizador());
+            LOG.log(Level.WARNING, "Reserva Wooba sem Agency.Id para localizar agencia.");
+            alertarErro("Reserva Wooba sem Agency.Id para localizar agencia.");
             return;
         }
 
@@ -83,18 +83,18 @@ public class WoobaAirReservationManagerResolver {
 
         LOG.log(
                 Level.WARNING,
-                "Agencia nao localizada no Manager por id_wooba_agencia={0}. Localizador: {1}",
-                new Object[]{agenciaWooba.getIdWoobaAgencia(), reserva.getLocalizador()}
+                "Agencia nao localizada no Manager por id_wooba_agencia={0}.",
+                agenciaWooba.getIdWoobaAgencia()
         );
         alertarErro("Agencia nao localizada no Manager por id_wooba_agencia="
-                + agenciaWooba.getIdWoobaAgencia() + ". Localizador: " + reserva.getLocalizador());
+                + agenciaWooba.getIdWoobaAgencia() + ".");
     }
 
     private void resolverUsuario(ReservaAereo reserva) {
         Usuario usuarioWooba = reserva.getCodgUsuarioCriacao();
         if (usuarioWooba == null || isBlank(usuarioWooba.getLoginUsuario())) {
-            LOG.log(Level.WARNING, "Reserva Wooba sem User.Username para localizar usuario. Localizador: {0}", reserva.getLocalizador());
-            alertarErro("Reserva Wooba sem User.Username para localizar usuario. Localizador: " + reserva.getLocalizador());
+            LOG.log(Level.WARNING, "Reserva Wooba sem User.Username para localizar usuario.");
+            alertarErro("Reserva Wooba sem User.Username para localizar usuario.");
             return;
         }
 
@@ -106,11 +106,9 @@ public class WoobaAirReservationManagerResolver {
 
         LOG.log(
                 Level.WARNING,
-                "Usuario nao localizado no Manager por login_usuario={0}. Localizador: {1}",
-                new Object[]{usuarioWooba.getLoginUsuario(), reserva.getLocalizador()}
+                "Usuario Wooba nao localizado no Manager."
         );
-        alertarErro("Usuario nao localizado no Manager por login_usuario="
-                + usuarioWooba.getLoginUsuario() + ". Localizador: " + reserva.getLocalizador());
+        alertarErro("Usuario Wooba nao localizado no Manager.");
     }
 
     private void resolverCompanhiasEAeroportos(ReservaAereo reserva) {
@@ -177,11 +175,11 @@ public class WoobaAirReservationManagerResolver {
 
         LOG.log(
                 Level.WARNING,
-                "Companhia aerea nao localizada no Manager por iata_cia={0}. Localizador: {1}",
-                new Object[]{String.join("/", iatas), localizador}
+                "Companhia aerea nao localizada no Manager por iata_cia={0}.",
+                String.join("/", iatas)
         );
         alertarErro("Companhia aerea nao localizada no Manager por iata_cia="
-                + String.join("/", iatas) + ". Localizador: " + localizador);
+                + String.join("/", iatas) + ".");
         companhiaWooba.setIataCia(WoobaAirlineCodeNormalizer.canonicalIata(companhiaWooba.getIataCia()));
         return companhiaWooba;
     }
@@ -205,11 +203,11 @@ public class WoobaAirReservationManagerResolver {
 
         LOG.log(
                 Level.WARNING,
-                "Aeroporto nao localizado no Manager por iata_aeroporto={0}. Localizador: {1}",
-                new Object[]{iata, localizador}
+                "Aeroporto nao localizado no Manager por iata_aeroporto={0}.",
+                iata
         );
         alertarErro("Aeroporto nao localizado no Manager por iata_aeroporto="
-                + iata + ". Localizador: " + localizador);
+                + iata + ".");
         return aeroportoWooba;
     }
 
@@ -239,11 +237,11 @@ public class WoobaAirReservationManagerResolver {
 
             LOG.log(
                     Level.WARNING,
-                    "Forma de pagamento nao localizada no Manager por nome_forma_pagto={0}. Localizador: {1}",
-                    new Object[]{nomeForma, reserva.getLocalizador()}
+                    "Forma de pagamento nao localizada no Manager por nome_forma_pagto={0}.",
+                    nomeForma
             );
             alertarErro("Forma de pagamento nao localizada no Manager por nome_forma_pagto="
-                    + nomeForma + ". Localizador: " + reserva.getLocalizador());
+                    + nomeForma + ".");
         }
     }
 

@@ -42,7 +42,6 @@ public class HotelControllerV2 {
 
     @PostMapping("/cancelaHotel")
     public String cancelarReserva(@RequestBody ReservaHotelModel req) {
-        System.out.println("Cancelando reserva: " + req);
         return service.cancelarReserva(req);
     }
 }

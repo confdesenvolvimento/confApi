@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 public class CarroReservaOperacaoResponseDTO {
 
     private Boolean success;
+    private String codigoErro;
     private String mensagem;
     private Object returnMessage;
 
@@ -26,6 +27,7 @@ public class CarroReservaOperacaoResponseDTO {
         CarroReservaOperacaoResponseDTO response = new CarroReservaOperacaoResponseDTO();
 
         response.setSuccess(true);
+        response.setCodigoErro(null);
         response.setMensagem("Reserva de carro consultada com sucesso.");
         response.setReturnMessage("Reserva de carro consultada com sucesso.");
         response.setReserva(reserva);
@@ -51,9 +53,14 @@ public class CarroReservaOperacaoResponseDTO {
     }
 
     public static CarroReservaOperacaoResponseDTO erro(String mensagem) {
+        return erro("CAR_RESERVATION_ERROR", mensagem);
+    }
+
+    public static CarroReservaOperacaoResponseDTO erro(String codigoErro, String mensagem) {
         CarroReservaOperacaoResponseDTO response = new CarroReservaOperacaoResponseDTO();
 
         response.setSuccess(false);
+        response.setCodigoErro(codigoErro);
         response.setMensagem(mensagem);
         response.setReturnMessage(mensagem);
         response.setReserva(null);

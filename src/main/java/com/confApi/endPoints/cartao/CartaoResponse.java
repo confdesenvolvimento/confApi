@@ -3,6 +3,7 @@ package com.confApi.endPoints.cartao;
 import com.confApi.db.confManager.recebimento.Recebimento;
 import com.confApi.endPoints.parcelaCartao.ParcelaCartaoResponse;
 import lombok.Data;
+import lombok.ToString;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,13 +13,19 @@ public class CartaoResponse {
     private String codgBandeira;
     private String siglaBandeira;
     private String nomeBandeira;
+    @ToString.Exclude
     private String titularBandeira;
+    @ToString.Exclude
     private String numeroCartao;
+    @ToString.Exclude
     private String validadeCartao;
+    @ToString.Exclude
     private String codgSegurancaCartao;
     private String quantidadeParcelas;
     private Double valor=0.0;
+    @ToString.Exclude
     private String codgAutorizacao;
+    @ToString.Exclude
     private String codgTransacao;
     private List<ParcelaCartaoResponse> parcelasCartao = new ArrayList<>();
     private ParcelaCartaoResponse parcelaSelecionada;

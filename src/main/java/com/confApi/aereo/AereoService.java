@@ -211,11 +211,29 @@ public class AereoService {
         preRes1.setTipoTrecho(preReserva.getTipoTrecho());
         preRes1.setTipoVooPesquisa(preReserva.getTipoVooPesquisa());
 
-        preRes1.setValorTotalTarifa(0.00);
-        preRes1.setValorTotalTaxaDu(0.00);
-        preRes1.setValorTotalTaxaEmbarque(0.00);
-        preRes1.setValorTotalTaxas(0.00);
-        preRes1.setValorTotalGeral(0.00);
+        Preco preco = tarifaResponse.getPreco();
+        if (preco == null) {
+            return null;
+        }
+
+        double tarifa = preco.getTotalTarifa() != null ? preco.getTotalTarifa()
+                : preco.getTarifa() != null ? preco.getTarifa() : 0.0;
+        double taxaEmbarque = preco.getTotalTaxaEmbarque() != null ? preco.getTotalTaxaEmbarque() : 0.0;
+        double taxaDu = preco.getTotalTaxaServico() != null ? preco.getTotalTaxaServico() : 0.0;
+        double rav = preco.getValorRAV() != null ? preco.getValorRAV() : 0.0;
+        double taxas = (preco.getTotalTaxaAssento() != null ? preco.getTotalTaxaAssento() : 0.0)
+                + (preco.getTotalTaxaBagagem() != null ? preco.getTotalTaxaBagagem() : 0.0)
+                + (preco.getTotalTaxaDeCombustivel() != null ? preco.getTotalTaxaDeCombustivel() : 0.0)
+                + (preco.getTotalTaxaMenorDesacompanhado() != null ? preco.getTotalTaxaMenorDesacompanhado() : 0.0);
+        double total = preco.getTotalGeral() != null ? preco.getTotalGeral()
+                : preco.getTotal() != null ? preco.getTotal() : 0.0;
+
+        preRes1.setValorTotalTarifa(tarifa);
+        preRes1.setValorTotalTaxaDu(taxaDu);
+        preRes1.setValorTotalTaxaEmbarque(taxaEmbarque);
+        preRes1.setValorTotalRav(rav);
+        preRes1.setValorTotalTaxas(taxas);
+        preRes1.setValorTotalGeral(total);
         preRes1.setValorTotalMkp(0.00);
 
         if (tarifaResponse.getTrecho1() != null) {
@@ -265,25 +283,149 @@ public class AereoService {
                             continue;
                         }
 
-                        if (vooReserva.getNumeroVoo().equalsIgnoreCase(vooDB.getNumeroVoo())) {
-                            if (trechoReserva.getFamiliaSelecionada() != null) {
-                                vooDB.setFamilia(trechoReserva.getFamiliaSelecionada().getBaseTarifaria());
-
-                                if (trechoReserva.getFamiliaSelecionada().getFamilia() != null) {
-                                    vooDB.setFamiliaCodigo(
-                                            trechoReserva.getFamiliaSelecionada()
-                                                    .getFamilia()
-                                                    .getCodgFamilia()
-                                    );
-                                }
-                            }
-
-                            vooDB.setEquipamento(vooReserva.getEquipamento());
+                        if (isMesmoVoo(vooReserva, vooDB)) {
+                            popularDadosVoo(vooDB, vooReserva, trechoReserva.getFamiliaSelecionada());
                         }
                     }
                 }
             }
         }
+    }
+
+    private void popularDadosVoo(Voo vooDB, Voo vooReserva, FamiliaPreco familiaSelecionada) {
+        if (familiaSelecionada != null) {
+            vooDB.setFamilia(primeiroTexto(
+                    familiaSelecionada.getBaseTarifaria(),
+                    vooReserva.getFamilia(),
+                    vooDB.getFamilia()
+            ));
+            vooDB.setClasse(primeiroTexto(
+                    vooReserva.getClasse(),
+                    familiaSelecionada.getClasse(),
+                    vooDB.getClasse()
+            ));
+            vooDB.setCabine(primeiroTexto(
+                    vooReserva.getCabine(),
+                    familiaSelecionada.getCabine(),
+                    vooDB.getCabine()
+            ));
+            vooDB.setBagagemInclusa(
+                    vooReserva.getBagagemInclusa() != null
+                            ? vooReserva.getBagagemInclusa()
+                            : familiaSelecionada.getBagagemInclusa() != null
+                                    ? familiaSelecionada.getBagagemInclusa()
+                                    : vooDB.getBagagemInclusa()
+            );
+            vooDB.setBagagemQuantidade(
+                    vooReserva.getBagagemQuantidade() != null
+                            ? vooReserva.getBagagemQuantidade()
+                            : familiaSelecionada.getBagagemQuantidade() != null
+                                    ? familiaSelecionada.getBagagemQuantidade()
+                                    : vooDB.getBagagemQuantidade()
+            );
+            vooDB.setBagagemPeso(
+                    vooReserva.getBagagemPeso() != null
+                            ? vooReserva.getBagagemPeso()
+                            : familiaSelecionada.getBagagemPeso() != null
+                                    ? familiaSelecionada.getBagagemPeso()
+                                    : vooDB.getBagagemPeso()
+            );
+
+            String codigoFamiliaSelecionada = familiaSelecionada.getFamilia() != null
+                    ? familiaSelecionada.getFamilia().getCodgFamilia()
+                    : null;
+            vooDB.setFamiliaCodigo(primeiroTexto(
+                    vooReserva.getFamiliaCodigo(),
+                    codigoFamiliaSelecionada,
+                    vooDB.getFamiliaCodigo(),
+                    familiaSelecionada.getBaseTarifaria()
+            ));
+            vooDB.setBaseTarifaria(primeiroTexto(
+                    vooReserva.getBaseTarifaria(),
+                    familiaSelecionada.getBaseTarifaria(),
+                    vooDB.getBaseTarifaria()
+            ));
+        } else {
+            vooDB.setFamilia(primeiroTexto(vooReserva.getFamilia(), vooDB.getFamilia()));
+            vooDB.setFamiliaCodigo(primeiroTexto(vooReserva.getFamiliaCodigo(), vooDB.getFamiliaCodigo()));
+            vooDB.setBaseTarifaria(primeiroTexto(vooReserva.getBaseTarifaria(), vooDB.getBaseTarifaria()));
+            vooDB.setClasse(primeiroTexto(vooReserva.getClasse(), vooDB.getClasse()));
+            vooDB.setCabine(primeiroTexto(vooReserva.getCabine(), vooDB.getCabine()));
+            if (vooReserva.getBagagemInclusa() != null) {
+                vooDB.setBagagemInclusa(vooReserva.getBagagemInclusa());
+            }
+            if (vooReserva.getBagagemQuantidade() != null) {
+                vooDB.setBagagemQuantidade(vooReserva.getBagagemQuantidade());
+            }
+            if (vooReserva.getBagagemPeso() != null) {
+                vooDB.setBagagemPeso(vooReserva.getBagagemPeso());
+            }
+        }
+
+        vooDB.setEquipamento(primeiroTexto(vooReserva.getEquipamento(), vooDB.getEquipamento()));
+        vooDB.setDuracao(primeiroTexto(vooReserva.getDuracao(), vooDB.getDuracao()));
+        vooDB.setBagagemUnidadeDeMedida(primeiroTexto(
+                vooReserva.getBagagemUnidadeDeMedida(),
+                vooDB.getBagagemUnidadeDeMedida()
+        ));
+        vooDB.setIdentificacaoDoVoo(primeiroTexto(
+                vooReserva.getIdentificacaoDoVoo(),
+                vooDB.getIdentificacaoDoVoo()
+        ));
+
+        if (vooReserva.getQtdEscalas() != null) {
+            vooDB.setQtdEscalas(vooReserva.getQtdEscalas());
+        }
+        if (vooReserva.getBagagemIndicador() != null) {
+            vooDB.setBagagemIndicador(vooReserva.getBagagemIndicador());
+        }
+        if (vooReserva.getTipoSegmento() != null) {
+            vooDB.setTipoSegmento(vooReserva.getTipoSegmento());
+        }
+        if (vooReserva.getConexao() != null) {
+            vooDB.setConexao(vooReserva.getConexao());
+        }
+        if (vooReserva.getIsConexao() != null) {
+            vooDB.setIsConexao(vooReserva.getIsConexao());
+        }
+        if (vooReserva.getIsCodeShare() != null) {
+            vooDB.setIsCodeShare(vooReserva.getIsCodeShare());
+        }
+        if (vooReserva.getCiaOperadora() != null) {
+            vooDB.setCiaOperadora(vooReserva.getCiaOperadora());
+        }
+        if (vooReserva.getCiaMandatoria() != null) {
+            vooDB.setCiaMandatoria(vooReserva.getCiaMandatoria());
+        }
+    }
+
+    private boolean isMesmoVoo(Voo vooReserva, Voo vooDB) {
+        if (!vooReserva.getNumeroVoo().equalsIgnoreCase(vooDB.getNumeroVoo())) {
+            return false;
+        }
+
+        return isMesmoAeroporto(vooReserva.getOrigem(), vooDB.getOrigem())
+                && isMesmoAeroporto(vooReserva.getDestino(), vooDB.getDestino());
+    }
+
+    private boolean isMesmoAeroporto(
+            com.confApi.hub.aereo.dto.Aeroporto primeiro,
+            com.confApi.hub.aereo.dto.Aeroporto segundo
+    ) {
+        if (primeiro == null || segundo == null
+                || primeiro.getCodigoIata() == null || segundo.getCodigoIata() == null) {
+            return true;
+        }
+        return primeiro.getCodigoIata().equalsIgnoreCase(segundo.getCodigoIata());
+    }
+
+    private String primeiroTexto(String... valores) {
+        for (String valor : valores) {
+            if (valor != null && !valor.isBlank()) {
+                return valor;
+            }
+        }
+        return null;
     }
 
     private void popularPassageiros(Reserva reservaDB, PreReserva preReserva) {
@@ -557,7 +699,7 @@ public class AereoService {
                 vooDB.setCodgAeroportoDestino(new Aeroporto(voo.getDestino().getCodigoIata()));
                 vooDB.setCodgCompanhiaAerea(new CompanhiaAerea(voo.getCiaMandatoria().getCodigoIata()));
                 vooDB.setNumeroVoo(voo.getNumeroVoo());
-                vooDB.setBaseTarifa(voo.getFamiliaCodigo());
+                vooDB.setBaseTarifa(primeiroTexto(voo.getFamiliaCodigo(), voo.getBaseTarifaria()));
                 vooDB.setClasseTarifa(voo.getClasse());
                 vooDB.setAeronave(voo.getEquipamento());
                 vooDB.setQtdEscalas(voo.getQtdEscalas());
@@ -573,7 +715,19 @@ public class AereoService {
                 } else {
                     vooDB.setCodgCompanhiaAereaOperada(new CompanhiaAerea(voo.getCiaMandatoria().getCodigoIata()));
                 }
-                vooDB.setFlagCodeShare(0);
+                boolean companhiasDiferentes = voo.getCiaOperadora() != null
+                        && voo.getCiaOperadora().getCodigoIata() != null
+                        && voo.getCiaMandatoria() != null
+                        && voo.getCiaMandatoria().getCodigoIata() != null
+                        && !voo.getCiaOperadora().getCodigoIata()
+                                .equalsIgnoreCase(voo.getCiaMandatoria().getCodigoIata());
+                boolean isCodeShare = Boolean.TRUE.equals(voo.getIsCodeShare()) || companhiasDiferentes;
+                vooDB.setFlagCodeShare(isCodeShare ? 1 : 0);
+                if (isCodeShare) {
+                    vooDB.setCodgCompanhiaAereaCodeShare(
+                            new CompanhiaAerea(voo.getCiaOperadora().getCodigoIata())
+                    );
+                }
                 vooDB.setStatusVoo(voo.getStatus());
                 vooDB.setLocalizadorCia(voo.getLocalizadorCia());
                 vooDB.setCabine(voo.getCabine());

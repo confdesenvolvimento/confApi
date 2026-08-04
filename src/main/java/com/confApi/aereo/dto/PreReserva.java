@@ -18,6 +18,7 @@ public class PreReserva {
     private Integer qtdInf = 0;
     private Integer tipoTrecho = null;
     private Integer tipoVooPesquisa = null;
+    private List<String> identificacaoViagemMultipla;
 
     private List<ReservaValoresAereo> valoresReservaAdt;
     private List<ReservaValoresAereo> valoresReservaChd;

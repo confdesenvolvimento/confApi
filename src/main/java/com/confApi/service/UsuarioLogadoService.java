@@ -31,7 +31,6 @@ public class UsuarioLogadoService {
     }
 
     public Usuario getLoginUsuarioLogado() {
-        System.out.println("TETSETSTGSGUDUB: " + getUsuarioLogado().getUsername());
         return usuarioApi.consultaUsuarioByLogin(getUsuarioLogado().getUsername());
     }
 

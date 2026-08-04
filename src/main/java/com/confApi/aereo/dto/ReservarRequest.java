@@ -67,11 +67,20 @@ public class ReservarRequest {
 
                 for (Voo voo : trecho.getVoos()) {
                     if (preReserva.getTipoTrecho().equals(TipoConsulta.INTERNACIONAL.getCod())) {
-                        if (trecho.getFamiliaSelecionada() == null || trecho.getFamiliaSelecionada().getFamiliaPrecoInterList() == null) {
+                        if (trecho.getFamiliaSelecionada() == null) {
                             continue;
                         }
 
                         identificacaoViagemInter = trecho.getFamiliaSelecionada().getIdentificacaoDaViagem();
+                        if (identificacaoViagemInter == null || identificacaoViagemInter.isBlank()) {
+                            identificacaoViagemInter = trecho.getIdentificacaoDaViagem();
+                        }
+
+                        if (trecho.getFamiliaSelecionada().getFamiliaPrecoInterList() == null
+                                || trecho.getFamiliaSelecionada().getFamiliaPrecoInterList().isEmpty()) {
+                            this.classesSelecionadas.add(new ClasseSelecionada(voo, countTrecho, trecho));
+                            continue;
+                        }
 
                         for (FamiliaPrecoInter familiaPrecoInter : trecho.getFamiliaSelecionada().getFamiliaPrecoInterList()) {
                             if (familiaPrecoInter.getNumeroVoo().equalsIgnoreCase(voo.getNumeroVoo())) {
@@ -95,7 +104,7 @@ public class ReservarRequest {
                     this.identificacaoDaViagemVolta = preReserva.getTrechos().get(1).getIdentificacaoDaViagem();
                 }
             } else if (preReserva.getTipoVooPesquisa().equals(TipoPesquisa.MULTIPLOSTRECHOS.getCod())) {
-                this.identificacaoViagemMultipla = null;
+                this.identificacaoViagemMultipla = preReserva.getIdentificacaoViagemMultipla();
             }
 
             if (preReserva.getTipoTrecho().equals(TipoConsulta.INTERNACIONAL.getCod())) {
@@ -121,4 +130,3 @@ public class ReservarRequest {
         this.promocode = "";
     }
 }
-

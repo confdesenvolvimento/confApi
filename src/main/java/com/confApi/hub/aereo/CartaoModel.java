@@ -275,16 +275,10 @@ public class CartaoModel implements Serializable {
                 "codgBandeira='" + codgBandeira + '\'' +
                 ", siglaBandeira='" + siglaBandeira + '\'' +
                 ", nomeBandeira='" + nomeBandeira + '\'' +
-                ", titularBandeira='" + titularBandeira + '\'' +
-                ", numeroCartao='" + numeroCartao + '\'' +
-                ", validadeCartao='" + validadeCartao + '\'' +
-                ", codgSegurancaCartao='" + codgSegurancaCartao + '\'' +
                 ", quantidadeParcelas='" + quantidadeParcelas + '\'' +
                 ", valor=" + valor +
-                ", codgAutorizacao='" + codgAutorizacao + '\'' +
-                ", codgTransacao='" + codgTransacao + '\'' +
-                ", parcelasCartao=" + parcelasCartao +
-                ", parcelaSelecionada=" + parcelaSelecionada +
+                ", possuiNumeroCartao=" + (numeroCartao != null && !numeroCartao.isBlank()) +
+                ", possuiCodigoSeguranca=" + (codgSegurancaCartao != null && !codgSegurancaCartao.isBlank()) +
                 '}';
     }
 }

@@ -1,5 +1,7 @@
 package com.confApi.config;
 
+import com.confApi.clientapp.security.ClientAppAuthenticationFilter;
+import com.confApi.clientapp.security.ClientAppCorrelationIdFilter;
 import com.confApi.security.jwt.JwtAuthFilter;
 import com.confApi.security.jwt.JwtService;
 import com.confApi.service.UsuarioServiceImpl;
@@ -22,6 +24,12 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Autowired
     private JwtService jwtService;
+
+    @Autowired
+    private ClientAppAuthenticationFilter clientAppAuthenticationFilter;
+
+    @Autowired
+    private ClientAppCorrelationIdFilter clientAppCorrelationIdFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -47,6 +55,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/api/webhooks/wooba/**").permitAll()
                 .antMatchers("/api/wooba/teste/**").permitAll()
                 .antMatchers("/api/clube/usuario/auth").permitAll() // 👈 adiciona isso
+                .antMatchers("/api/client-app/v1/**")
+                .hasAuthority("SCOPE_customer:authenticated")
                 // // ❌ demais endpoints: autenticado e NÃO pode ter EXTERNAL
                // .anyRequest().access("isAuthenticated() and !hasAuthority('external')")
                 .anyRequest().authenticated()
@@ -54,7 +64,9 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .sessionManagement()
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
-                .addFilterBefore(jwtFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilter(), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(clientAppAuthenticationFilter, JwtAuthFilter.class)
+                .addFilterBefore(clientAppCorrelationIdFilter, ClientAppAuthenticationFilter.class);
     }
 
 }

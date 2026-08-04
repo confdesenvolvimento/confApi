@@ -19,11 +19,21 @@ public class PlanoViagemReservaAereoPDF implements Serializable {
     private String emailsList;
 
     public PlanoViagemReservaAereoPDF(GeradorAereoPDF geradorAereoPDF) {
-        this.assunto = "Plano de viagem - " + geradorAereoPDF.getReservaLocalizaodr();
-        this.mensagem = "Segue o plano de viagem para o Localizador" + geradorAereoPDF.getReservaLocalizaodr();
+        this.assunto = textoOuPadrao(
+                geradorAereoPDF.getAssunto(),
+                "Plano de viagem - " + geradorAereoPDF.getReservaLocalizaodr()
+        );
+        this.mensagem = textoOuPadrao(
+                geradorAereoPDF.getMensagem(),
+                "Segue o plano de viagem para o Localizador" + geradorAereoPDF.getReservaLocalizaodr()
+        );
         this.emailPara = geradorAereoPDF.getEmails();
         this.emailCopia = null;
         this.receberCopiaEmail = false;
         this.semValores = geradorAereoPDF.getSemValores();
+    }
+
+    private String textoOuPadrao(String texto, String padrao) {
+        return texto != null && !texto.trim().isEmpty() ? texto.trim() : padrao;
     }
 }

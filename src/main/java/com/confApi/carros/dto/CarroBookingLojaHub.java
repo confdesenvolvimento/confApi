@@ -9,5 +9,7 @@ public class CarroBookingLojaHub {
     private String endereco;
     private String telefone;
     private String horasAbertas;
+    private String latitude;
+    private String longitude;
     private Boolean lojaRetirada;
 }

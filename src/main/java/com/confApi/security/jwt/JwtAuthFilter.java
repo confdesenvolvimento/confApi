@@ -5,6 +5,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import javax.servlet.FilterChain;
@@ -15,6 +16,9 @@ import java.io.IOException;
 
 public class JwtAuthFilter extends OncePerRequestFilter {
 
+    private static final AntPathRequestMatcher CLIENT_APP_PATH =
+            new AntPathRequestMatcher("/api/client-app/v1/**");
+
     private final JwtService jwtService;
     private final UsuarioServiceImpl usuarioService;
 
@@ -22,6 +26,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     public JwtAuthFilter(JwtService jwtService, UsuarioServiceImpl usuarioService) {
         this.jwtService = jwtService;
         this.usuarioService = usuarioService;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return CLIENT_APP_PATH.matches(request);
     }
 
     @Override
@@ -37,10 +46,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (jwtService.tokenValido(token) && SecurityContextHolder.getContext().getAuthentication() == null) {
                 String loginUsuario = jwtService.obterLoginUsuario(token);
                 UserDetails usuario = usuarioService.loadUserByUsername(loginUsuario);
-
-                // 🔍 DEBUG (remova depois)
-               // System.out.println("JWT USER: " + usuario.getUsername());
-                usuario.getAuthorities().forEach(a -> System.out.println("JWT AUTH: " + a.getAuthority()));
 
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
