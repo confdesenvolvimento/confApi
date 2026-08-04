@@ -8,11 +8,13 @@ import com.confApi.chatconfianca.dto.enums.StatusAtendente;
 import com.confApi.chatconfianca.dto.enums.StatusConversa;
 import com.confApi.chatconfianca.dto.enums.StatusFila;
 import com.confApi.chatconfianca.dto.enums.StatusMensagem;
+import com.confApi.chatconfianca.dto.enums.RemetenteTipo;
 import com.confApi.chatconfianca.dto.enums.VisibilidadeMensagem;
 import com.confApi.chatconfianca.dto.model.AtendimentoAvaliacao;
 import com.confApi.chatconfianca.dto.model.AtendenteStatus;
 import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.model.ConversaParticipante;
+import com.confApi.chatconfianca.dto.model.ConversaTransferencia;
 import com.confApi.chatconfianca.dto.model.DepartamentoAtendente;
 import com.confApi.chatconfianca.dto.model.DepartamentoUnidade;
 import com.confApi.chatconfianca.dto.model.FilaAtendimento;
@@ -27,6 +29,7 @@ import com.confApi.chatconfianca.dto.request.AssumirAtendimentoRequest;
 import com.confApi.chatconfianca.dto.request.AvaliarAtendimentoRequest;
 import com.confApi.chatconfianca.dto.request.EncerrarConversaRequest;
 import com.confApi.chatconfianca.dto.request.EnviarMensagemRequest;
+import com.confApi.chatconfianca.dto.request.RegistrarLeituraRequest;
 import com.confApi.chatconfianca.dto.response.ChatNotificacaoResumoResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import java.util.ArrayList;
@@ -45,7 +48,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -56,8 +64,12 @@ class ChatConfiancaServiceTest {
     private static final Integer CODG_AGENCIA = 501;
     private static final Integer CODG_UNIDADE = 1;
     private static final Long DEPARTAMENTO_UNIDADE_ID = 100L;
+    private static final Long DEPARTAMENTO_REMARCACAO_ID = 200L;
     private static final Long CONVERSA_ID = 10L;
     private static final Long FILA_ID = 20L;
+    private static final String LEITURA_BULK_PATH =
+            "chat-confianca/persistencia/mensagem-leituras/conversas/"
+                    + CONVERSA_ID + "/usuarios/";
 
     private final ChatConfiancaManagerClient manager = mock(ChatConfiancaManagerClient.class);
     private final ChatConfiancaConfigService configService = mock(ChatConfiancaConfigService.class);
@@ -132,6 +144,11 @@ class ChatConfiancaServiceTest {
         assertEquals(StatusConversa.ENCERRADA, encerrada.getStatus());
         assertEquals(ATENDENTE, encerrada.getEncerradoPorCodgUsuario());
         assertEquals("Resolvido - Tarifa explicada ao cliente.", encerrada.getMotivoEncerramento());
+        Mensagem avisoEncerramento = fixture.mensagens.get(fixture.mensagens.size() - 1);
+        assertEquals(RemetenteTipo.SISTEMA, avisoEncerramento.getRemetenteTipo());
+        assertEquals(VisibilidadeMensagem.PUBLICA, avisoEncerramento.getVisibilidade());
+        assertTrue(avisoEncerramento.getConteudo().contains("O atendente encerrou esta conversa."));
+        assertTrue(avisoEncerramento.getConteudo().contains("Tarifa explicada ao cliente."));
 
         AvaliarAtendimentoRequest avaliar = new AvaliarAtendimentoRequest();
         avaliar.setConversaId(CONVERSA_ID);
@@ -146,6 +163,26 @@ class ChatConfiancaServiceTest {
         assertEquals(SOLICITANTE, avaliacao.getCodgUsuarioAvaliador());
         assertEquals(5, avaliacao.getNota());
         assertEquals("Atendimento muito bom.", avaliacao.getComentario());
+    }
+
+    @Test
+    void encerramentoPeloUsuarioRegistraAvisoParaOAtendente() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.EM_ATENDIMENTO);
+        fixture.conversa.setAtendenteResponsavelCodgUsuario(ATENDENTE);
+        fixture.solicitanteParticipante = true;
+        fixture.atendenteParticipante = true;
+
+        EncerrarConversaRequest encerrar = new EncerrarConversaRequest();
+        encerrar.setConversaId(CONVERSA_ID);
+        encerrar.setCodgUsuario(SOLICITANTE);
+        encerrar.setMotivo("Cliente encerrou a solicitacao.");
+
+        Conversa encerrada = service.encerrarConversa(encerrar);
+
+        assertEquals(StatusConversa.ENCERRADA, encerrada.getStatus());
+        Mensagem avisoEncerramento = fixture.mensagens.get(fixture.mensagens.size() - 1);
+        assertEquals(RemetenteTipo.SISTEMA, avisoEncerramento.getRemetenteTipo());
+        assertTrue(avisoEncerramento.getConteudo().contains("O usuário encerrou esta conversa."));
     }
 
     @Test
@@ -219,6 +256,99 @@ class ChatConfiancaServiceTest {
     }
 
     @Test
+    void registrarLeituraDeveUsarUmaUnicaChamadaBulkERetornarQuantidade() {
+        fixture.conversa = conversaEncerrada();
+        fixture.solicitanteParticipante = true;
+        when(manager.post(
+                eq(LEITURA_BULK_PATH + SOLICITANTE + "?incluirInternas=false"),
+                isNull(),
+                eq(Integer.class)))
+                .thenReturn(4);
+
+        int atualizadas = service.registrarLeitura(leitura(SOLICITANTE, false));
+
+        assertEquals(4, atualizadas);
+        verify(manager, times(1))
+                .post(
+                        eq(LEITURA_BULK_PATH + SOLICITANTE + "?incluirInternas=false"),
+                        isNull(),
+                        eq(Integer.class));
+        verify(manager, never()).getList(
+                eq("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/mensagens"),
+                any(ParameterizedTypeReference.class));
+        verify(manager, never()).get(anyString(), eq(com.confApi.chatconfianca.dto.model.MensagemLeitura.class));
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/mensagem-leituras"),
+                any(),
+                eq(com.confApi.chatconfianca.dto.model.MensagemLeitura.class));
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/mensagens"),
+                any(Mensagem.class),
+                eq(Mensagem.class));
+    }
+
+    @Test
+    void registrarLeituraDeveManterBloqueioParaUsuarioSemParticipacao() {
+        fixture.conversa = conversaEncerrada();
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.registrarLeitura(leitura(SOLICITANTE, false)));
+
+        assertEquals(403, erro.getStatus());
+        assertEquals("Usuario nao participa da conversa.", erro.getMessage());
+        verify(manager, never())
+                .post(
+                        eq(LEITURA_BULK_PATH + SOLICITANTE + "?incluirInternas=false"),
+                        isNull(),
+                        eq(Integer.class));
+    }
+
+    @Test
+    void registrarLeituraDeveManterAcessoDoGestorDaUnidade() {
+        fixture.conversa = conversaEncerrada();
+        fixture.vinculoAtendente.setPapel(PapelAtendente.GESTOR);
+        when(manager.post(
+                eq(LEITURA_BULK_PATH + ATENDENTE + "?incluirInternas=true"),
+                isNull(),
+                eq(Integer.class)))
+                .thenReturn(2);
+
+        int atualizadas = service.registrarLeitura(leitura(ATENDENTE, true));
+
+        assertEquals(2, atualizadas);
+        verify(manager, never()).get(
+                "chat-confianca/consultas/conversas/" + CONVERSA_ID
+                        + "/participantes/" + ATENDENTE + "/exists",
+                Boolean.class);
+        verify(manager, times(1))
+                .post(
+                        eq(LEITURA_BULK_PATH + ATENDENTE + "?incluirInternas=true"),
+                        isNull(),
+                        eq(Integer.class));
+    }
+
+    @Test
+    void registrarLeituraDoAtendenteResponsavelDeveIncluirNotasInternas() {
+        fixture.conversa = conversaEncerrada();
+        fixture.atendenteParticipante = true;
+        when(manager.post(
+                eq(LEITURA_BULK_PATH + ATENDENTE + "?incluirInternas=true"),
+                isNull(),
+                eq(Integer.class)))
+                .thenReturn(1);
+
+        int atualizadas = service.registrarLeitura(leitura(ATENDENTE, false));
+
+        assertEquals(1, atualizadas);
+        verify(manager, times(1))
+                .post(
+                        eq(LEITURA_BULK_PATH + ATENDENTE + "?incluirInternas=true"),
+                        isNull(),
+                        eq(Integer.class));
+    }
+
+    @Test
     void administradorGlobalConsultaHistoricoDeQualquerUnidadeMesmoVinculado() {
         fixture.atendente.setCodgAgencia(CODG_AGENCIA);
         fixture.perfisAtendente.add("ADMIN_CHAT");
@@ -279,6 +409,150 @@ class ChatConfiancaServiceTest {
         assertEquals(3, resumo.getMensagensAtendenteNaoLidas());
         assertEquals(CONVERSA_ID, resumo.getConversaAtendenteDestaqueId());
         assertEquals(2, resumo.getTotalPendencias());
+    }
+
+    @Test
+    void deveDirecionarRemarcacaoAoUnicoDepartamentoConfiguradoDaUnidade() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        DepartamentoUnidade destino = departamentoRemarcacao(DEPARTAMENTO_REMARCACAO_ID);
+        DepartamentoAtendente atendenteDestino =
+                vinculoAtendente(DEPARTAMENTO_REMARCACAO_ID);
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(fixture.departamentoUnidade, destino));
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_REMARCACAO_ID))
+                .thenReturn(List.of(atendenteDestino));
+
+        Conversa encaminhada = service.encaminharConversaParaDepartamentoRemarcacao(
+                CONVERSA_ID, SOLICITANTE, "Conclusao da simulacao de remarcacao.");
+
+        assertEquals(DEPARTAMENTO_REMARCACAO_ID, encaminhada.getDepartamentoUnidadeId());
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, encaminhada.getStatus());
+        assertEquals(DEPARTAMENTO_REMARCACAO_ID, fixture.fila.getDepartamentoUnidadeId());
+        assertEquals(StatusFila.AGUARDANDO, fixture.fila.getStatus());
+        verify(manager).post(
+                eq("chat-confianca/persistencia/conversa-transferencias"),
+                any(ConversaTransferencia.class),
+                eq(ConversaTransferencia.class));
+    }
+
+    @Test
+    void devePreservarEncaminhamentoHumanoComumNoDepartamentoAtual() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        when(manager.get(
+                "chat-confianca/persistencia/departamento-unidades/" + DEPARTAMENTO_UNIDADE_ID,
+                DepartamentoUnidade.class))
+                .thenReturn(fixture.departamentoUnidade);
+
+        Conversa encaminhada = service.encaminharConversaParaAtendente(
+                CONVERSA_ID, SOLICITANTE, "Atendimento humano solicitado.");
+
+        assertEquals(DEPARTAMENTO_UNIDADE_ID, encaminhada.getDepartamentoUnidadeId());
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, encaminhada.getStatus());
+        assertEquals(DEPARTAMENTO_UNIDADE_ID, fixture.fila.getDepartamentoUnidadeId());
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/conversa-transferencias"),
+                any(ConversaTransferencia.class),
+                eq(ConversaTransferencia.class));
+    }
+
+    @Test
+    void naoDeveAlterarConversaQuandoNaoHaDestinoDeRemarcacaoConfigurado() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(fixture.departamentoUnidade));
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.encaminharConversaParaDepartamentoRemarcacao(
+                        CONVERSA_ID, SOLICITANTE, "Remarcacao."));
+
+        assertEquals(409, erro.getStatus());
+        assertTrue(erro.getMessage().contains("nao possui departamento ativo configurado"));
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void naoDeveAlterarConversaQuandoHaMaisDeUmDestinoDeRemarcacao() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        DepartamentoUnidade primeiro = departamentoRemarcacao(DEPARTAMENTO_REMARCACAO_ID);
+        DepartamentoUnidade segundo = departamentoRemarcacao(201L);
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(primeiro, segundo));
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.encaminharConversaParaDepartamentoRemarcacao(
+                        CONVERSA_ID, SOLICITANTE, "Remarcacao."));
+
+        assertEquals(409, erro.getStatus());
+        assertTrue(erro.getMessage().contains("mais de um departamento ativo configurado"));
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void deveManterConversaQueJaAguardaNoDepartamentoDeRemarcacao() {
+        fixture.conversa = conversaParaRemarcacao(
+                DEPARTAMENTO_REMARCACAO_ID, StatusConversa.AGUARDANDO_ATENDENTE);
+        fixture.solicitanteParticipante = true;
+        DepartamentoUnidade destino = departamentoRemarcacao(DEPARTAMENTO_REMARCACAO_ID);
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(destino));
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_REMARCACAO_ID))
+                .thenReturn(List.of(vinculoAtendente(DEPARTAMENTO_REMARCACAO_ID)));
+
+        Conversa encaminhada = service.encaminharConversaParaDepartamentoRemarcacao(
+                CONVERSA_ID, SOLICITANTE, "Remarcacao.");
+
+        assertEquals(DEPARTAMENTO_REMARCACAO_ID, encaminhada.getDepartamentoUnidadeId());
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, encaminhada.getStatus());
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void naoDeveDirecionarRemarcacaoParaDepartamentoSemAtendenteHumano() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.solicitanteParticipante = true;
+        DepartamentoUnidade destino = departamentoRemarcacao(DEPARTAMENTO_REMARCACAO_ID);
+        when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
+                .thenReturn(List.of(destino));
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_REMARCACAO_ID))
+                .thenReturn(Collections.emptyList());
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.encaminharConversaParaDepartamentoRemarcacao(
+                        CONVERSA_ID, SOLICITANTE, "Remarcacao."));
+
+        assertEquals(409, erro.getStatus());
+        assertTrue(erro.getMessage().contains("nao possui atendente humano ativo"));
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    private void verificarQueRoteamentoNaoFoiPersistido() {
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/filas"),
+                any(FilaAtendimento.class),
+                eq(FilaAtendimento.class));
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/conversas"),
+                any(Conversa.class),
+                eq(Conversa.class));
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/conversa-transferencias"),
+                any(ConversaTransferencia.class),
+                eq(ConversaTransferencia.class));
+    }
+
+    private RegistrarLeituraRequest leitura(Integer codgUsuario, boolean gestor) {
+        RegistrarLeituraRequest request = new RegistrarLeituraRequest();
+        request.setConversaId(CONVERSA_ID);
+        request.setCodgUsuario(codgUsuario);
+        request.setGestor(gestor);
+        return request;
     }
 
     private Object responderGet(InvocationOnMock invocation) {
@@ -419,6 +693,21 @@ class ChatConfiancaServiceTest {
         return conversa;
     }
 
+    private Conversa conversaParaRemarcacao(
+            Long departamentoUnidadeId,
+            StatusConversa status) {
+        Conversa conversa = new Conversa();
+        conversa.setId(CONVERSA_ID);
+        conversa.setDepartamentoUnidadeId(departamentoUnidadeId);
+        conversa.setCodgUnidade(CODG_UNIDADE);
+        conversa.setCodgAgencia(CODG_AGENCIA);
+        conversa.setSolicitanteCodgUsuario(SOLICITANTE);
+        conversa.setAssunto("Remarcacao aerea");
+        conversa.setStatus(status);
+        conversa.setPrioridade(PrioridadeConversa.NORMAL);
+        return conversa;
+    }
+
     private AtendenteStatus statusOnline() {
         AtendenteStatus status = new AtendenteStatus();
         status.setCodgUsuario(ATENDENTE);
@@ -496,6 +785,7 @@ class ChatConfiancaServiceTest {
         departamento.setNomeExibicao("Suporte");
         departamento.setPermiteChamadoAgencia(true);
         departamento.setPermiteChamadoInterno(false);
+        departamento.setRecebeRemarcacaoAerea(false);
         departamento.setExigeAssunto(true);
         departamento.setDistribuicao(DistribuicaoDepartamento.MANUAL);
         departamento.setLimiteChatsPorAtendente(3);
@@ -503,10 +793,22 @@ class ChatConfiancaServiceTest {
         return departamento;
     }
 
+    private static DepartamentoUnidade departamentoRemarcacao(Long id) {
+        DepartamentoUnidade departamento = departamentoUnidade();
+        departamento.setId(id);
+        departamento.setNomeExibicao("Aereo / Remarcacao");
+        departamento.setRecebeRemarcacaoAerea(true);
+        return departamento;
+    }
+
     private static DepartamentoAtendente vinculoAtendente() {
+        return vinculoAtendente(DEPARTAMENTO_UNIDADE_ID);
+    }
+
+    private static DepartamentoAtendente vinculoAtendente(Long departamentoUnidadeId) {
         DepartamentoAtendente vinculo = new DepartamentoAtendente();
         vinculo.setId(1L);
-        vinculo.setDepartamentoUnidadeId(DEPARTAMENTO_UNIDADE_ID);
+        vinculo.setDepartamentoUnidadeId(departamentoUnidadeId);
         vinculo.setCodgUsuario(ATENDENTE);
         vinculo.setPapel(PapelAtendente.ATENDENTE);
         vinculo.setRecebeChamados(true);

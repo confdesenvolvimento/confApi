@@ -5,6 +5,8 @@ import com.confApi.confApp.dto.SandBoxResp;
 import com.confApi.config.UrlConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
@@ -17,6 +19,17 @@ import java.util.Arrays;
 @Service
 public class ConfAppService {
     private final String urlConfApp = "user/auth";
+    private final RestTemplate restTemplate;
+
+    public ConfAppService() {
+        this.restTemplate = new RestTemplate();
+    }
+
+    @Autowired
+    public ConfAppService(
+            @Qualifier("chatConfiancaAuthRestTemplate") RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
 
     public ConfAppResp token() {
         HttpHeaders headers = new HttpHeaders();
@@ -29,7 +42,7 @@ public class ConfAppService {
         ResponseEntity<ConfAppResp> responseEntity = null;
         try {
             // Faz a solicitação HTTP usando RestTemplate
-            responseEntity = new RestTemplate().exchange(UrlConfig.URL_CONFIANCA_CONFAPP+urlConfApp, HttpMethod.POST, requestEntity, ConfAppResp.class);
+            responseEntity = restTemplate.exchange(UrlConfig.URL_CONFIANCA_CONFAPP+urlConfApp, HttpMethod.POST, requestEntity, ConfAppResp.class);
         } catch (HttpClientErrorException.BadRequest ex) {
             // Captura a exceção e lança uma exceção personalizada com a mensagem de erro
             String responseBody = ex.getResponseBodyAsString();
@@ -44,6 +57,6 @@ public class ConfAppService {
             }
         }
 
-        return responseEntity.getBody();
+        return responseEntity == null ? null : responseEntity.getBody();
     }
 }

@@ -6,6 +6,8 @@ import java.util.List;
 public class Disponibilidade implements Serializable {
 
     private List<LimiteCredito> limiteCredito;
+    private Boolean consultaConfirmada;
+    private String mensagemConsulta;
 
     public Disponibilidade() {
     }
@@ -38,5 +40,19 @@ public class Disponibilidade implements Serializable {
         this.limiteCredito = limiteCredito;
     }
 
+    public Boolean getConsultaConfirmada() {
+        return consultaConfirmada;
+    }
 
+    public void setConsultaConfirmada(Boolean consultaConfirmada) {
+        this.consultaConfirmada = consultaConfirmada;
+    }
+
+    public String getMensagemConsulta() {
+        return mensagemConsulta;
+    }
+
+    public void setMensagemConsulta(String mensagemConsulta) {
+        this.mensagemConsulta = mensagemConsulta;
+    }
 }

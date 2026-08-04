@@ -17,6 +17,7 @@ public class DepartamentoUnidadeConfiguracaoRequest {
     private String nomeExibicao;
     private Boolean permiteChamadoAgencia;
     private Boolean permiteChamadoInterno;
+    private Boolean recebeRemarcacaoAerea;
     private Boolean exigeAssunto;
     private DistribuicaoDepartamento distribuicao;
     private Integer limiteChatsPorAtendente;

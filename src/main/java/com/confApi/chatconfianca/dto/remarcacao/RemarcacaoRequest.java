@@ -12,6 +12,7 @@ public final class RemarcacaoRequest {
     public static class Iniciar {
         private Long conversaId;
         private Integer codgUsuario;
+        private Integer reservaId;
         private String localizador;
         private Integer codgAgenciaSessao;
     }
@@ -20,6 +21,13 @@ public final class RemarcacaoRequest {
     public static class SelecionarTrecho {
         private Integer codgUsuario;
         private Integer trechoIndice;
+    }
+
+    @Data
+    public static class SelecionarPassageiros {
+        private Integer codgUsuario;
+        private String escopo;
+        private Integer passageiroIndice;
     }
 
     @Data
@@ -35,6 +43,12 @@ public final class RemarcacaoRequest {
         private Integer codgUsuario;
         private Integer opcaoIndice;
         private Integer familiaIndice;
+    }
+
+    @Data
+    public static class SelecionarFormaPagamento {
+        private Integer codgUsuario;
+        private Integer codigo;
     }
 
     @Data

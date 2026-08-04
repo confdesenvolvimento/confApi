@@ -207,6 +207,9 @@ public class ChatConfiancaConfigService {
         if (entity.getPermiteChamadoInterno() == null) {
             entity.setPermiteChamadoInterno(true);
         }
+        if (entity.getRecebeRemarcacaoAerea() == null) {
+            entity.setRecebeRemarcacaoAerea(false);
+        }
         if (entity.getExigeAssunto() == null) {
             entity.setExigeAssunto(false);
         }

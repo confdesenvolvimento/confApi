@@ -15,6 +15,7 @@ public class DepartamentoUnidade {
     private String horarioAtendimentoJson;
     private Boolean permiteChamadoAgencia;
     private Boolean permiteChamadoInterno;
+    private Boolean recebeRemarcacaoAerea;
     private Boolean exigeAssunto;
     private DistribuicaoDepartamento distribuicao;
     private Integer limiteChatsPorAtendente;

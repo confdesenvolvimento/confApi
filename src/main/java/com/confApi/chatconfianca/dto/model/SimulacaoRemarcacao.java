@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 public class SimulacaoRemarcacao {
     private Long id;
     private Long conversaId;
+    private Integer reservaAereoId;
     private String localizador;
     private Integer codgUsuario;
     private Integer codgAgencia;
@@ -27,6 +28,10 @@ public class SimulacaoRemarcacao {
     private String resultadosJson;
     private String ofertaSelecionadaJson;
     private String calculoJson;
+    private Integer formaPagamentoCodigo;
+    private String formaPagamentoDescricao;
+    private String pagamentoStatus;
+    private LocalDateTime pagamentoSelecionadoEm;
     private String motivoBloqueio;
     private LocalDateTime expiraEm;
     private LocalDateTime criadoEm;
