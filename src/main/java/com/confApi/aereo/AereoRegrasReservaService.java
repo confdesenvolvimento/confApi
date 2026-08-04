@@ -504,6 +504,7 @@ public class AereoRegrasReservaService {
         destino.setValorTarifa(origem.getValorTarifa());
         destino.setValorNovaTarifa(origem.getValorNovaTarifa());
         destino.setValorTotalReserva(origem.getValorTotalReserva());
+        destino.setDataEmissaoReserva(origem.getDataEmissaoReserva());
         destino.setQuantidadePassageiros(origem.getQuantidadePassageiros());
         destino.setQuantidadeTrechos(origem.getQuantidadeTrechos());
         return destino;

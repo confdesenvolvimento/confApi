@@ -1428,6 +1428,7 @@ public class ChatConfiancaRemarcacaoService {
         request.setValorNovasTaxas(novasTaxas);
         request.setTaxaServico(zero(taxaServico));
         request.setValorTotalReserva(totalOriginal);
+        request.setDataEmissaoReserva(reserva == null ? null : reserva.getDataEmissao());
         request.setQuantidadePassageiros(Math.max(1, quantidadePassageiros));
         request.setQuantidadeTrechos(1);
         request.setExigirRegraAprovada(true);
@@ -1527,6 +1528,8 @@ public class ChatConfiancaRemarcacaoService {
             item.setTaxaServicoOriginal(taxaServicoOriginal);
             item.setNovaTaxaServico(taxaServicoNova);
             item.setMulta(zero(calculo.getValorMulta()));
+            item.setMultaIsentaPorAntecedencia(Boolean.TRUE.equals(calculo.getMultaIsentaPorAntecedencia()));
+            item.setLimiteHorasIsencaoMulta(calculo.getLimiteHorasIsencaoMulta());
             item.setDiferencaTarifaria(zero(calculo.getDiferencaTarifaria()));
             item.setDiferencaTaxaEmbarque(diferencaNaoNegativa(
                     calculo.getValorNovasTaxas(), calculo.getValorTaxasBase()));
