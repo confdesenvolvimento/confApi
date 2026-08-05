@@ -2,6 +2,7 @@ package com.confApi.geradorPdf;
 
 import com.confApi.geradorPdf.aereo.GeradorAereoPDF;
 import com.confApi.geradorPdf.aereo.GeradorAereoPDFModel;
+import com.confApi.geradorPdf.carro.GeradorCarroPDFModel;
 import com.confApi.geradorPdf.hotel.GeradorHotelPDFModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
@@ -53,6 +54,12 @@ public class GeradorPDFController {
        // System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getUsuarioConfDto());
       //  System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getReservaHotelModel().getCodgAgencia());
         geradorPDFService.popularHotelPDF(geradorHotelPDFModel);
+    }
+
+    @PostMapping("/reservaCarro")
+    public void geradorCarroPdf(@RequestBody GeradorCarroPDFModel geradorCarroPDFModel)  {
+        System.out.println("passou controller reservaCarro " + geradorCarroPDFModel);
+        geradorPDFService.popularCarroPDF(geradorCarroPDFModel);
     }
 
     @PostMapping("/reservaAereoApp")

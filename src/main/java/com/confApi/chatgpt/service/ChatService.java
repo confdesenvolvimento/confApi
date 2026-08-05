@@ -1712,12 +1712,16 @@ public class ChatService {
             putIfNotNull(map, "moedaMulta", response.getRegra().getMoedaMulta());
             putIfNotNull(map, "valorMultaFixo", response.getRegra().getValorMultaFixo());
             putIfNotNull(map, "percentualMulta", response.getRegra().getPercentualMulta());
+            putIfNotNull(map, "multaIsentaAbaixoDeHoras", response.getRegra().getMultaIsentaAbaixoDeHoras());
             putIfNotNull(map, "tituloUsuario", response.getRegra().getTituloUsuario());
             putIfNotNull(map, "descricaoUsuario", response.getRegra().getDescricaoUsuario());
             putIfNotNull(map, "observacao", response.getRegra().getObservacao());
         }
         if (response.getCalculo() != null) {
             putIfNotNull(map, "valorMultaCalculado", response.getCalculo().getValorMulta());
+            putIfNotNull(map, "multaIsentaPorAntecedencia", response.getCalculo().getMultaIsentaPorAntecedencia());
+            putIfNotNull(map, "horasDesdeEmissao", response.getCalculo().getHorasDesdeEmissao());
+            putIfNotNull(map, "limiteHorasIsencaoMulta", response.getCalculo().getLimiteHorasIsencaoMulta());
             putIfNotNull(map, "diferencaTarifaria", response.getCalculo().getDiferencaTarifaria());
             putIfNotNull(map, "totalPrevisto", response.getCalculo().getTotalPrevisto());
             putIfNotNull(map, "resumoCalculo", response.getCalculo().getResumo());

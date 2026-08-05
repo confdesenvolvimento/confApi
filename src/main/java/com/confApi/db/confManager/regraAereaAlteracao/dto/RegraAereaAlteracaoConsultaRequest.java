@@ -3,6 +3,7 @@ package com.confApi.db.confManager.regraAereaAlteracao.dto;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.Date;
 
 @Data
 public class RegraAereaAlteracaoConsultaRequest {
@@ -23,6 +24,7 @@ public class RegraAereaAlteracaoConsultaRequest {
     private BigDecimal valorTaxas;
     private BigDecimal valorNovasTaxas;
     private BigDecimal taxaServico;
+    private Date dataEmissaoReserva;
 
     private Integer quantidadePassageiros;
     private Integer quantidadeTrechos;

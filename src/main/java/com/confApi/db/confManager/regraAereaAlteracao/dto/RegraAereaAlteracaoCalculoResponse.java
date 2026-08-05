@@ -19,6 +19,9 @@ public class RegraAereaAlteracaoCalculoResponse {
     private BigDecimal taxaServico;
     private BigDecimal totalPrevisto;
     private BigDecimal percentualMultaAplicado;
+    private Boolean multaIsentaPorAntecedencia;
+    private BigDecimal horasDesdeEmissao;
+    private Integer limiteHorasIsencaoMulta;
     private Boolean calculoCompleto;
     private String resumo;
 }
