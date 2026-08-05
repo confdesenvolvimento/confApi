@@ -111,6 +111,9 @@ public class ChatConfiancaRemarcacaoService {
     private static final String ESCOPO_INDIVIDUAL = "INDIVIDUAL";
     private static final int PAGAMENTO_FATURA = 1;
     private static final int PAGAMENTO_CARTAO = 2;
+    private static final BigDecimal LIMITE_DU_DIFERENCA_TARIFA = new BigDecimal("400.00");
+    private static final BigDecimal DU_MINIMA_REMARCACAO = new BigDecimal("40.00");
+    private static final BigDecimal PERCENTUAL_DU_ACIMA_LIMITE = new BigDecimal("0.10");
     private static final String PAGAMENTO_AGUARDANDO_PREFERENCIA = "AGUARDANDO_PREFERENCIA";
     private static final String PAGAMENTO_PREFERENCIA_REGISTRADA = "PREFERENCIA_REGISTRADA";
     private static final String PAGAMENTO_PREFERENCIA_SUJEITA_VALIDACAO =
@@ -1481,8 +1484,12 @@ public class ChatConfiancaRemarcacaoService {
             // de serviço. A tarifa original já pode conter DU, RC e RAV.
             BigDecimal taxaServicoNova = novaTaxaServicoPassageiro(novoPreco);
             BigDecimal taxaServicoOriginal = taxaServicoOriginal(originais);
-            BigDecimal diferencaTaxaServico = diferencaNaoNegativa(
-                    taxaServicoNova, taxaServicoOriginal);
+            BigDecimal diferencaTarifariaParaDu = diferencaTarifariaParaDu(
+                    originais.getTarifa(), novaTarifa);
+            BigDecimal diferencaTaxaServico = calcularDuRemarcacao(
+                    diferencaTarifariaParaDu,
+                    taxaServicoNova,
+                    taxaServicoOriginal);
 
             RegraAereaAlteracaoConsultaRequest regraRequest = montarRequestRegra(
                     reserva,
@@ -2294,6 +2301,27 @@ public class ChatConfiancaRemarcacaoService {
         return zero(decimal(preco.getValorTaxaServico()))
                 .add(zero(decimal(preco.getValorFee())))
                 .add(zero(decimal(preco.getValorRav())));
+    }
+
+    private BigDecimal diferencaTarifariaParaDu(BigDecimal tarifaOriginal, BigDecimal novaTarifa) {
+        if (tarifaOriginal == null || novaTarifa == null) {
+            return null;
+        }
+        BigDecimal diferenca = novaTarifa.subtract(tarifaOriginal);
+        return diferenca.signum() < 0 ? BigDecimal.ZERO : diferenca.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal calcularDuRemarcacao(BigDecimal diferencaTarifaria,
+                                            BigDecimal taxaServicoNova,
+                                            BigDecimal taxaServicoOriginal) {
+        if (diferencaTarifaria == null) {
+            return diferencaNaoNegativa(taxaServicoNova, taxaServicoOriginal);
+        }
+        if (diferencaTarifaria.compareTo(LIMITE_DU_DIFERENCA_TARIFA) <= 0) {
+            return DU_MINIMA_REMARCACAO;
+        }
+        return diferencaTarifaria.multiply(PERCENTUAL_DU_ACIMA_LIMITE)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal taxaServicoOriginal(ValoresPassageiro valores) {
