@@ -22,7 +22,7 @@ public class CarroValor {
     private Double valorTaxas;
     private Double valorTaxasBrl;
     private Double valorTaxaExtra;
-    private Double valor_taxa_extra_brl;
+    private Double valorTaxaExtraBrl;
     private Double valorProtecaoNet;
     private Double valorProtecaoNetBrl;
     private Double valorProtecaoMarkup;
@@ -52,7 +52,7 @@ public class CarroValor {
         this.valorTaxasBrl = obj != null ? obj.getTaxaEquivalente() : null;
 
         this.valorTaxaExtra = null;
-        this.valor_taxa_extra_brl = null;
+        this.valorTaxaExtraBrl = null;
 
         this.valorProtecaoNet = null;
         this.valorProtecaoNetBrl = null;

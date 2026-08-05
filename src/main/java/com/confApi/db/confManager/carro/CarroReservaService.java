@@ -12,7 +12,6 @@ import com.confApi.db.confManager.sistema.Sistema;
 import com.confApi.hub.carro.HubCarroClient;
 import com.confApi.model.RecebimentoModel;
 import com.confApi.recebimento.RecebimentoService;
-import org.hibernate.event.spi.SaveOrUpdateEvent;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -104,10 +103,30 @@ public class CarroReservaService {
             }
 
             /*
-             * Mesmo padrão do seguro:
-             * depois de criar o recebimento, mantém no request somente o ID.
+             * Mantém o ID do recebimento sem perder os valores calculados no front.
+             * O recebimento do front já contém o total da reserva com extras.
              */
-            req.setRecebimento(new RecebimentoModel(recebimento.getCodgRecebimento()));
+            RecebimentoModel recebimentoRequest = req.getRecebimento();
+
+            if (recebimentoRequest == null) {
+                recebimentoRequest = new RecebimentoModel();
+            }
+
+            recebimentoRequest.setCodgRecebimento(recebimento.getCodgRecebimento());
+
+            if (recebimentoRequest.getValorPagamento() == null
+                    || recebimentoRequest.getValorPagamento() <= 0) {
+
+                recebimentoRequest.setValorPagamento(recebimento.getValrRecebimento());
+            }
+
+            if (recebimentoRequest.getValorEntrada() == null
+                    || recebimentoRequest.getValorEntrada() <= 0) {
+
+                recebimentoRequest.setValorEntrada(recebimento.getValrEntrada());
+            }
+
+            req.setRecebimento(recebimentoRequest);
 
             System.out.println("Reserva no fornecedor::");
 
@@ -666,6 +685,9 @@ public class CarroReservaService {
         return response.getBody();
     }
     public SalvarReservaCarroResponseDTO salvarReservaCompletaNoManager(ReservarCarroResponseDTO reservaHub, CarroCompraModel carroCompraModel) {
+
+        System.out.println("getValorTaxaExtraBrl:::: " + carroCompraModel.getValorTaxaExtraBrl());
+
         if (reservaHub == null || reservaHub.getReservaCarro() == null) {
             throw new IllegalArgumentException("Reserva do HUB inválida.");
         }
@@ -703,6 +725,27 @@ public class CarroReservaService {
         }
 
         CarroValor carroValor = new CarroValor(reservaCarroHub, null);
+
+        Double valorTotalCobradoBrl = null;
+
+        if (carroCompraModel.getRecebimento() != null) {
+            valorTotalCobradoBrl = carroCompraModel.getRecebimento().getValorPagamento();
+
+            if (valorTotalCobradoBrl == null || valorTotalCobradoBrl <= 0) {
+                valorTotalCobradoBrl = carroCompraModel.getRecebimento().getValorEntrada();
+            }
+        }
+
+        if (valorTotalCobradoBrl != null && valorTotalCobradoBrl > 0) {
+            carroReserva.setValorTotalReservaNet(valorTotalCobradoBrl);
+            carroValor.setValorTotalReservaNetBrl(valorTotalCobradoBrl);
+        }
+
+        if (carroCompraModel.getValorTaxaExtraBrl() != null
+                && carroCompraModel.getValorTaxaExtraBrl() > 0) {
+
+            carroValor.setValorTaxaExtraBrl(carroCompraModel.getValorTaxaExtraBrl());
+        }
 
         List<CarroCondutor> condutores = new ArrayList<>();
 
@@ -837,4 +880,3 @@ public class CarroReservaService {
         return value == null || value.trim().isEmpty();
     }
 }
-
