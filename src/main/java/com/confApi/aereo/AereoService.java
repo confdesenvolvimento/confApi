@@ -294,8 +294,9 @@ public class AereoService {
 
     private void popularDadosVoo(Voo vooDB, Voo vooReserva, FamiliaPreco familiaSelecionada) {
         if (familiaSelecionada != null) {
+            String nomeFamiliaSelecionada = nomeFamilia(familiaSelecionada);
             vooDB.setFamilia(primeiroTexto(
-                    familiaSelecionada.getBaseTarifaria(),
+                    nomeFamiliaSelecionada,
                     vooReserva.getFamilia(),
                     vooDB.getFamilia()
             ));
@@ -425,6 +426,49 @@ public class AereoService {
                 return valor;
             }
         }
+        return null;
+    }
+
+    private String nomeFamilia(FamiliaPreco familiaSelecionada) {
+        if (familiaSelecionada == null) {
+            return null;
+        }
+
+        if (familiaSelecionada.getFamilia() != null) {
+            String descricao = familiaSelecionada.getFamilia().getDescricaoFamilia();
+            if (descricao != null && !descricao.isBlank()) {
+                return descricao;
+            }
+        }
+
+        return familiaSelecionada.getNomeFamilia();
+    }
+
+    private String codigoFamilia(FamiliaPreco familiaSelecionada) {
+        if (familiaSelecionada == null || familiaSelecionada.getFamilia() == null) {
+            return null;
+        }
+        return familiaSelecionada.getFamilia().getCodgFamilia();
+    }
+
+    private FamiliaPreco familiaSelecionadaParaVoo(PreReserva preReserva, Voo vooReferencia) {
+        if (preReserva == null || preReserva.getTrechos() == null || vooReferencia == null
+                || vooReferencia.getNumeroVoo() == null) {
+            return null;
+        }
+
+        for (com.confApi.aereo.dto.Trecho trecho : preReserva.getTrechos()) {
+            if (trecho == null || trecho.getFamiliaSelecionada() == null || trecho.getVoos() == null) {
+                continue;
+            }
+
+            for (Voo voo : trecho.getVoos()) {
+                if (voo != null && voo.getNumeroVoo() != null && isMesmoVoo(voo, vooReferencia)) {
+                    return trecho.getFamiliaSelecionada();
+                }
+            }
+        }
+
         return null;
     }
 
@@ -695,6 +739,7 @@ public class AereoService {
 
             for (Voo voo : trechoReserva.getVoos()) {
                 com.confApi.db.confManager.voo.Voo vooDB = new com.confApi.db.confManager.voo.Voo();
+                FamiliaPreco familiaSelecionada = familiaSelecionadaParaVoo(preReserva, voo);
                 vooDB.setCodgAeroportoOrigem(new Aeroporto(voo.getOrigem().getCodigoIata()));
                 vooDB.setCodgAeroportoDestino(new Aeroporto(voo.getDestino().getCodigoIata()));
                 vooDB.setCodgCompanhiaAerea(new CompanhiaAerea(voo.getCiaMandatoria().getCodigoIata()));
@@ -703,8 +748,8 @@ public class AereoService {
                 vooDB.setClasseTarifa(voo.getClasse());
                 vooDB.setAeronave(voo.getEquipamento());
                 vooDB.setQtdEscalas(voo.getQtdEscalas());
-                vooDB.setFamilia(voo.getFamilia());
-                vooDB.setCodgFamilia(voo.getFamiliaCodigo());
+                vooDB.setFamilia(primeiroTexto(nomeFamilia(familiaSelecionada), voo.getFamilia()));
+                vooDB.setCodgFamilia(primeiroTexto(codigoFamilia(familiaSelecionada), voo.getFamiliaCodigo()));
                 vooDB.setDataHoraPartida(new Timestamp(voo.getDataPartida().getTime()));
                 vooDB.setDataHoraChegada(new Timestamp(voo.getDataChegada().getTime()));
                 vooDB.setTipoRota(voo.getTipoSegmento());

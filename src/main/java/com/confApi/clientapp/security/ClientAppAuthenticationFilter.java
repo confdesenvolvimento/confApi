@@ -24,6 +24,8 @@ public final class ClientAppAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final AntPathRequestMatcher CLIENT_APP_PATH =
             new AntPathRequestMatcher("/api/client-app/v1/**");
+    private static final AntPathRequestMatcher PUBLIC_CLIENT_APP_PATH =
+            new AntPathRequestMatcher("/api/client-app/v1/public/**");
 
     private final MViagensBackendProperties properties;
     private final ObjectProvider<MViagensBackendClient> backendClientProvider;
@@ -41,7 +43,7 @@ public final class ClientAppAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !CLIENT_APP_PATH.matches(request);
+        return !CLIENT_APP_PATH.matches(request) || PUBLIC_CLIENT_APP_PATH.matches(request);
     }
 
     @Override

@@ -15,6 +15,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.http.HttpMethod;
 
 @EnableWebSecurity
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
@@ -55,6 +56,11 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/api/webhooks/wooba/**").permitAll()
                 .antMatchers("/api/wooba/teste/**").permitAll()
                 .antMatchers("/api/clube/usuario/auth").permitAll() // 👈 adiciona isso
+                .antMatchers(HttpMethod.POST, "/api/client-app/v1/public/auth/cpf/flows").permitAll()
+                .antMatchers(HttpMethod.PUT, "/api/client-app/v1/public/auth/cpf/flows/*/agency").permitAll()
+                .antMatchers(HttpMethod.POST, "/api/client-app/v1/public/auth/cpf/challenges/*/verify").permitAll()
+                .antMatchers(HttpMethod.POST, "/api/client-app/v1/public/auth/cpf/challenges/*/resend").permitAll()
+                .antMatchers(HttpMethod.POST, "/api/client-app/v1/public/auth/sessions/refresh").permitAll()
                 .antMatchers("/api/client-app/v1/**")
                 .hasAuthority("SCOPE_customer:authenticated")
                 // // ❌ demais endpoints: autenticado e NÃO pode ter EXTERNAL

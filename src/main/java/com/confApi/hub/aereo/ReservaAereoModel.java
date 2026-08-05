@@ -493,6 +493,18 @@ public class ReservaAereoModel implements Serializable {
 
                         if (isMesmoVoo(vooApi, vooDB)) {
                             vooApi.setId(vooDB.getCodgVoo());
+
+                            // O HUB pode retornar somente o código técnico da família
+                            // (por exemplo, Q28G5YAD). O Manager mantém o nome
+                            // comercial na coluna familia e o código em codgFamilia.
+                            // Preserve os dados do HUB, mas complete-os com o banco
+                            // quando disponíveis.
+                            if (vooDB.getFamilia() != null && !vooDB.getFamilia().trim().isEmpty()) {
+                                vooApi.setFamilia(vooDB.getFamilia());
+                            }
+                            if (vooDB.getCodgFamilia() != null && !vooDB.getCodgFamilia().trim().isEmpty()) {
+                                vooApi.setFamiliaCodigo(vooDB.getCodgFamilia());
+                            }
                             break;
                         }
                     }

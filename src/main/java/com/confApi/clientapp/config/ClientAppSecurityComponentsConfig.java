@@ -1,6 +1,9 @@
 package com.confApi.clientapp.config;
 
 import com.confApi.clientapp.integration.MViagensBackendClient;
+import com.confApi.clientapp.integration.enrollment.ManagerPassengerDiscoveryClient;
+import com.confApi.clientapp.integration.enrollment.MViagensEnrollmentClient;
+import com.confApi.clientapp.api.enrollment.ClientAppEnrollmentService;
 import com.confApi.clientapp.security.ClientAppAuthenticationFilter;
 import com.confApi.clientapp.security.ClientAppCorrelationIdFilter;
 import com.confApi.clientapp.security.ClientAppSecurityErrorWriter;
@@ -12,7 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties(MViagensBackendProperties.class)
+@EnableConfigurationProperties({MViagensBackendProperties.class, ClientAppEnrollmentProperties.class})
 public class ClientAppSecurityComponentsConfig {
 
     @Bean
@@ -32,6 +35,17 @@ public class ClientAppSecurityComponentsConfig {
             ClientAppSecurityErrorWriter errorWriter
     ) {
         return new ClientAppAuthenticationFilter(properties, backendClientProvider, errorWriter);
+    }
+
+    @Bean
+    ClientAppEnrollmentService clientAppEnrollmentService(
+            ClientAppEnrollmentProperties enrollmentProperties,
+            MViagensBackendProperties backendProperties,
+            ObjectProvider<MViagensEnrollmentClient> backendClient,
+            ObjectProvider<ManagerPassengerDiscoveryClient> managerClient,
+            ObjectMapper objectMapper
+    ) {
+        return new ClientAppEnrollmentService(enrollmentProperties, backendProperties, backendClient, managerClient, objectMapper);
     }
 
     @Bean

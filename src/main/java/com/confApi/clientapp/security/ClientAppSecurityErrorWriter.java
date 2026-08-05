@@ -2,6 +2,7 @@ package com.confApi.clientapp.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -58,5 +59,13 @@ public final class ClientAppSecurityErrorWriter {
         response.setHeader("Expires", "0");
         response.setHeader("Vary", "Authorization");
         response.setHeader(ClientAppCorrelationIdFilter.CORRELATION_ID_HEADER, correlationId);
+    }
+
+    public static void applyNoStoreHeaders(HttpHeaders headers, String correlationId) {
+        headers.set("Cache-Control", CACHE_CONTROL);
+        headers.set("Pragma", "no-cache");
+        headers.set("Expires", "0");
+        headers.set("Vary", "Authorization");
+        headers.set(ClientAppCorrelationIdFilter.CORRELATION_ID_HEADER, correlationId);
     }
 }
