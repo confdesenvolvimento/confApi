@@ -511,7 +511,7 @@ public class ChatConfiancaRemarcacaoService {
         response.setExigeFormaPagamento(true);
         response.setFormasPagamento(formas);
         response.setFormaPagamentoSelecionada(selecionada);
-        response.setPermiteEncaminhar(true);
+        response.setPermiteEncaminhar(chatService.departamentoRemarcacaoDisponivel(simulacao.getConversaId()));
 
         Map<String, Object> dadosEvento = new LinkedHashMap<>();
         dadosEvento.put("codigo", forma.getCodigo());
@@ -675,7 +675,8 @@ public class ChatConfiancaRemarcacaoService {
         } else {
             response.setExigeFormaPagamento(false);
             response.setFormaPagamentoSelecionada(formaSelecionada(simulacao));
-            response.setPermiteEncaminhar(NAO_ELEGIVEL.equals(simulacao.getStatus()));
+        response.setPermiteEncaminhar(NAO_ELEGIVEL.equals(simulacao.getStatus())
+                && chatService.departamentoRemarcacaoDisponivel(simulacao.getConversaId()));
         }
         return response;
     }
@@ -953,7 +954,7 @@ public class ChatConfiancaRemarcacaoService {
         registrarEvento(simulacao, "REMARCACAO_NAO_ELEGIVEL", motivo, simulacao.getRegraSnapshotJson());
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
                 "Simulacao precisa de analise humana", motivo);
-        response.setPermiteEncaminhar(true);
+        response.setPermiteEncaminhar(chatService.departamentoRemarcacaoDisponivel(simulacao.getConversaId()));
         if (registrarCard) {
             registrarCard(simulacao, response);
         }
@@ -1751,7 +1752,8 @@ public class ChatConfiancaRemarcacaoService {
         if (exige && consultarFatura) {
             response.setFormasPagamento(montarFormasPagamento(simulacao, totalPrevia(previa)));
         }
-        response.setPermiteEncaminhar(!exige || possuiPreferenciaPagamento(simulacao));
+        response.setPermiteEncaminhar((!exige || possuiPreferenciaPagamento(simulacao))
+                && chatService.departamentoRemarcacaoDisponivel(simulacao.getConversaId()));
     }
 
     private void preencherTrechoOriginal(
