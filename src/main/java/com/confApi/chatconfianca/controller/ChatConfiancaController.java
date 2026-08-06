@@ -176,7 +176,7 @@ public class ChatConfiancaController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(mimeType))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + nomeDownloadSeguro(arquivo.getNomeArquivo()) + "\"")
+                        "inline; filename=\"" + nomeDownloadSeguro(arquivo.getNomeArquivo()) + "\"")
                 .body(arquivo.getConteudo());
     }
 

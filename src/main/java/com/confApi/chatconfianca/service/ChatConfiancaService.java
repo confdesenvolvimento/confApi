@@ -56,6 +56,8 @@ import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.oracle.bmc.model.BmcException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
@@ -64,7 +66,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
@@ -102,10 +103,18 @@ public class ChatConfiancaService {
 
     private final ChatConfiancaManagerClient manager;
     private final ChatConfiancaConfigService configService;
+    private final OciObjectStorageService objectStorage;
 
     public ChatConfiancaService(ChatConfiancaManagerClient manager, ChatConfiancaConfigService configService) {
+        this(manager, configService, new OciObjectStorageService());
+    }
+
+    @Autowired
+    public ChatConfiancaService(ChatConfiancaManagerClient manager, ChatConfiancaConfigService configService,
+                                OciObjectStorageService objectStorage) {
         this.manager = manager;
         this.configService = configService;
+        this.objectStorage = objectStorage;
     }
 
     public SessaoChatResponse montarSessao(Integer codgUsuario) {
@@ -1139,17 +1148,25 @@ public class ChatConfiancaService {
             throw regra(403, "Anexo interno restrito a atendentes e gestores.");
         }
 
-        Path arquivo = Paths.get(anexo.getCaminhoStorage());
-        if (!Files.exists(arquivo) || !Files.isRegularFile(arquivo)) {
-            throw regra(404, "Arquivo do anexo nao encontrado no storage.");
-        }
-
         try {
             AnexoDownloadResponse response = new AnexoDownloadResponse();
             response.setNomeArquivo(anexo.getNomeOriginal());
             response.setMimeType(anexo.getMimeType());
-            response.setConteudo(Files.readAllBytes(arquivo));
+            if (ehObjectKey(anexo.getCaminhoStorage())) {
+                response.setConteudo(objectStorage.baixar(anexo.getCaminhoStorage()));
+            } else {
+                response.setConteudo(lerAnexoLegado(anexo, conversa));
+            }
             return response;
+        } catch (java.nio.file.NoSuchFileException ex) {
+            throw regra(404, "Arquivo do anexo nao encontrado no storage.");
+        } catch (java.io.FileNotFoundException ex) {
+            throw regra(404, "Arquivo do anexo nao encontrado no storage.");
+        } catch (BmcException ex) {
+            if (ex.getStatusCode() == 404) {
+                throw regra(404, "Arquivo do anexo nao encontrado no storage OCI.");
+            }
+            throw regra(500, "Nao foi possivel ler o anexo no storage OCI.");
         } catch (Exception ex) {
             throw regra(500, "Nao foi possivel ler o anexo.");
         }
@@ -2492,21 +2509,16 @@ public class ChatConfiancaService {
 
     private MensagemAnexo armazenarAnexo(Conversa conversa, Mensagem mensagem, String nomeOriginal,
                                          String mimeType, byte[] conteudo) {
+        String nomeArmazenado = mensagem.getId() + "-" + UUID.randomUUID() + "-" + nomeOriginal;
+        String objectKey = objectStorage.novoObjectKey(conversa.getId(), nomeArmazenado);
         try {
-            Path pastaConversa = Paths.get(storageRoot(), String.valueOf(conversa.getId())).toAbsolutePath().normalize();
-            Files.createDirectories(pastaConversa);
-            String nomeArmazenado = mensagem.getId() + "-" + UUID.randomUUID() + "-" + nomeOriginal;
-            Path arquivo = pastaConversa.resolve(nomeArmazenado).normalize();
-            if (!arquivo.startsWith(pastaConversa)) {
-                throw regra(400, "Nome de arquivo invalido.");
-            }
-            Files.write(arquivo, conteudo, StandardOpenOption.CREATE_NEW);
+            objectStorage.enviar(objectKey, mimeType, conteudo);
 
             MensagemAnexo anexo = new MensagemAnexo();
             anexo.setMensagemId(mensagem.getId());
             anexo.setNomeOriginal(nomeOriginal);
             anexo.setNomeArmazenado(nomeArmazenado);
-            anexo.setCaminhoStorage(arquivo.toString());
+            anexo.setCaminhoStorage(objectKey);
             anexo.setMimeType(mimeType);
             anexo.setTamanhoBytes((long) conteudo.length);
             anexo.setHashSha256(sha256(conteudo));
@@ -2514,8 +2526,10 @@ public class ChatConfiancaService {
             anexo.setUrlPublica("v1/chat-confianca/anexos/" + anexo.getId() + "/download");
             return manager.post("chat-confianca/persistencia/mensagem-anexos", anexo, MensagemAnexo.class);
         } catch (RegraDeNegocioException ex) {
+            objectStorage.remover(objectKey);
             throw ex;
         } catch (Exception ex) {
+            objectStorage.remover(objectKey);
             throw regra(500, "Nao foi possivel armazenar o anexo.");
         }
     }
@@ -2812,9 +2826,9 @@ public class ChatConfiancaService {
     private String montarMotivoEncerramento(EncerrarConversaRequest request) {
         String motivo = request.getMotivo().trim();
         if (isBlank(request.getCategoria())) {
-            return motivo;
+            return limitarTextoResumo(motivo, 500);
         }
-        return request.getCategoria().trim() + " - " + motivo;
+        return limitarTextoResumo(request.getCategoria().trim() + " - " + motivo, 500);
     }
 
     private void validarTextoObrigatorio(String valor, String mensagem) {
@@ -2987,15 +3001,35 @@ public class ChatConfiancaService {
         return "application/octet-stream";
     }
 
-    private String storageRoot() {
-        String configurado = System.getProperty("chat.confianca.storage");
-        if (isBlank(configurado)) {
-            configurado = System.getenv("CHAT_CONFIANCA_STORAGE");
+    private boolean ehObjectKey(String caminhoStorage) {
+        if (isBlank(caminhoStorage)) {
+            return false;
         }
-        if (isBlank(configurado)) {
-            return Paths.get(System.getProperty("java.io.tmpdir"), "chat-confianca", "anexos").toString();
+        Path caminho = Paths.get(caminhoStorage);
+        return !caminho.isAbsolute()
+                && !caminhoStorage.startsWith("\\")
+                && !caminhoStorage.matches("^[A-Za-z]:[\\\\/].*");
+    }
+
+    private byte[] lerAnexoLegado(MensagemAnexo anexo, Conversa conversa) throws java.io.IOException {
+        if (isBlank(anexo.getCaminhoStorage())) {
+            throw new java.nio.file.NoSuchFileException("caminhoStorage");
         }
-        return configurado;
+        Path arquivo = Paths.get(anexo.getCaminhoStorage());
+        if (!Files.exists(arquivo) || !Files.isRegularFile(arquivo)) {
+            throw new java.nio.file.NoSuchFileException(arquivo.toString());
+        }
+
+        byte[] conteudo = Files.readAllBytes(arquivo);
+        String nomeArmazenado = isBlank(anexo.getNomeArmazenado())
+                ? anexo.getId() + "-" + UUID.randomUUID() + "-" + normalizarNomeArquivo(anexo.getNomeOriginal())
+                : anexo.getNomeArmazenado();
+        String objectKey = objectStorage.novoObjectKey(conversa.getId(), nomeArmazenado);
+        objectStorage.enviar(objectKey, anexo.getMimeType(), conteudo);
+        anexo.setNomeArmazenado(nomeArmazenado);
+        anexo.setCaminhoStorage(objectKey);
+        manager.post("chat-confianca/persistencia/mensagem-anexos", anexo, MensagemAnexo.class);
+        return conteudo;
     }
 
     private String sha256(byte[] bytes) {
