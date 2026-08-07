@@ -1468,13 +1468,20 @@ public class ChatConfiancaRemarcacaoService {
         String familiaOriginal = familiaOriginal(trecho);
         Map<Integer, List<BigDecimal>> taxasEmbarquePorTrecho =
                 carregarTaxasEmbarquePorTrecho(reserva);
+        Map<String, Integer> quantidadesPorTipo = contagensPassageiros(passageirosSelecionados);
+        NormalizacaoPreco normalizacaoPreco = identificarNormalizacaoPreco(preco, passageirosSelecionados);
         for (Passageiro passageiro : passageirosSelecionados) {
             int indice = reserva.getPassageiros().indexOf(passageiro);
             ValoresPassageiro originais = valoresOriginaisPassageiro(reserva, passageiro, indice);
             houveRateioOriginal = houveRateioOriginal || originais.isRateado();
-            PrecoTipo novoPreco = precoTipo(preco, tipoPassageiro(passageiro));
-            BigDecimal novaTarifa = decimal(novoPreco == null ? null : novoPreco.getValorTarifa());
-            BigDecimal novaTaxaEmbarqueTrecho = novasTaxasPassageiro(novoPreco);
+            String tipoPassageiro = tipoPassageiro(passageiro);
+            int quantidadeTipo = quantidadesPorTipo.getOrDefault(tipoPassageiro, 1);
+            PrecoTipo novoPreco = precoTipo(preco, tipoPassageiro);
+            BigDecimal novaTarifa = normalizacaoPreco.porPassageiro(
+                    decimal(novoPreco == null ? null : novoPreco.getValorTarifa()),
+                    quantidadeTipo, ComponentePreco.TARIFA);
+            BigDecimal novaTaxaEmbarqueTrecho = novasTaxasPassageiro(
+                    novoPreco, quantidadeTipo, normalizacaoPreco);
             BigDecimal novaTaxaEmbarque = novaTaxaEmbarqueComTrechos(
                     novaTaxaEmbarqueTrecho,
                     originais,
@@ -1483,7 +1490,8 @@ public class ChatConfiancaRemarcacaoService {
                     reserva.getViagens() == null ? 0 : reserva.getViagens().size());
             // O valor enviado ao Manager representa somente o acréscimo de DU/taxas
             // de serviço. A tarifa original já pode conter DU, RC e RAV.
-            BigDecimal taxaServicoNova = novaTaxaServicoPassageiro(novoPreco);
+            BigDecimal taxaServicoNova = novaTaxaServicoPassageiro(
+                    novoPreco, quantidadeTipo, normalizacaoPreco);
             BigDecimal taxaServicoOriginal = taxaServicoOriginal(originais);
             BigDecimal diferencaTarifariaParaDu = diferencaTarifariaParaDu(
                     originais.getTarifa(), novaTarifa);
@@ -2172,6 +2180,111 @@ public class ChatConfiancaRemarcacaoService {
         return preco.getPrecoAdulto();
     }
 
+    /**
+     * A tarifacao normalmente retorna os valores unitarios de cada tipo de
+     * passageiro. Alguns fornecedores, porem, retornam o total do tipo (por
+     * exemplo, R$ 400 para dois ADT de R$ 200). Identificamos esse caso pelos
+     * totais informados na propria resposta antes de montar a previa.
+     */
+    private NormalizacaoPreco identificarNormalizacaoPreco(
+            Preco preco,
+            List<Passageiro> passageiros) {
+        return new NormalizacaoPreco(
+                componenteAgrupado(preco, passageiros, ComponentePreco.TARIFA),
+                componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_EMBARQUE),
+                componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_COMBUSTIVEL),
+                componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_ASSENTO),
+                componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_BAGAGEM),
+                componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_MENOR),
+                componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_SERVICO));
+    }
+
+    private boolean componenteAgrupado(
+            Preco preco,
+            List<Passageiro> passageiros,
+            ComponentePreco componente) {
+        BigDecimal totalInformado = totalComponente(preco, componente);
+        if (totalInformado == null || totalInformado.signum() <= 0) {
+            return false;
+        }
+
+        Map<String, Integer> quantidades = contagensPassageiros(passageiros);
+        BigDecimal totalPorTipo = BigDecimal.ZERO;
+        BigDecimal totalPorPassageiro = BigDecimal.ZERO;
+        boolean encontrouValor = false;
+        for (Map.Entry<String, Integer> entrada : quantidades.entrySet()) {
+            int quantidade = entrada.getValue() == null ? 0 : entrada.getValue();
+            if (quantidade <= 0) continue;
+            PrecoTipo precoTipo = precoTipo(preco, entrada.getKey());
+            BigDecimal valor = valorComponente(precoTipo, componente);
+            if (valor == null) continue;
+            encontrouValor = encontrouValor || valor.signum() > 0;
+            totalPorTipo = totalPorTipo.add(valor);
+            totalPorPassageiro = totalPorPassageiro.add(
+                    valor.multiply(BigDecimal.valueOf(quantidade)));
+        }
+        if (!encontrouValor) return false;
+
+        BigDecimal diferencaAgrupada = totalInformado.subtract(totalPorTipo).abs();
+        BigDecimal diferencaUnitarios = totalInformado.subtract(totalPorPassageiro).abs();
+        // So divide quando o total informado confirma o comportamento
+        // agrupado. Se o fornecedor nao informar o total, preservamos o
+        // contrato padrao (valor unitario) para evitar uma divisao indevida.
+        return diferencaAgrupada.compareTo(diferencaUnitarios) < 0
+                && toleranciaTotal(totalInformado, totalPorTipo);
+    }
+
+    private BigDecimal totalComponente(Preco preco, ComponentePreco componente) {
+        if (preco == null) return null;
+        switch (componente) {
+            case TARIFA:
+                return primeiroDecimal(preco.getTotalTarifa(), preco.getTarifa());
+            case TAXA_EMBARQUE:
+                return decimal(preco.getTotalTaxaEmbarque());
+            case TAXA_COMBUSTIVEL:
+                return decimal(preco.getTotalTaxaDeCombustivel());
+            case TAXA_ASSENTO:
+                return decimal(preco.getTotalTaxaAssento());
+            case TAXA_BAGAGEM:
+                return decimal(preco.getTotalTaxaBagagem());
+            case TAXA_MENOR:
+                return decimal(preco.getTotalTaxaMenorDesacompanhado());
+            case TAXA_SERVICO:
+                return decimal(preco.getTotalTaxaServico());
+            default:
+                return null;
+        }
+    }
+
+    private BigDecimal valorComponente(PrecoTipo preco, ComponentePreco componente) {
+        if (preco == null) return null;
+        switch (componente) {
+            case TARIFA:
+                return decimal(preco.getValorTarifa());
+            case TAXA_EMBARQUE:
+                return decimal(preco.getValorTaxaEmbarque());
+            case TAXA_COMBUSTIVEL:
+                return decimal(preco.getValorTaxaCombustivel());
+            case TAXA_ASSENTO:
+                return decimal(preco.getValorTaxaAssento());
+            case TAXA_BAGAGEM:
+                return decimal(preco.getValorTaxaBagagem());
+            case TAXA_MENOR:
+                return decimal(preco.getValorTaxaMenorDesacompanhado());
+            case TAXA_SERVICO:
+                return novaTaxaServicoPassageiro(preco);
+            default:
+                return null;
+        }
+    }
+
+    private boolean toleranciaTotal(BigDecimal informado, BigDecimal calculado) {
+        BigDecimal tolerancia = new BigDecimal("0.05");
+        BigDecimal percentual = informado.abs().multiply(new BigDecimal("0.005"));
+        if (percentual.compareTo(tolerancia) > 0) tolerancia = percentual;
+        return informado.subtract(calculado).abs().compareTo(tolerancia) <= 0;
+    }
+
     private BigDecimal novasTaxasPassageiro(PrecoTipo preco) {
         if (preco == null) return null;
         return zero(decimal(preco.getValorTaxaEmbarque()))
@@ -2179,6 +2292,28 @@ public class ChatConfiancaRemarcacaoService {
                 .add(zero(decimal(preco.getValorTaxaAssento())))
                 .add(zero(decimal(preco.getValorTaxaBagagem())))
                 .add(zero(decimal(preco.getValorTaxaMenorDesacompanhado())));
+    }
+
+    private BigDecimal novasTaxasPassageiro(
+            PrecoTipo preco,
+            int quantidade,
+            NormalizacaoPreco normalizacao) {
+        if (preco == null) return null;
+        return zero(normalizacao.porPassageiro(
+                        decimal(preco.getValorTaxaEmbarque()), quantidade,
+                        ComponentePreco.TAXA_EMBARQUE))
+                .add(zero(normalizacao.porPassageiro(
+                        decimal(preco.getValorTaxaCombustivel()), quantidade,
+                        ComponentePreco.TAXA_COMBUSTIVEL)))
+                .add(zero(normalizacao.porPassageiro(
+                        decimal(preco.getValorTaxaAssento()), quantidade,
+                        ComponentePreco.TAXA_ASSENTO)))
+                .add(zero(normalizacao.porPassageiro(
+                        decimal(preco.getValorTaxaBagagem()), quantidade,
+                        ComponentePreco.TAXA_BAGAGEM)))
+                .add(zero(normalizacao.porPassageiro(
+                        decimal(preco.getValorTaxaMenorDesacompanhado()), quantidade,
+                        ComponentePreco.TAXA_MENOR)));
     }
 
     private BigDecimal novaTaxaEmbarqueComTrechos(
@@ -2303,6 +2438,17 @@ public class ChatConfiancaRemarcacaoService {
         return zero(decimal(preco.getValorTaxaServico()))
                 .add(zero(decimal(preco.getValorFee())))
                 .add(zero(decimal(preco.getValorRav())));
+    }
+
+    private BigDecimal novaTaxaServicoPassageiro(
+            PrecoTipo preco,
+            int quantidade,
+            NormalizacaoPreco normalizacao) {
+        return normalizacao == null
+                ? novaTaxaServicoPassageiro(preco)
+                : normalizacao.porPassageiro(
+                        novaTaxaServicoPassageiro(preco), quantidade,
+                        ComponentePreco.TAXA_SERVICO);
     }
 
     private BigDecimal diferencaTarifariaParaDu(BigDecimal tarifaOriginal, BigDecimal novaTarifa) {
@@ -2664,6 +2810,74 @@ public class ChatConfiancaRemarcacaoService {
 
     private RegraDeNegocioException regra(int status, String mensagem) {
         return new RegraDeNegocioException(status, mensagem);
+    }
+
+    private enum ComponentePreco {
+        TARIFA,
+        TAXA_EMBARQUE,
+        TAXA_COMBUSTIVEL,
+        TAXA_ASSENTO,
+        TAXA_BAGAGEM,
+        TAXA_MENOR,
+        TAXA_SERVICO
+    }
+
+    private static class NormalizacaoPreco {
+        private final boolean tarifaAgrupada;
+        private final boolean taxaEmbarqueAgrupada;
+        private final boolean taxaCombustivelAgrupada;
+        private final boolean taxaAssentoAgrupada;
+        private final boolean taxaBagagemAgrupada;
+        private final boolean taxaMenorAgrupada;
+        private final boolean taxaServicoAgrupada;
+
+        private NormalizacaoPreco(
+                boolean tarifaAgrupada,
+                boolean taxaEmbarqueAgrupada,
+                boolean taxaCombustivelAgrupada,
+                boolean taxaAssentoAgrupada,
+                boolean taxaBagagemAgrupada,
+                boolean taxaMenorAgrupada,
+                boolean taxaServicoAgrupada) {
+            this.tarifaAgrupada = tarifaAgrupada;
+            this.taxaEmbarqueAgrupada = taxaEmbarqueAgrupada;
+            this.taxaCombustivelAgrupada = taxaCombustivelAgrupada;
+            this.taxaAssentoAgrupada = taxaAssentoAgrupada;
+            this.taxaBagagemAgrupada = taxaBagagemAgrupada;
+            this.taxaMenorAgrupada = taxaMenorAgrupada;
+            this.taxaServicoAgrupada = taxaServicoAgrupada;
+        }
+
+        private BigDecimal porPassageiro(
+                BigDecimal valor,
+                int quantidade,
+                ComponentePreco componente) {
+            if (valor == null || quantidade <= 1 || !agrupado(componente)) {
+                return valor;
+            }
+            return valor.divide(BigDecimal.valueOf(quantidade), 2, RoundingMode.HALF_UP);
+        }
+
+        private boolean agrupado(ComponentePreco componente) {
+            switch (componente) {
+                case TARIFA:
+                    return tarifaAgrupada;
+                case TAXA_EMBARQUE:
+                    return taxaEmbarqueAgrupada;
+                case TAXA_COMBUSTIVEL:
+                    return taxaCombustivelAgrupada;
+                case TAXA_ASSENTO:
+                    return taxaAssentoAgrupada;
+                case TAXA_BAGAGEM:
+                    return taxaBagagemAgrupada;
+                case TAXA_MENOR:
+                    return taxaMenorAgrupada;
+                case TAXA_SERVICO:
+                    return taxaServicoAgrupada;
+                default:
+                    return false;
+            }
+        }
     }
 
     @Data
