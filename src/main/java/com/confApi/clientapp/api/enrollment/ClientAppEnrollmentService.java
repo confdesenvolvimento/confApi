@@ -46,17 +46,21 @@ public class ClientAppEnrollmentService {
             if (flow.has("expiresAt")) response.set("expiresAt", flow.get("expiresAt"));
             return response;
         }
+        String requestedChannel = normalizeOtpChannel(request.otpChannel());
+        String channel = requestedChannel == null ? enrollmentProperties.getOtpPreferredChannel() : requestedChannel;
         List<Map<String, Object>> agencies = new ArrayList<>();
         for (ManagerPassengerDiscoveryClient.Match match : matches) {
             Map<String, Object> candidate = new LinkedHashMap<>();
             candidate.put("agencyId", match.agencyId()); candidate.put("displayName", safeName(match.agencyName(), "Agência"));
             candidate.put("logoUrl", match.logoUrl()); candidate.put("passengerBaseIds", match.passengerIds());
             boolean agencyActive = match.agencyStatus() > 0;
-            String destination = preferredDestination(match);
+            String destination = requestedChannel == null
+                    ? legacyPreferredDestination(match)
+                    : preferredDestination(match, channel);
             boolean eligible = agencyActive && destination != null;
             candidate.put("eligible", eligible);
             if (!eligible) candidate.put("ineligibilityCode", agencyActive ? "CONTACT_UNAVAILABLE" : "AGENCY_INACTIVE");
-            if (eligible) candidate.put("otpDelivery", Map.of("passengerBaseId", match.passengerIds().get(0), "channel", enrollmentProperties.getOtpPreferredChannel(), "destination", destination));
+            if (eligible) candidate.put("otpDelivery", Map.of("passengerBaseId", match.passengerIds().get(0), "channel", channel, "destination", destination));
             agencies.add(candidate);
         }
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -90,14 +94,45 @@ public class ClientAppEnrollmentService {
     }
     private boolean validCpf(String cpf) { int sum = 0; for (int i=0;i<9;i++) sum += (cpf.charAt(i)-48)*(10-i); int d1=(sum*10)%11; if(d1==10)d1=0; if(d1 != cpf.charAt(9)-48)return false; sum=0; for(int i=0;i<10;i++)sum+=(cpf.charAt(i)-48)*(11-i); int d2=(sum*10)%11; if(d2==10)d2=0; return d2==cpf.charAt(10)-48; }
     private Map<String,Object> device(StartRequest r) { Map<String,Object> d = new LinkedHashMap<>(); d.put("installationId", r.installationId()); d.put("platform", r.platform()); d.put("appVersion", r.appVersion()); d.put("osVersion", r.osVersion()); d.put("displayName", r.displayName()); return d; }
-    private String preferredDestination(ManagerPassengerDiscoveryClient.Match match) { for(String e:match.emails()) if(EMAIL.matcher(e).matches()) return e.toLowerCase(Locale.ROOT); for(String p:match.phones()) { String n=p.replaceAll("[^0-9+]", ""); if(PHONE.matcher(n).matches()) return n; } return null; }
+    private String preferredDestination(ManagerPassengerDiscoveryClient.Match match, String channel) {
+        if ("EMAIL".equals(channel)) {
+            for (String e : match.emails()) if (e != null && EMAIL.matcher(e).matches()) return e.toLowerCase(Locale.ROOT);
+            return null;
+        }
+        if ("SMS".equals(channel) || "WHATSAPP".equals(channel)) {
+            for (String p : match.phones()) {
+                if (p == null) continue;
+                String n = p.replaceAll("[^0-9+]", "");
+                if (PHONE.matcher(n).matches()) return n;
+            }
+            return null;
+        }
+        return null;
+    }
+    private String legacyPreferredDestination(ManagerPassengerDiscoveryClient.Match match) {
+        for (String e : match.emails()) if (e != null && EMAIL.matcher(e).matches()) return e.toLowerCase(Locale.ROOT);
+        for (String p : match.phones()) {
+            if (p == null) continue;
+            String n = p.replaceAll("[^0-9+]", "");
+            if (PHONE.matcher(n).matches()) return n;
+        }
+        return null;
+    }
+    private String normalizeOtpChannel(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("EMAIL", "SMS", "WHATSAPP").contains(normalized)) {
+            throw new ClientAppEnrollmentException(400, "INVALID_OTP_CHANNEL", false);
+        }
+        return normalized;
+    }
     private String safeName(String v, String fallback) { return v == null || v.isBlank() ? fallback : v.substring(0, Math.min(160, v.length())); }
     private String text(JsonNode n, String... names) { for(String name:names) if(n.has(name)&&!n.get(name).isNull()) return n.get(name).asText(); return null; }
     private long longValue(JsonNode n, String name, long fallback) { return n.has(name)&&n.get(name).canConvertToLong()?n.get(name).asLong():fallback; }
     private String derivedKey(String key) { return (key + ".candidates").substring(0, Math.min(128, key.length()+11)); }
     private ClientAppEnrollmentException unavailable() { return new ClientAppEnrollmentException(503, "ENROLLMENT_SERVICE_UNAVAILABLE", true); }
 
-    public record StartRequest(String cpf, String installationId, String platform, String appVersion, String osVersion, String displayName) {}
+    public record StartRequest(String cpf, String installationId, String platform, String appVersion, String osVersion, String displayName, String otpChannel) {}
     public record SelectAgencyRequest(int agencyId, long expectedFlowVersion) {}
     public record VerifyOtpRequest(String code) {}
     public record RefreshSessionRequest(String refreshToken, String installationId) {}

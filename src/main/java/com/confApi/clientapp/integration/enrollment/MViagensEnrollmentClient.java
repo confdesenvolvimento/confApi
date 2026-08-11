@@ -48,6 +48,11 @@ public class MViagensEnrollmentClient {
         return exchange(HttpMethod.POST, "/internal/v1/auth/sessions/refresh", body, idempotencyKey, requestId, correlationId);
     }
 
+    public JsonNode listPublicAgencies(String requestId, String correlationId) {
+        return exchange(HttpMethod.GET, "/internal/v1/agencies/directory", null,
+                UUID.randomUUID().toString(), requestId, correlationId);
+    }
+
     private JsonNode exchange(HttpMethod method, String path, Object body, String idempotencyKey,
                               String requestId, String correlationId) {
         HttpHeaders headers = new HttpHeaders();

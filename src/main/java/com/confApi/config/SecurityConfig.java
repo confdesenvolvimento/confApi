@@ -57,6 +57,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/api/wooba/teste/**").permitAll()
                 .antMatchers("/api/clube/usuario/auth").permitAll() // 👈 adiciona isso
                 .antMatchers(HttpMethod.POST, "/api/client-app/v1/public/auth/cpf/flows").permitAll()
+                .antMatchers(HttpMethod.GET, "/api/client-app/v1/public/agencies").permitAll()
                 .antMatchers(HttpMethod.PUT, "/api/client-app/v1/public/auth/cpf/flows/*/agency").permitAll()
                 .antMatchers(HttpMethod.POST, "/api/client-app/v1/public/auth/cpf/challenges/*/verify").permitAll()
                 .antMatchers(HttpMethod.POST, "/api/client-app/v1/public/auth/cpf/challenges/*/resend").permitAll()

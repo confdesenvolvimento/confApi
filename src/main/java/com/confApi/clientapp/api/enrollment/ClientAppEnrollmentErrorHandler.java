@@ -13,7 +13,10 @@ import javax.servlet.http.HttpServletRequest;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-@RestControllerAdvice(assignableTypes = ClientAppEnrollmentController.class)
+@RestControllerAdvice(assignableTypes = {
+        ClientAppEnrollmentController.class,
+        ClientAppAgencyDirectoryController.class
+})
 @Order(0)
 public class ClientAppEnrollmentErrorHandler {
     @ExceptionHandler(ClientAppEnrollmentException.class)
