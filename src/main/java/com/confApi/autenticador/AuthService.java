@@ -32,7 +32,9 @@ public class AuthService extends AbstractTransactionServiceApi {
     private ConfAppService confAppService;
 
     public AuthResponse validate(AuthRequest request) throws JsonProcessingException {
-        if (request == null || request.login() == null || request.token() == null) {
+        if (request == null
+                || request.login() == null || request.login().isBlank()
+                || request.token() == null || request.token().isBlank()) {
             return AuthResponse.invalid();
         }
 
@@ -52,7 +54,7 @@ public class AuthService extends AbstractTransactionServiceApi {
 
             ResponseEntity<AuthResponse> response =
                     restTemplate.exchange(
-                            UrlConfig.URL_CONFIANCA_MANAGER + "/autenticacaoplantao/validate",
+                            managerUrl("autenticacaoplantao/validate"),
                             HttpMethod.POST,
                             requestEntity,
                             AuthResponse.class
@@ -89,7 +91,7 @@ public class AuthService extends AbstractTransactionServiceApi {
 
             ResponseEntity<String> response =
                     restTemplate.exchange(
-                            UrlConfig.URL_CONFIANCA_MANAGER + "/autenticacaoplantao/generateToken",
+                            managerUrl("autenticacaoplantao/generateToken"),
                             HttpMethod.GET,
                             requestEntity,
                             String.class
@@ -108,4 +110,14 @@ public class AuthService extends AbstractTransactionServiceApi {
             return null;
         }
     }
+    private String managerUrl(String path) {
+        if (UrlConfig.URL_CONFIANCA_MANAGER == null || UrlConfig.URL_CONFIANCA_MANAGER.isBlank()) {
+            throw new IllegalStateException("URL do confianca-manager nao configurada");
+        }
+
+        String base = UrlConfig.URL_CONFIANCA_MANAGER.trim();
+        String rota = path.startsWith("/") ? path.substring(1) : path;
+        return base.endsWith("/") ? base + rota : base + "/" + rota;
+    }
+
 }
