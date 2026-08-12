@@ -16,6 +16,7 @@ public class CarroCompraModel {
     private ReservarCarroRequestDTO reservaCarro;
     private FormaPagamentoModel formaPagamentoSelecionada = new FormaPagamentoModel();
     private RecebimentoModel recebimento;
+    private Double valorTaxaExtraBrl;
     private Usuario usuario;
     private Agencia agencia;
     private String fonte;

@@ -54,6 +54,10 @@ import com.confApi.chatconfianca.dto.response.DepartamentoAtendimentoOpcao;
 import com.confApi.chatconfianca.dto.response.ChatNotificacaoResumoResponse;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.exception.RegraDeNegocioException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.oracle.bmc.model.BmcException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
@@ -62,11 +66,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.DayOfWeek;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -91,13 +98,23 @@ public class ChatConfiancaService {
     private static final int MINUTOS_AUTO_ENCERRAMENTO_CONFIA_PADRAO = 120;
     private static final String CODIGO_DEPARTAMENTO_CONFIA_GERAL = "CONFIA_GERAL";
     private static final String NOME_DEPARTAMENTO_CONFIA_GERAL = "ConfIA Geral";
+    private static final ZoneId ZONA_HORARIO_ATENDIMENTO = ZoneId.of("America/Cuiaba");
+    private static final ObjectMapper HORARIO_OBJECT_MAPPER = new ObjectMapper();
 
     private final ChatConfiancaManagerClient manager;
     private final ChatConfiancaConfigService configService;
+    private final OciObjectStorageService objectStorage;
 
     public ChatConfiancaService(ChatConfiancaManagerClient manager, ChatConfiancaConfigService configService) {
+        this(manager, configService, new OciObjectStorageService());
+    }
+
+    @Autowired
+    public ChatConfiancaService(ChatConfiancaManagerClient manager, ChatConfiancaConfigService configService,
+                                OciObjectStorageService objectStorage) {
         this.manager = manager;
         this.configService = configService;
+        this.objectStorage = objectStorage;
     }
 
     public SessaoChatResponse montarSessao(Integer codgUsuario) {
@@ -190,6 +207,7 @@ public class ChatConfiancaService {
                 .filter(Objects::nonNull)
                 .filter(item -> item.getId() != null)
                 .filter(item -> !idsConfiaGeral.contains(item.getDepartamentoId()))
+                .filter(item -> dentroDoHorarioAtendimento(item, LocalDateTime.now(ZONA_HORARIO_ATENDIMENTO)))
                 .sorted(Comparator.comparing(this::nomeOpcaoDepartamento, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .map(this::montarOpcaoAtendimento)
                 .collect(Collectors.toList());
@@ -327,6 +345,8 @@ public class ChatConfiancaService {
                 .findFirst()
                 .orElseThrow(() -> regra(400, "Departamento indisponivel para a unidade da agencia."));
 
+        validarHorarioAtendimento(departamentoUnidade);
+
         if (!possuiAtendenteHumano(departamentoUnidade)) {
             throw regra(400, "Este departamento esta disponivel somente pela ConfIA no momento.");
         }
@@ -411,6 +431,8 @@ public class ChatConfiancaService {
                 .filter(item -> departamentoUnidadeId.equals(item.getId()))
                 .findFirst()
                 .orElseThrow(() -> regra(400, "Departamento indisponivel para a unidade da agencia."));
+
+        validarHorarioAtendimento(departamentoUnidade);
 
         LocalDateTime agora = LocalDateTime.now();
         PrioridadeConversa prioridadeNormalizada = prioridade == null ? PrioridadeConversa.NORMAL : prioridade;
@@ -508,6 +530,7 @@ public class ChatConfiancaService {
         if (departamentoUnidade == null) {
             throw regra(404, "Departamento da conversa nao encontrado.");
         }
+        validarHorarioAtendimento(departamentoUnidade);
         if (!possuiAtendenteHumano(departamentoUnidade)) {
             throw regra(400, "Este departamento nao possui atendente humano disponivel no momento.");
         }
@@ -551,6 +574,7 @@ public class ChatConfiancaService {
                 .filter(item -> Objects.equals(item.getCodgUnidade(), conversa.getCodgUnidade()))
                 .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
                 .filter(item -> Boolean.TRUE.equals(item.getRecebeRemarcacaoAerea()))
+                .filter(item -> dentroDoHorarioAtendimento(item, LocalDateTime.now(ZONA_HORARIO_ATENDIMENTO)))
                 .collect(Collectors.toList());
 
         if (destinos.isEmpty()) {
@@ -583,10 +607,177 @@ public class ChatConfiancaService {
                 conversa, destino, codgUsuario, motivo, mudouDepartamento);
     }
 
+    /** Usado pela simulacao para ocultar o handoff quando o destino esta fora do expediente. */
+    public boolean departamentoRemarcacaoDisponivel(Long conversaId) {
+        if (conversaId == null) {
+            return false;
+        }
+        try {
+            Conversa conversa = buscarConversaOuFalhar(conversaId);
+            List<DepartamentoUnidade> configurados = configService
+                    .listarDepartamentoUnidadesPorUnidade(conversa.getCodgUnidade());
+            List<DepartamentoUnidade> destinos = configurados == null
+                    ? List.of()
+                    : configurados.stream()
+                    .filter(Objects::nonNull)
+                    .filter(item -> item.getId() != null)
+                    .filter(item -> Objects.equals(item.getCodgUnidade(), conversa.getCodgUnidade()))
+                    .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
+                    .filter(item -> Boolean.TRUE.equals(item.getRecebeRemarcacaoAerea()))
+                    .filter(item -> dentroDoHorarioAtendimento(item,
+                            LocalDateTime.now(ZONA_HORARIO_ATENDIMENTO)))
+                    .filter(this::possuiAtendenteHumano)
+                    .collect(Collectors.toList());
+            return destinos.size() == 1;
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.FINE,
+                    "Nao foi possivel verificar a disponibilidade do departamento de remarcacao.", ex);
+            return false;
+        }
+    }
+
     private void validarSolicitacaoAtendimentoHumano(Conversa conversa, Integer codgUsuario) {
         boolean acessoGestor = ehGestorOuAdmin(codgUsuario, conversa.getCodgUnidade());
         if (!acessoGestor && !usuarioParticipa(conversa.getId(), codgUsuario)) {
             throw regra(403, "Usuario nao participa da conversa.");
+        }
+    }
+
+    /**
+     * Horario vazio significa atendimento sem restricao. Quando configurado,
+     * o JSON aceita, por exemplo: {"segunda":"08:00-18:00"} ou
+     * {"segunda":["08:00-12:00","13:00-18:00"]}.
+     */
+    private boolean dentroDoHorarioAtendimento(DepartamentoUnidade departamento, LocalDateTime agora) {
+        if (departamento == null || isBlank(departamento.getHorarioAtendimentoJson())) {
+            return true;
+        }
+        try {
+            JsonNode raiz = HORARIO_OBJECT_MAPPER.readTree(departamento.getHorarioAtendimentoJson());
+            JsonNode configuracaoDia = localizarConfiguracaoDia(raiz, agora.getDayOfWeek());
+            return configuracaoDia != null && horarioNodeContem(configuracaoDia, agora.toLocalTime());
+        } catch (Exception ex) {
+            LOGGER.log(Level.WARNING, "Horario de atendimento invalido para o departamento/unidade " + departamento.getId(), ex);
+            return false;
+        }
+    }
+
+    private JsonNode localizarConfiguracaoDia(JsonNode raiz, DayOfWeek dia) {
+        if (raiz == null) {
+            return null;
+        }
+        if (raiz.isArray()) {
+            for (JsonNode item : raiz) {
+                if (diaCorresponde(item.path("dia").asText(null), dia)
+                        || diaCorresponde(item.path("day").asText(null), dia)) {
+                    return item;
+                }
+            }
+            return null;
+        }
+        if (!raiz.isObject()) {
+            return raiz;
+        }
+        String[] chaves = {nomeDia(dia), nomeDiaAbreviado(dia), nomeDiaIngles(dia), String.valueOf(dia.getValue())};
+        for (String chave : chaves) {
+            JsonNode encontrado = raiz.get(chave);
+            if (encontrado != null) {
+                return encontrado;
+            }
+        }
+        return null;
+    }
+
+    private boolean horarioNodeContem(JsonNode node, LocalTime hora) {
+        if (node == null || node.isNull() || node.isBoolean() && !node.asBoolean()) {
+            return false;
+        }
+        if (node.isTextual()) {
+            return intervaloContem(node.asText(), hora);
+        }
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                if (horarioNodeContem(item, hora)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (node.isObject()) {
+            if (node.has("fechado") && node.get("fechado").asBoolean(false)) {
+                return false;
+            }
+            String inicio = primeiroTexto(node, "inicio", "abertura", "from", "start");
+            String fim = primeiroTexto(node, "fim", "fechamento", "to", "end");
+            if (inicio != null && fim != null) {
+                return intervaloContem(inicio + "-" + fim, hora);
+            }
+            JsonNode intervalos = node.has("intervalos") ? node.get("intervalos") : node.get("horarios");
+            return intervalos != null && horarioNodeContem(intervalos, hora);
+        }
+        return false;
+    }
+
+    private boolean intervaloContem(String texto, LocalTime hora) {
+        String normalizado = texto == null ? "" : texto.replace('–', '-').replace('—', '-').replace(" ", "");
+        String[] partes = normalizado.split("-", 2);
+        if (partes.length != 2) {
+            return false;
+        }
+        try {
+            LocalTime inicio = LocalTime.parse(partes[0], DateTimeFormatter.ofPattern("H:mm"));
+            LocalTime fim = LocalTime.parse(partes[1], DateTimeFormatter.ofPattern("H:mm"));
+            if (inicio.equals(fim)) {
+                return true;
+            }
+            return inicio.isBefore(fim)
+                    ? !hora.isBefore(inicio) && hora.isBefore(fim)
+                    : !hora.isBefore(inicio) || hora.isBefore(fim);
+        } catch (RuntimeException ex) {
+            return false;
+        }
+    }
+
+    private String primeiroTexto(JsonNode node, String... nomes) {
+        for (String nome : nomes) {
+            JsonNode valor = node.get(nome);
+            if (valor != null && valor.isValueNode() && !isBlank(valor.asText())) {
+                return valor.asText();
+            }
+        }
+        return null;
+    }
+
+    private boolean diaCorresponde(String valor, DayOfWeek dia) {
+        if (isBlank(valor)) {
+            return false;
+        }
+        String normalizado = normalizar(valor);
+        return normalizado.equals(nomeDia(dia)) || normalizado.equals(nomeDiaAbreviado(dia))
+                || normalizado.equals(nomeDiaIngles(dia)) || normalizado.equals(String.valueOf(dia.getValue()));
+    }
+
+    private String normalizar(String valor) {
+        return Normalizer.normalize(valor.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+    }
+
+    private String nomeDia(DayOfWeek dia) {
+        return new String[]{"segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"}[dia.getValue() - 1];
+    }
+
+    private String nomeDiaAbreviado(DayOfWeek dia) {
+        return new String[]{"seg", "ter", "qua", "qui", "sex", "sab", "dom"}[dia.getValue() - 1];
+    }
+
+    private String nomeDiaIngles(DayOfWeek dia) {
+        return dia.name().toLowerCase(Locale.ROOT);
+    }
+
+    private void validarHorarioAtendimento(DepartamentoUnidade departamento) {
+        if (!dentroDoHorarioAtendimento(departamento, LocalDateTime.now(ZONA_HORARIO_ATENDIMENTO))) {
+            String mensagem = departamento.getMensagemForaHorario();
+            throw regra(400, isBlank(mensagem) ? "Este departamento esta fora do horario de atendimento." : mensagem);
         }
     }
 
@@ -957,17 +1148,25 @@ public class ChatConfiancaService {
             throw regra(403, "Anexo interno restrito a atendentes e gestores.");
         }
 
-        Path arquivo = Paths.get(anexo.getCaminhoStorage());
-        if (!Files.exists(arquivo) || !Files.isRegularFile(arquivo)) {
-            throw regra(404, "Arquivo do anexo nao encontrado no storage.");
-        }
-
         try {
             AnexoDownloadResponse response = new AnexoDownloadResponse();
             response.setNomeArquivo(anexo.getNomeOriginal());
             response.setMimeType(anexo.getMimeType());
-            response.setConteudo(Files.readAllBytes(arquivo));
+            if (ehObjectKey(anexo.getCaminhoStorage())) {
+                response.setConteudo(objectStorage.baixar(anexo.getCaminhoStorage()));
+            } else {
+                response.setConteudo(lerAnexoLegado(anexo, conversa));
+            }
             return response;
+        } catch (java.nio.file.NoSuchFileException ex) {
+            throw regra(404, "Arquivo do anexo nao encontrado no storage.");
+        } catch (java.io.FileNotFoundException ex) {
+            throw regra(404, "Arquivo do anexo nao encontrado no storage.");
+        } catch (BmcException ex) {
+            if (ex.getStatusCode() == 404) {
+                throw regra(404, "Arquivo do anexo nao encontrado no storage OCI.");
+            }
+            throw regra(500, "Nao foi possivel ler o anexo no storage OCI.");
         } catch (Exception ex) {
             throw regra(500, "Nao foi possivel ler o anexo.");
         }
@@ -2310,21 +2509,16 @@ public class ChatConfiancaService {
 
     private MensagemAnexo armazenarAnexo(Conversa conversa, Mensagem mensagem, String nomeOriginal,
                                          String mimeType, byte[] conteudo) {
+        String nomeArmazenado = mensagem.getId() + "-" + UUID.randomUUID() + "-" + nomeOriginal;
+        String objectKey = objectStorage.novoObjectKey(conversa.getId(), nomeArmazenado);
         try {
-            Path pastaConversa = Paths.get(storageRoot(), String.valueOf(conversa.getId())).toAbsolutePath().normalize();
-            Files.createDirectories(pastaConversa);
-            String nomeArmazenado = mensagem.getId() + "-" + UUID.randomUUID() + "-" + nomeOriginal;
-            Path arquivo = pastaConversa.resolve(nomeArmazenado).normalize();
-            if (!arquivo.startsWith(pastaConversa)) {
-                throw regra(400, "Nome de arquivo invalido.");
-            }
-            Files.write(arquivo, conteudo, StandardOpenOption.CREATE_NEW);
+            objectStorage.enviar(objectKey, mimeType, conteudo);
 
             MensagemAnexo anexo = new MensagemAnexo();
             anexo.setMensagemId(mensagem.getId());
             anexo.setNomeOriginal(nomeOriginal);
             anexo.setNomeArmazenado(nomeArmazenado);
-            anexo.setCaminhoStorage(arquivo.toString());
+            anexo.setCaminhoStorage(objectKey);
             anexo.setMimeType(mimeType);
             anexo.setTamanhoBytes((long) conteudo.length);
             anexo.setHashSha256(sha256(conteudo));
@@ -2332,8 +2526,10 @@ public class ChatConfiancaService {
             anexo.setUrlPublica("v1/chat-confianca/anexos/" + anexo.getId() + "/download");
             return manager.post("chat-confianca/persistencia/mensagem-anexos", anexo, MensagemAnexo.class);
         } catch (RegraDeNegocioException ex) {
+            objectStorage.remover(objectKey);
             throw ex;
         } catch (Exception ex) {
+            objectStorage.remover(objectKey);
             throw regra(500, "Nao foi possivel armazenar o anexo.");
         }
     }
@@ -2630,9 +2826,9 @@ public class ChatConfiancaService {
     private String montarMotivoEncerramento(EncerrarConversaRequest request) {
         String motivo = request.getMotivo().trim();
         if (isBlank(request.getCategoria())) {
-            return motivo;
+            return limitarTextoResumo(motivo, 500);
         }
-        return request.getCategoria().trim() + " - " + motivo;
+        return limitarTextoResumo(request.getCategoria().trim() + " - " + motivo, 500);
     }
 
     private void validarTextoObrigatorio(String valor, String mensagem) {
@@ -2805,15 +3001,35 @@ public class ChatConfiancaService {
         return "application/octet-stream";
     }
 
-    private String storageRoot() {
-        String configurado = System.getProperty("chat.confianca.storage");
-        if (isBlank(configurado)) {
-            configurado = System.getenv("CHAT_CONFIANCA_STORAGE");
+    private boolean ehObjectKey(String caminhoStorage) {
+        if (isBlank(caminhoStorage)) {
+            return false;
         }
-        if (isBlank(configurado)) {
-            return Paths.get(System.getProperty("java.io.tmpdir"), "chat-confianca", "anexos").toString();
+        Path caminho = Paths.get(caminhoStorage);
+        return !caminho.isAbsolute()
+                && !caminhoStorage.startsWith("\\")
+                && !caminhoStorage.matches("^[A-Za-z]:[\\\\/].*");
+    }
+
+    private byte[] lerAnexoLegado(MensagemAnexo anexo, Conversa conversa) throws java.io.IOException {
+        if (isBlank(anexo.getCaminhoStorage())) {
+            throw new java.nio.file.NoSuchFileException("caminhoStorage");
         }
-        return configurado;
+        Path arquivo = Paths.get(anexo.getCaminhoStorage());
+        if (!Files.exists(arquivo) || !Files.isRegularFile(arquivo)) {
+            throw new java.nio.file.NoSuchFileException(arquivo.toString());
+        }
+
+        byte[] conteudo = Files.readAllBytes(arquivo);
+        String nomeArmazenado = isBlank(anexo.getNomeArmazenado())
+                ? anexo.getId() + "-" + UUID.randomUUID() + "-" + normalizarNomeArquivo(anexo.getNomeOriginal())
+                : anexo.getNomeArmazenado();
+        String objectKey = objectStorage.novoObjectKey(conversa.getId(), nomeArmazenado);
+        objectStorage.enviar(objectKey, anexo.getMimeType(), conteudo);
+        anexo.setNomeArmazenado(nomeArmazenado);
+        anexo.setCaminhoStorage(objectKey);
+        manager.post("chat-confianca/persistencia/mensagem-anexos", anexo, MensagemAnexo.class);
+        return conteudo;
     }
 
     private String sha256(byte[] bytes) {
