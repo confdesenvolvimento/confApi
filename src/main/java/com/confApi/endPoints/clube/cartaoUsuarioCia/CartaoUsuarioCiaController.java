@@ -31,6 +31,11 @@ public class CartaoUsuarioCiaController {
         return cartaoUsuarioCiaService.lista(id);
     }
 
+    @GetMapping("/existe/{id}")
+    public Boolean existeCartaoUsuario(@PathVariable int id) {
+        return !cartaoUsuarioCiaService.lista(id).isEmpty();
+    }
+
 /*
     @GetMapping("/cartaoUsuario/AllById/{id}")
     public CartaoUsuarioCia getAllById(@PathVariable int id) {

@@ -112,6 +112,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         sessao.setAgencia(agencia);
         when(chatService.montarSessao(USUARIO_ID, null)).thenReturn(sessao);
         when(chatService.montarSessao(USUARIO_ID, AGENCIA_ID)).thenReturn(sessao);
+        when(chatService.departamentoRemarcacaoDisponivel(CONVERSA_ID)).thenReturn(true);
         when(manager.get(anyString(), any(Class.class))).thenReturn(simulacao);
         when(manager.post(anyString(), any(), any(Class.class)))
                 .thenAnswer(invocation -> invocation.getArgument(1));
