@@ -2,6 +2,7 @@ package com.confApi.chatconfianca.service;
 
 import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
 import com.confApi.chatconfianca.dto.enums.DistribuicaoDepartamento;
+import com.confApi.chatconfianca.dto.enums.DisponibilidadeAtendimentoHumano;
 import com.confApi.chatconfianca.dto.enums.PapelAtendente;
 import com.confApi.chatconfianca.dto.enums.PrioridadeConversa;
 import com.confApi.chatconfianca.dto.enums.StatusAtendente;
@@ -31,6 +32,7 @@ import com.confApi.chatconfianca.dto.request.EncerrarConversaRequest;
 import com.confApi.chatconfianca.dto.request.EnviarMensagemRequest;
 import com.confApi.chatconfianca.dto.request.RegistrarLeituraRequest;
 import com.confApi.chatconfianca.dto.response.ChatNotificacaoResumoResponse;
+import com.confApi.chatconfianca.dto.response.DepartamentoAtendimentoOpcao;
 import com.confApi.exception.RegraDeNegocioException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -87,6 +89,7 @@ class ChatConfiancaServiceTest {
                 .thenReturn(Collections.singletonList(fixture.vinculoAtendente));
         when(configService.listarDepartamentoUnidadesPorUnidade(CODG_UNIDADE))
                 .thenReturn(Collections.singletonList(fixture.departamentoUnidade));
+        when(configService.listarDepartamentos()).thenReturn(Collections.emptyList());
         when(configService.buscarAtendenteStatus(ATENDENTE)).thenReturn(statusOnline());
         when(configService.salvarAtendenteStatus(any(AtendenteStatus.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -163,6 +166,94 @@ class ChatConfiancaServiceTest {
         assertEquals(SOLICITANTE, avaliacao.getCodgUsuarioAvaliador());
         assertEquals(5, avaliacao.getNota());
         assertEquals("Atendimento muito bom.", avaliacao.getComentario());
+    }
+
+    @Test
+    void conversaAssistidaDeveIniciarForaDoHorarioHumanoSemCriarFila() {
+        fixture.departamentoUnidade.setHorarioAtendimentoJson("{}");
+        fixture.departamentoUnidade.setMensagemForaHorario("Atendimento humano indisponivel.");
+
+        Conversa conversa = service.iniciarConversaAssistida(
+                SOLICITANTE,
+                DEPARTAMENTO_UNIDADE_ID,
+                "Orientacao pela ConfIA",
+                "Preciso de ajuda.",
+                PrioridadeConversa.NORMAL,
+                "{}",
+                CODG_AGENCIA);
+
+        assertEquals(CONVERSA_ID, conversa.getId());
+        assertEquals(StatusConversa.AGUARDANDO_SOLICITANTE, conversa.getStatus());
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/filas"),
+                any(FilaAtendimento.class),
+                eq(FilaAtendimento.class));
+    }
+
+    @Test
+    void conversaHumanaDeveContinuarBloqueadaForaDoHorario() {
+        fixture.departamentoUnidade.setHorarioAtendimentoJson("{}");
+        fixture.departamentoUnidade.setMensagemForaHorario("Atendimento humano indisponivel.");
+        AbrirConversaRequest request = new AbrirConversaRequest();
+        request.setCodgUsuario(SOLICITANTE);
+        request.setDepartamentoUnidadeId(DEPARTAMENTO_UNIDADE_ID);
+        request.setAssunto("Atendimento humano");
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.abrirConversa(request));
+
+        assertEquals(400, erro.getStatus());
+        assertEquals("Atendimento humano indisponivel.", erro.getMessage());
+        verify(manager, never()).post(
+                eq("chat-confianca/persistencia/conversas"),
+                any(Conversa.class),
+                eq(Conversa.class));
+    }
+
+    @Test
+    void opcoesDevemManterEquipeVisivelForaDoHorario() {
+        fixture.departamentoUnidade.setHorarioAtendimentoJson("{}");
+        fixture.departamentoUnidade.setMensagemForaHorario("Equipe retorna no proximo expediente.");
+
+        List<DepartamentoAtendimentoOpcao> opcoes =
+                service.listarOpcoesAtendimentoUsuario(SOLICITANTE, CODG_AGENCIA);
+
+        assertEquals(1, opcoes.size());
+        DepartamentoAtendimentoOpcao opcao = opcoes.get(0);
+        assertEquals(DisponibilidadeAtendimentoHumano.FORA_HORARIO,
+                opcao.getDisponibilidadeHumano());
+        assertFalse(Boolean.TRUE.equals(opcao.getPermiteHumano()));
+        assertEquals("Equipe retorna no proximo expediente.",
+                opcao.getMensagemDisponibilidade());
+    }
+
+    @Test
+    void opcoesDevemInformarDisponibilidadeRealDaEquipe() {
+        List<DepartamentoAtendimentoOpcao> opcoes =
+                service.listarOpcoesAtendimentoUsuario(SOLICITANTE, CODG_AGENCIA);
+
+        assertEquals(1, opcoes.size());
+        DepartamentoAtendimentoOpcao opcao = opcoes.get(0);
+        assertEquals(DisponibilidadeAtendimentoHumano.DISPONIVEL,
+                opcao.getDisponibilidadeHumano());
+        assertTrue(Boolean.TRUE.equals(opcao.getPermiteHumano()));
+        assertTrue(Boolean.TRUE.equals(opcao.getAtendenteLivre()));
+    }
+
+    @Test
+    void opcoesDevemDistinguirEquipeSemAtendente() {
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_UNIDADE_ID))
+                .thenReturn(Collections.emptyList());
+
+        List<DepartamentoAtendimentoOpcao> opcoes =
+                service.listarOpcoesAtendimentoUsuario(SOLICITANTE, CODG_AGENCIA);
+
+        assertEquals(1, opcoes.size());
+        DepartamentoAtendimentoOpcao opcao = opcoes.get(0);
+        assertEquals(DisponibilidadeAtendimentoHumano.SEM_ATENDENTE,
+                opcao.getDisponibilidadeHumano());
+        assertFalse(Boolean.TRUE.equals(opcao.getPermiteHumano()));
     }
 
     @Test
