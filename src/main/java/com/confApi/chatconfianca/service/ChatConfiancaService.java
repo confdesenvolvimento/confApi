@@ -1704,13 +1704,35 @@ public class ChatConfiancaService {
     public List<RespostaRapida> listarRespostasRapidasAtendente(Integer codgUsuario,
                                                                 Long departamentoId,
                                                                 Integer codgUnidade) {
+        return listarRespostasRapidasAtendente(
+                codgUsuario, departamentoId, codgUnidade, null);
+    }
+
+    public List<RespostaRapida> listarRespostasRapidasAtendente(Integer codgUsuario,
+                                                                Long departamentoId,
+                                                                Integer codgUnidade,
+                                                                Long departamentoUnidadeId) {
         SessaoChatResponse sessao = validarAcessoAtendimento(codgUsuario);
         Integer unidade = resolverUnidadeOperacional(sessao, codgUsuario, codgUnidade);
-        if (departamentoId != null && unidade != null
-                && !departamentoDisponivelNaUnidade(departamentoId, unidade)) {
+        Long departamentoFiltro = departamentoId;
+        if (departamentoUnidadeId != null) {
+            DepartamentoUnidade departamentoUnidade = configService
+                    .buscarDepartamentoUnidade(departamentoUnidadeId);
+            if (unidade != null
+                    && !Objects.equals(departamentoUnidade.getCodgUnidade(), unidade)) {
+                throw regra(403, "Departamento nao pertence a unidade informada.");
+            }
+            if (departamentoFiltro != null
+                    && !Objects.equals(departamentoFiltro, departamentoUnidade.getDepartamentoId())) {
+                throw regra(400, "Departamento informado nao corresponde ao vinculo da unidade.");
+            }
+            departamentoFiltro = departamentoUnidade.getDepartamentoId();
+        }
+        if (departamentoFiltro != null && unidade != null
+                && !departamentoDisponivelNaUnidade(departamentoFiltro, unidade)) {
             throw regra(403, "Departamento nao pertence a unidade informada.");
         }
-        return configService.listarRespostasRapidas(departamentoId, unidade, true);
+        return configService.listarRespostasRapidas(departamentoFiltro, unidade, true);
     }
 
     public RespostaRapida salvarRespostaRapidaAtendente(Integer codgUsuario,

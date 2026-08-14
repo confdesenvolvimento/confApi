@@ -25,8 +25,10 @@ public class ChatConfiancaAtendenteController {
     @GetMapping("/respostas-rapidas")
     public List<RespostaRapida> listarRespostasRapidas(@RequestParam Integer codgUsuario,
                                                        @RequestParam(required = false) Long departamentoId,
-                                                       @RequestParam(required = false) Integer codgUnidade) {
-        return service.listarRespostasRapidasAtendente(codgUsuario, departamentoId, codgUnidade);
+                                                       @RequestParam(required = false) Integer codgUnidade,
+                                                       @RequestParam(required = false) Long departamentoUnidadeId) {
+        return service.listarRespostasRapidasAtendente(
+                codgUsuario, departamentoId, codgUnidade, departamentoUnidadeId);
     }
 
     @PostMapping("/respostas-rapidas")

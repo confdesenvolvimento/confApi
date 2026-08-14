@@ -22,6 +22,7 @@ import com.confApi.chatconfianca.dto.model.FilaAtendimento;
 import com.confApi.chatconfianca.dto.model.Mensagem;
 import com.confApi.chatconfianca.dto.model.MensagensNaoLidasResumo;
 import com.confApi.chatconfianca.dto.model.RefAgencia;
+import com.confApi.chatconfianca.dto.model.RespostaRapida;
 import com.confApi.chatconfianca.dto.model.RefUnidade;
 import com.confApi.chatconfianca.dto.model.RefUsuario;
 import com.confApi.chatconfianca.dto.model.VwFilaAtendimento;
@@ -97,6 +98,30 @@ class ChatConfiancaServiceTest {
         when(manager.get(anyString(), any(Class.class))).thenAnswer(this::responderGet);
         when(manager.getList(anyString(), any(ParameterizedTypeReference.class))).thenAnswer(this::responderGetList);
         when(manager.post(anyString(), any(), any(Class.class))).thenAnswer(this::responderPost);
+    }
+
+    @Test
+    void respostasRapidasDevemUsarDepartamentoDoVinculoDaConversa() {
+        RespostaRapida resposta = new RespostaRapida();
+        resposta.setId(301L);
+        resposta.setDepartamentoId(fixture.departamentoUnidade.getDepartamentoId());
+        resposta.setCodgUnidade(CODG_UNIDADE);
+        resposta.setTitulo("Solicitar localizador");
+        resposta.setTexto("Por favor, informe o localizador da reserva.");
+        resposta.setAtivo(true);
+        when(configService.buscarDepartamentoUnidade(DEPARTAMENTO_UNIDADE_ID))
+                .thenReturn(fixture.departamentoUnidade);
+        when(configService.listarRespostasRapidas(
+                fixture.departamentoUnidade.getDepartamentoId(), CODG_UNIDADE, true))
+                .thenReturn(List.of(resposta));
+
+        List<RespostaRapida> respostas = service.listarRespostasRapidasAtendente(
+                ATENDENTE, null, CODG_UNIDADE, DEPARTAMENTO_UNIDADE_ID);
+
+        assertEquals(List.of(resposta), respostas);
+        verify(configService).buscarDepartamentoUnidade(DEPARTAMENTO_UNIDADE_ID);
+        verify(configService).listarRespostasRapidas(
+                fixture.departamentoUnidade.getDepartamentoId(), CODG_UNIDADE, true);
     }
 
     @Test
