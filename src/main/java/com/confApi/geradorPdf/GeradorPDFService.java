@@ -17,9 +17,15 @@ import com.confApi.geradorPdf.carro.GeradorCarroPDFModel;
 import com.confApi.geradorPdf.carro.ReservaCarroModelPDF;
 import com.confApi.geradorPdf.hotel.EnvioReservaHotelPDF;
 import com.confApi.geradorPdf.hotel.GeradorHotelPDFModel;
+import com.confApi.geradorPdf.seguro.EnvioReservaSeguroPDF;
+import com.confApi.geradorPdf.seguro.GeradorSeguroPDFModel;
+import com.confApi.geradorPdf.seguro.PlanoViagemReservaSeguroPDF;
+import com.confApi.geradorPdf.seguro.ReservaSeguroModelPDF;
 import com.confApi.hub.aereo.ReservaAereoModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
 
 @Service
 public class GeradorPDFService {
@@ -112,6 +118,108 @@ public class GeradorPDFService {
                 .trim();
 
         return nomeAjustado;
+    }
+
+    public void popularSeguroPDF(GeradorSeguroPDFModel geradorSeguroPDFModel) {
+
+        if (geradorSeguroPDFModel == null) {
+            throw new IllegalArgumentException(
+                    "Os dados para geração do seguro não foram informados."
+            );
+        }
+
+        ReservaSeguroModelPDF reserva = geradorSeguroPDFModel.getReservaSeguroModelPDF();
+
+        if (reserva == null) {
+            throw new IllegalArgumentException(
+                    "A reserva de seguro não foi informada."
+            );
+        }
+
+        PlanoViagemReservaSeguroPDF plano = geradorSeguroPDFModel.getPlanoViagemReservaSeguroPDF();
+
+        if (plano == null) {
+            plano = new PlanoViagemReservaSeguroPDF();
+
+            geradorSeguroPDFModel.setPlanoViagemReservaSeguroPDF(plano);
+        }
+
+        /*
+         * Protege o projeto de e-mail contra listas nulas
+         * enviadas explicitamente no JSON.
+         */
+        if (reserva.getSegurados() == null) {
+            reserva.setSegurados(new ArrayList<>());
+        }
+
+        if (reserva.getRecebimentos() == null) {
+            reserva.setRecebimentos(new ArrayList<>());
+        }
+
+        String identificador;
+
+        if (reserva.getLocalizador() != null
+                && !reserva.getLocalizador().trim().isEmpty()) {
+
+            identificador = reserva.getLocalizador().trim();
+
+        } else if (reserva.getCodgReservaSeguroDB() != null) {
+
+            identificador = String.valueOf(
+                    reserva.getCodgReservaSeguroDB()
+            );
+
+        } else {
+            identificador = "NÃO INFORMADO";
+        }
+
+        boolean cancelada = reserva.getDataCancelamento() != null
+                        || (
+                        reserva.getStatusDescricao() != null
+                                && "CANCELADO".equalsIgnoreCase(
+                                reserva.getStatusDescricao().trim()
+                        )
+                )
+                        || (
+                        reserva.getStatusDescricao() != null
+                                && "CANCELADA".equalsIgnoreCase(
+                                reserva.getStatusDescricao().trim()
+                        )
+                );
+
+        /*
+         * Só define assunto e mensagem quando o Front
+         * não tiver enviado valores próprios.
+         */
+        if (plano.getAssunto() == null
+                || plano.getAssunto().trim().isEmpty()) {
+
+            plano.setAssunto(cancelada
+                            ? "Cancelamento Reserva Seguro - "
+                            + identificador
+                            : "Reserva Seguro - "
+                            + identificador
+            );
+        }
+
+        if (plano.getMensagem() == null
+                || plano.getMensagem().trim().isEmpty()) {
+
+            plano.setMensagem(cancelada
+                            ? "Informamos que a reserva de seguro "
+                            + identificador
+                            + " foi cancelada."
+                            : "Segue o plano de viagem da reserva "
+                            + "de seguro "
+                            + identificador
+                            + " conforme solicitado."
+            );
+        }
+
+        EnvioReservaSeguroPDF envioReservaSeguroPDF = new EnvioReservaSeguroPDF(geradorSeguroPDFModel);
+
+        new GeradorPDFApi().envioSeguroPDF(envioReservaSeguroPDF);
+
     }
 
     public void popularAereoPDFApp(GeradorAereoPDF geradorAereoPDF) {

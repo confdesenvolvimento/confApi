@@ -4,6 +4,7 @@ import com.confApi.geradorPdf.aereo.GeradorAereoPDF;
 import com.confApi.geradorPdf.aereo.GeradorAereoPDFModel;
 import com.confApi.geradorPdf.carro.GeradorCarroPDFModel;
 import com.confApi.geradorPdf.hotel.GeradorHotelPDFModel;
+import com.confApi.geradorPdf.seguro.GeradorSeguroPDFModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -58,8 +59,13 @@ public class GeradorPDFController {
 
     @PostMapping("/reservaCarro")
     public void geradorCarroPdf(@RequestBody GeradorCarroPDFModel geradorCarroPDFModel)  {
-        System.out.println("passou controller reservaCarro " + geradorCarroPDFModel);
         geradorPDFService.popularCarroPDF(geradorCarroPDFModel);
+    }
+
+    @PostMapping("/reservaSeguro")
+    public void geradorSeguroPdf(@RequestBody GeradorSeguroPDFModel geradorSeguroPDFModel)  {
+        System.out.println("chegou no geradorSeguroPDFModel:: " + geradorSeguroPDFModel);
+        geradorPDFService.popularSeguroPDF(geradorSeguroPDFModel);
     }
 
     @PostMapping("/reservaAereoApp")
