@@ -6,6 +6,7 @@ import com.confApi.db.AbstractTransactionServiceApi;
 import com.confApi.geradorPdf.aereo.EnvioReservaAereoPDF;
 import com.confApi.geradorPdf.carro.EnvioReservaCarroPDF;
 import com.confApi.geradorPdf.hotel.EnvioReservaHotelPDF;
+import com.confApi.geradorPdf.seguro.EnvioReservaSeguroPDF;
 import org.springframework.http.*;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
@@ -102,6 +103,32 @@ public class GeradorPDFApi extends AbstractTransactionServiceApi implements Seri
         try {
             responseEntity = new RestTemplate().exchange(
                     UrlConfig.URL_CONFIANCA_EMAIL + urlAPI + "/sendEmailCarroPdf",
+                    HttpMethod.POST,
+                    requestEntity,
+                    String.class
+            );
+        } catch (HttpClientErrorException ex) {
+            //  Util.mensageAlert(EnumIconesMensagem.Erro.getValor(), "Ops: " + ex.getMessage());
+        }
+
+        if (responseEntity != null && responseEntity.getStatusCode().is2xxSuccessful()) {
+            // Util.mensageSucessPDF("PDF enviado com sucesso!");
+        }
+    }
+
+
+    public void envioSeguroPDF(EnvioReservaSeguroPDF envioReservaSeguroPDF){
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", "Bearer " + new ConfAppService().token());
+
+        HttpEntity<EnvioReservaSeguroPDF> requestEntity = new HttpEntity<>(envioReservaSeguroPDF, headers);
+
+        ResponseEntity<String> responseEntity = null;
+        try {
+            responseEntity = new RestTemplate().exchange(
+                    UrlConfig.URL_CONFIANCA_EMAIL + urlAPI + "/sendEmailSeguroPdf",
                     HttpMethod.POST,
                     requestEntity,
                     String.class

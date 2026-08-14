@@ -2,6 +2,7 @@ package com.confApi.chatconfianca.service;
 
 import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
 import com.confApi.chatconfianca.dto.enums.DistribuicaoDepartamento;
+import com.confApi.chatconfianca.dto.enums.DisponibilidadeAtendimentoHumano;
 import com.confApi.chatconfianca.dto.enums.OrigemConversa;
 import com.confApi.chatconfianca.dto.enums.PapelAtendente;
 import com.confApi.chatconfianca.dto.enums.PapelParticipante;
@@ -203,13 +204,17 @@ public class ChatConfiancaService {
             return new ArrayList<>();
         }
         Set<Long> idsConfiaGeral = idsDepartamentoConfiaGeral();
+        LocalDateTime agora = LocalDateTime.now(ZONA_HORARIO_ATENDIMENTO);
         return departamentos.stream()
                 .filter(Objects::nonNull)
                 .filter(item -> item.getId() != null)
                 .filter(item -> !idsConfiaGeral.contains(item.getDepartamentoId()))
-                .filter(item -> dentroDoHorarioAtendimento(item, LocalDateTime.now(ZONA_HORARIO_ATENDIMENTO)))
-                .sorted(Comparator.comparing(this::nomeOpcaoDepartamento, Comparator.nullsLast(String::compareToIgnoreCase)))
-                .map(this::montarOpcaoAtendimento)
+                .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
+                .map(item -> montarOpcaoAtendimento(item, agora))
+                .sorted(Comparator
+                        .comparing((DepartamentoAtendimentoOpcao item) -> !Boolean.TRUE.equals(item.getPermiteHumano()))
+                        .thenComparing(DepartamentoAtendimentoOpcao::getNomeExibicao,
+                                Comparator.nullsLast(String::compareToIgnoreCase)))
                 .collect(Collectors.toList());
     }
 
@@ -230,9 +235,18 @@ public class ChatConfiancaService {
                 .collect(Collectors.toList());
     }
 
-    private DepartamentoAtendimentoOpcao montarOpcaoAtendimento(DepartamentoUnidade departamentoUnidade) {
+    private DepartamentoAtendimentoOpcao montarOpcaoAtendimento(
+            DepartamentoUnidade departamentoUnidade,
+            LocalDateTime agora) {
         boolean ativo = departamentoUnidade != null && !Boolean.FALSE.equals(departamentoUnidade.getAtivo());
-        boolean possuiAtendente = ativo && possuiAtendenteHumano(departamentoUnidade);
+        boolean dentroHorario = ativo && dentroDoHorarioAtendimento(departamentoUnidade, agora);
+        List<DepartamentoAtendente> atendentes = ativo
+                ? listarAtendentesAtivos(departamentoUnidade)
+                : new ArrayList<>();
+        boolean possuiAtendente = !atendentes.isEmpty();
+        boolean atendenteLivre = dentroHorario && atendentes.stream()
+                .anyMatch(item -> atendenteDisponivelParaDistribuicao(item, departamentoUnidade));
+        boolean permiteHumano = dentroHorario && possuiAtendente;
         DepartamentoAtendimentoOpcao opcao = new DepartamentoAtendimentoOpcao();
         opcao.setDepartamentoUnidadeId(departamentoUnidade.getId());
         opcao.setDepartamentoId(departamentoUnidade.getDepartamentoId());
@@ -241,30 +255,84 @@ public class ChatConfiancaService {
         opcao.setMensagemAbertura(departamentoUnidade.getMensagemAbertura());
         opcao.setAtivo(ativo);
         opcao.setPossuiAtendente(possuiAtendente);
-        opcao.setPermiteHumano(possuiAtendente);
-        opcao.setSomenteConfia(!possuiAtendente);
-        if (!ativo) {
-            opcao.setMotivoIndisponibilidade("Departamento indisponivel no momento.");
-        } else if (!possuiAtendente) {
-            opcao.setMotivoIndisponibilidade("Sem atendente humano vinculado para esta unidade.");
-        }
+        opcao.setAtendenteLivre(atendenteLivre);
+        opcao.setPermiteHumano(permiteHumano);
+        opcao.setSomenteConfia(!permiteHumano);
+        aplicarDisponibilidadeHumana(
+                opcao, departamentoUnidade, dentroHorario, possuiAtendente, atendenteLivre);
         return opcao;
     }
 
-    private boolean possuiAtendenteHumano(DepartamentoUnidade departamentoUnidade) {
+    private void aplicarDisponibilidadeHumana(
+            DepartamentoAtendimentoOpcao opcao,
+            DepartamentoUnidade departamentoUnidade,
+            boolean dentroHorario,
+            boolean possuiAtendente,
+            boolean atendenteLivre) {
+        if (!dentroHorario) {
+            String mensagem = isBlank(departamentoUnidade.getMensagemForaHorario())
+                    ? "Atendimento humano fora do horario. A ConfIA continua disponivel."
+                    : departamentoUnidade.getMensagemForaHorario();
+            opcao.setDisponibilidadeHumano(DisponibilidadeAtendimentoHumano.FORA_HORARIO);
+            opcao.setMensagemDisponibilidade(mensagem);
+            opcao.setMotivoIndisponibilidade(mensagem);
+            return;
+        }
+        if (!possuiAtendente) {
+            String mensagem = "Esta equipe nao possui atendente habilitado no momento.";
+            opcao.setDisponibilidadeHumano(DisponibilidadeAtendimentoHumano.SEM_ATENDENTE);
+            opcao.setMensagemDisponibilidade(mensagem);
+            opcao.setMotivoIndisponibilidade(mensagem);
+            return;
+        }
+        if (!atendenteLivre) {
+            opcao.setDisponibilidadeHumano(DisponibilidadeAtendimentoHumano.EM_FILA);
+            opcao.setMensagemDisponibilidade(
+                    "A equipe esta atendendo outras solicitacoes. Voce pode entrar na fila.");
+            return;
+        }
+        opcao.setDisponibilidadeHumano(DisponibilidadeAtendimentoHumano.DISPONIVEL);
+        opcao.setMensagemDisponibilidade("Equipe disponivel para receber seu atendimento.");
+    }
+
+    private List<DepartamentoAtendente> listarAtendentesAtivos(
+            DepartamentoUnidade departamentoUnidade) {
         if (departamentoUnidade == null || departamentoUnidade.getId() == null) {
-            return false;
+            return new ArrayList<>();
         }
         try {
-            List<DepartamentoAtendente> atendentes = configService.listarAtendentesDepartamento(departamentoUnidade.getId());
-            return atendentes != null && atendentes.stream()
+            List<DepartamentoAtendente> atendentes =
+                    configService.listarAtendentesDepartamento(departamentoUnidade.getId());
+            if (atendentes == null) {
+                return new ArrayList<>();
+            }
+            return atendentes.stream()
                     .filter(Objects::nonNull)
+                    .filter(item -> item.getCodgUsuario() != null)
                     .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
                     .filter(item -> !Boolean.FALSE.equals(item.getRecebeChamados()))
-                    .anyMatch(item -> item.getCodgUsuario() != null);
+                    .collect(Collectors.toList());
         } catch (RuntimeException ex) {
-            return false;
+            LOGGER.log(Level.FINE,
+                    "Nao foi possivel consultar os atendentes da equipe "
+                            + departamentoUnidade.getId() + ".", ex);
+            return new ArrayList<>();
         }
+    }
+
+    private boolean atendenteDisponivelParaDistribuicao(
+            DepartamentoAtendente atendente,
+            DepartamentoUnidade departamentoUnidade) {
+        return atendente != null
+                && atendente.getCodgUsuario() != null
+                && atendenteOnline(atendente.getCodgUsuario())
+                && !limiteAtingido(
+                        atendente.getCodgUsuario(),
+                        limiteEfetivo(atendente, departamentoUnidade));
+    }
+
+    private boolean possuiAtendenteHumano(DepartamentoUnidade departamentoUnidade) {
+        return !listarAtendentesAtivos(departamentoUnidade).isEmpty();
     }
 
     private DepartamentoUnidade garantirDepartamentoConfiaGeral(Integer codgUnidade) {
@@ -431,8 +499,6 @@ public class ChatConfiancaService {
                 .filter(item -> departamentoUnidadeId.equals(item.getId()))
                 .findFirst()
                 .orElseThrow(() -> regra(400, "Departamento indisponivel para a unidade da agencia."));
-
-        validarHorarioAtendimento(departamentoUnidade);
 
         LocalDateTime agora = LocalDateTime.now();
         PrioridadeConversa prioridadeNormalizada = prioridade == null ? PrioridadeConversa.NORMAL : prioridade;
@@ -1638,13 +1704,35 @@ public class ChatConfiancaService {
     public List<RespostaRapida> listarRespostasRapidasAtendente(Integer codgUsuario,
                                                                 Long departamentoId,
                                                                 Integer codgUnidade) {
+        return listarRespostasRapidasAtendente(
+                codgUsuario, departamentoId, codgUnidade, null);
+    }
+
+    public List<RespostaRapida> listarRespostasRapidasAtendente(Integer codgUsuario,
+                                                                Long departamentoId,
+                                                                Integer codgUnidade,
+                                                                Long departamentoUnidadeId) {
         SessaoChatResponse sessao = validarAcessoAtendimento(codgUsuario);
         Integer unidade = resolverUnidadeOperacional(sessao, codgUsuario, codgUnidade);
-        if (departamentoId != null && unidade != null
-                && !departamentoDisponivelNaUnidade(departamentoId, unidade)) {
+        Long departamentoFiltro = departamentoId;
+        if (departamentoUnidadeId != null) {
+            DepartamentoUnidade departamentoUnidade = configService
+                    .buscarDepartamentoUnidade(departamentoUnidadeId);
+            if (unidade != null
+                    && !Objects.equals(departamentoUnidade.getCodgUnidade(), unidade)) {
+                throw regra(403, "Departamento nao pertence a unidade informada.");
+            }
+            if (departamentoFiltro != null
+                    && !Objects.equals(departamentoFiltro, departamentoUnidade.getDepartamentoId())) {
+                throw regra(400, "Departamento informado nao corresponde ao vinculo da unidade.");
+            }
+            departamentoFiltro = departamentoUnidade.getDepartamentoId();
+        }
+        if (departamentoFiltro != null && unidade != null
+                && !departamentoDisponivelNaUnidade(departamentoFiltro, unidade)) {
             throw regra(403, "Departamento nao pertence a unidade informada.");
         }
-        return configService.listarRespostasRapidas(departamentoId, unidade, true);
+        return configService.listarRespostasRapidas(departamentoFiltro, unidade, true);
     }
 
     public RespostaRapida salvarRespostaRapidaAtendente(Integer codgUsuario,
@@ -2637,14 +2725,19 @@ public class ChatConfiancaService {
 
     private AtendenteStatus buscarStatusAtendenteSeguro(Integer codgAtendente) {
         try {
-            return configService.buscarAtendenteStatus(codgAtendente);
+            AtendenteStatus status = configService.buscarAtendenteStatus(codgAtendente);
+            if (status != null) {
+                return status;
+            }
         } catch (RuntimeException ex) {
-            AtendenteStatus status = new AtendenteStatus();
-            status.setCodgUsuario(codgAtendente);
-            status.setStatus(StatusAtendente.ONLINE);
-            status.setAtendimentosAtivos(0);
-            return status;
+            LOGGER.log(Level.FINE,
+                    "Nao foi possivel consultar o status do atendente " + codgAtendente + ".", ex);
         }
+        AtendenteStatus status = new AtendenteStatus();
+        status.setCodgUsuario(codgAtendente);
+        status.setStatus(StatusAtendente.ONLINE);
+        status.setAtendimentosAtivos(0);
+        return status;
     }
 
     private void atualizarCargaAtendente(Integer codgAtendente) {
