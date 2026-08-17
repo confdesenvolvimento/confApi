@@ -12,6 +12,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import javax.servlet.http.HttpServletRequest;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestControllerAdvice(assignableTypes = {
         ClientAppEnrollmentController.class,
@@ -19,8 +21,10 @@ import java.util.Map;
 })
 @Order(0)
 public class ClientAppEnrollmentErrorHandler {
+    private static final Logger LOG = LoggerFactory.getLogger(ClientAppEnrollmentErrorHandler.class);
     @ExceptionHandler(ClientAppEnrollmentException.class)
     public ResponseEntity<Map<String,Object>> handle(ClientAppEnrollmentException exception, HttpServletRequest request) {
+        LOG.warn("B2C request rejected status={} code={} correlationId={}", exception.getStatus(), exception.getCode(), ClientAppCorrelationIdFilter.from(request));
         return response(exception.getStatus(), exception.getCode(), exception.isRetryable(), request);
     }
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -29,6 +33,7 @@ public class ClientAppEnrollmentErrorHandler {
     }
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String,Object>> generic(Exception exception, HttpServletRequest request) {
+        LOG.error("B2C unexpected error correlationId={} error={}", ClientAppCorrelationIdFilter.from(request), exception.getClass().getSimpleName());
         return response(503, "ENROLLMENT_SERVICE_UNAVAILABLE", true, request);
     }
     private ResponseEntity<Map<String,Object>> response(int status, String code, boolean retryable, HttpServletRequest request) {

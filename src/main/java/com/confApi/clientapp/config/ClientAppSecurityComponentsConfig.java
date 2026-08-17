@@ -15,7 +15,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties({MViagensBackendProperties.class, ClientAppEnrollmentProperties.class})
+@EnableConfigurationProperties({
+        MViagensBackendProperties.class,
+        ClientAppEnrollmentProperties.class
+})
 public class ClientAppSecurityComponentsConfig {
 
     @Bean
@@ -45,7 +48,13 @@ public class ClientAppSecurityComponentsConfig {
             ObjectProvider<ManagerPassengerDiscoveryClient> managerClient,
             ObjectMapper objectMapper
     ) {
-        return new ClientAppEnrollmentService(enrollmentProperties, backendProperties, backendClient, managerClient, objectMapper);
+        return new ClientAppEnrollmentService(
+                enrollmentProperties,
+                backendProperties,
+                backendClient,
+                managerClient,
+                objectMapper
+        );
     }
 
     @Bean

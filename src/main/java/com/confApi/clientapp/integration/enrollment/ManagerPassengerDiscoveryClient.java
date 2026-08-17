@@ -9,12 +9,16 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.*;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.*;
 
 public class ManagerPassengerDiscoveryClient {
+    private static final Logger LOG = LoggerFactory.getLogger(ManagerPassengerDiscoveryClient.class);
     private final RestTemplate restTemplate;
     private final ClientAppEnrollmentProperties properties;
     private final ConfAppService confAppService;
@@ -31,6 +35,7 @@ public class ManagerPassengerDiscoveryClient {
     }
 
     public List<Match> findByCpf(String cpf) {
+        LOG.info("Manager passenger discovery start cpfSuffix={}", cpfSuffix(cpf));
         if (properties.getPassengerBaseByCpfPath() == null || properties.getPassengerBaseByCpfPath().isBlank()) {
             throw new ClientAppEnrollmentException(503, "PASSENGER_LOOKUP_NOT_CONFIGURED", true);
         }
@@ -43,6 +48,7 @@ public class ManagerPassengerDiscoveryClient {
                 .queryParam("cpf", cpf).build().toUri();
         JsonNode response = get(uri, headers);
         List<JsonNode> passengers = nodes(response);
+        LOG.info("Manager passenger discovery response passengers={}", passengers.size());
         Map<Integer, MatchBuilder> byAgency = new LinkedHashMap<>();
         for (JsonNode passenger : passengers) {
             int agencyId = intValue(passenger, "agencyId", "codgAgencia", "codg_agencia");
@@ -67,6 +73,7 @@ public class ManagerPassengerDiscoveryClient {
         }
         List<Match> result = new ArrayList<>();
         byAgency.values().forEach(builder -> result.add(builder.build()));
+        LOG.info("Manager passenger discovery completed agencies={}", result.size());
         return result;
     }
 
@@ -75,6 +82,7 @@ public class ManagerPassengerDiscoveryClient {
             ConfAppResp response = confAppService.token();
             return response == null ? null : response.getToken();
         } catch (RuntimeException exception) {
+            LOG.error("Manager technical authentication failed error={}", exception.getClass().getSimpleName());
             throw new ClientAppEnrollmentException(503, "PASSENGER_LOOKUP_UNAVAILABLE", true);
         }
     }
@@ -87,7 +95,14 @@ public class ManagerPassengerDiscoveryClient {
             }
             return objectMapper.readTree(response.getBody());
         } catch (ClientAppEnrollmentException exception) { throw exception;
+        } catch (HttpStatusCodeException exception) {
+            LOG.error("Manager request rejected uri={} status={}", uri.getPath(), exception.getStatusCode().value());
+            String code = exception.getStatusCode().value() == 401 || exception.getStatusCode().value() == 403
+                    ? "PASSENGER_LOOKUP_FORBIDDEN"
+                    : "PASSENGER_LOOKUP_UNAVAILABLE";
+            throw new ClientAppEnrollmentException(503, code, true);
         } catch (RestClientException | java.io.IOException exception) {
+            LOG.error("Manager request failed uri={} error={}", uri.getPath(), exception.getClass().getSimpleName());
             throw new ClientAppEnrollmentException(503, "PASSENGER_LOOKUP_UNAVAILABLE", true);
         }
     }
@@ -101,6 +116,7 @@ public class ManagerPassengerDiscoveryClient {
 
     private int intValue(JsonNode node, String... names) { for (String name : names) if (node.has(name) && node.get(name).canConvertToInt()) return node.get(name).asInt(); return 0; }
     private String text(JsonNode node, String... names) { for (String name : names) if (node.has(name) && !node.get(name).isNull()) return node.get(name).asText(); return null; }
+    private String cpfSuffix(String value) { String digits = value == null ? "" : value.replaceAll("\\D", ""); return digits.length() <= 4 ? "****" : "****" + digits.substring(digits.length() - 4); }
 
     public record Match(int agencyId, String agencyName, String logoUrl, int agencyStatus,
                         List<Integer> passengerIds, List<String> names, List<String> emails, List<String> phones) {}

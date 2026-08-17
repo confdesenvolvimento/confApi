@@ -214,7 +214,7 @@ public class AereoClientV2 {
 
             NotificacaoConfig notificacaoConfig =
                     new NotificacaoConfig(
-                            "Localizador: " + reservaAereoModel.getLocalizador() + " criado.",
+                            "Localizador: " + reservaAereoModel.getLocalizador() + " cancelado.",
                             "Aéreo",
                             "Reserva Aérea", EnumTipoNotificacao.reservaAereo.getValor(),
                             usuarioApi.consultaUsuarioByLogin(reservaAereoModel.getUsuarioCancelamento())

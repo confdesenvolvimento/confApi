@@ -8,7 +8,6 @@ import java.util.*;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
 @EqualsAndHashCode
 public class HotelAcomodacao {
     private String codgPlanoTarifa;

@@ -2,11 +2,13 @@ package com.confApi.model;
 
 import com.confApi.db.confManager.formaPagamento.FormaPagamento;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.io.Serializable;
 import java.util.List;
 
 @Data
+@EqualsAndHashCode(callSuper = false)
 public class FormaPagamentoModel  extends FormaPagamento implements Serializable {
 
     private List<BandeiraModel> bandeiras;
