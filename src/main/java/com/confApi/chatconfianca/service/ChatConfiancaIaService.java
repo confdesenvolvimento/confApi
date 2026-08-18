@@ -11,6 +11,7 @@ import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.chatgpt.dto.ChatMessageDTO;
 import com.confApi.chatgpt.dto.ChatRequestDTO;
 import com.confApi.chatgpt.dto.ChatResponseDTO;
+import com.confApi.chatgpt.dto.ChatActionDTO;
 import com.confApi.chatgpt.dto.ConversationRequestDTO;
 import com.confApi.chatgpt.profile.ProfilePromptRegistry;
 import com.confApi.chatgpt.service.ChatService;
@@ -24,8 +25,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.text.Normalizer;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -86,6 +89,8 @@ public class ChatConfiancaIaService {
 
         ChatResponseDTO respostaConfia = chamarConfia(request, sessao, historico);
         JsonNode payloadReservasRecentes = extrairPayloadReservasRecentes(respostaConfia);
+        Map<String, Object> payloadMelhoresTarifasAereas =
+                extrairPayloadMelhoresTarifasAereas(respostaConfia);
         String resposta = payloadReservasRecentes != null
                 ? respostaReservasRecentesOuFallback(payloadReservasRecentes)
                 : (respostaConfia == null || isBlank(respostaConfia.content())
@@ -115,7 +120,10 @@ public class ChatConfiancaIaService {
         Mensagem mensagemBot = chatConfiancaService.registrarMensagemBot(
                 conversa.getId(),
                 resposta,
-                metadadosRespostaConfia(response, payloadReservasRecentes)
+                metadadosRespostaConfia(
+                        response,
+                        payloadReservasRecentes,
+                        payloadMelhoresTarifasAereas)
         );
         response.setMensagemBot(mensagemBot);
 
@@ -193,15 +201,32 @@ public class ChatConfiancaIaService {
             metadata.put("codgAgencia", codgAgencia);
             metadata.put("codgUsuario", request.getCodgUsuario());
             metadata.put("origem", "chat-confianca");
+            Map<String, Object> contextoLocalTarifas =
+                    extrairContextoLocalMelhoresTarifas(historico);
+            if (!contextoLocalTarifas.isEmpty()) {
+                // Metadado consumido apenas pelo ChatService; nao integra o payload OpenAI.
+                metadata.put("contextoLocalMelhoresTarifasAereas", contextoLocalTarifas);
+            }
 
             ChatResponseDTO resposta = chatService.chat(
-                    new ChatRequestDTO(messages, null, false, tools(request.getMensagem()), metadata),
+                    new ChatRequestDTO(
+                            messages,
+                            null,
+                            false,
+                            tools(
+                                    request.getMensagem(),
+                                    messages,
+                                    !contextoLocalTarifas.isEmpty(),
+                                    Objects.toString(
+                                            contextoLocalTarifas.get("tipoViagem"), null)),
+                            metadata),
                     keywords,
                     null
             );
             if (resposta == null) {
                 return null;
             }
+            List<ChatActionDTO> todasAcoes = mesclarAcoes(actions, resposta.actions());
             return new ChatResponseDTO(
                     resposta.id(),
                     resposta.content(),
@@ -209,7 +234,7 @@ public class ChatConfiancaIaService {
                     resposta.audio(),
                     resposta.keywords(),
                     resposta.history(),
-                    actions
+                    todasAcoes
             );
         } catch (Exception ex) {
             return new ChatResponseDTO(
@@ -223,7 +248,19 @@ public class ChatConfiancaIaService {
         }
     }
 
-    private List<ToolDefinition> tools(String mensagem) throws IOException {
+    private List<ToolDefinition> tools(String mensagem,
+                                       List<ChatMessageDTO> contexto,
+                                       boolean possuiContextoEstruturadoTarifas,
+                                       String tipoViagemContexto) throws IOException {
+        if (chatService.isConsultaMelhorTarifaAereaIdaVolta(
+                mensagem, contexto, possuiContextoEstruturadoTarifas,
+                tipoViagemContexto)) {
+            return List.of(ToolSchemas.searchCheapestRoundtripAirfares());
+        }
+        if (chatService.isConsultaMelhorTarifaAerea(
+                mensagem, contexto, possuiContextoEstruturadoTarifas)) {
+            return List.of(ToolSchemas.searchCheapestAirfares());
+        }
         String tipoConsulta = chatService.identificarTipoConsultaViagem(mensagem);
         if ("aereo".equals(tipoConsulta)) {
             return List.of(ToolSchemas.searchFlights());
@@ -232,6 +269,30 @@ public class ChatConfiancaIaService {
             return List.of(ToolSchemas.searchHotels());
         }
         return List.of();
+    }
+
+    private List<ChatActionDTO> mesclarAcoes(List<ChatActionDTO> primeiras,
+                                             List<ChatActionDTO> adicionais) {
+        List<ChatActionDTO> resultado = new ArrayList<>();
+        if (primeiras != null) {
+            resultado.addAll(primeiras);
+        }
+        if (adicionais == null) {
+            return resultado;
+        }
+        for (ChatActionDTO action : adicionais) {
+            if (action == null) {
+                continue;
+            }
+            boolean duplicada = resultado.stream()
+                    .filter(Objects::nonNull)
+                    .anyMatch(item -> Objects.equals(item.code(), action.code())
+                            && Objects.equals(item.localizador(), action.localizador()));
+            if (!duplicada) {
+                resultado.add(action);
+            }
+        }
+        return resultado;
     }
 
     private List<ChatMessageDTO> converterHistorico(List<Mensagem> historico, Integer codgUsuario) {
@@ -243,6 +304,152 @@ public class ChatConfiancaIaService {
                 .filter(item -> !isBlank(item.getConteudo()))
                 .map(item -> new ChatMessageDTO(roleHistorico(item, codgUsuario), item.getConteudo()))
                 .collect(Collectors.toList());
+    }
+
+    private Map<String, Object> extrairContextoLocalMelhoresTarifas(
+            List<Mensagem> historico) {
+        if (historico == null || historico.isEmpty()) {
+            return Map.of();
+        }
+        for (int i = historico.size() - 1; i >= 0; i--) {
+            Mensagem mensagem = historico.get(i);
+            if (mensagem == null || mensagem.getRemetenteTipo() != RemetenteTipo.BOT) {
+                continue;
+            }
+            if (isBlank(mensagem.getConteudoJson())) {
+                return Map.of();
+            }
+            try {
+                JsonNode raiz = objectMapper.readTree(mensagem.getConteudoJson());
+                JsonNode payloadIdaVolta = raiz.path("melhoresTarifasAereasIdaVolta");
+                if (payloadIdaVolta.isObject()
+                        && "chat.melhores-tarifas-aereas-ida-volta.v1".equals(
+                                payloadIdaVolta.path("schema").asText())) {
+                    Map<String, Object> contexto = contextoIdaVolta(payloadIdaVolta);
+                    return contexto.containsKey("origem") && contexto.containsKey("destino")
+                            ? contexto
+                            : Map.of();
+                }
+                JsonNode payload = raiz.path("melhoresTarifasAereas");
+                if (!payload.isObject() || !"chat.melhores-tarifas-aereas.v1".equals(
+                        payload.path("schema").asText())) {
+                    return Map.of();
+                }
+                Map<String, Object> contexto = new LinkedHashMap<>();
+                contexto.put("tipoViagem", "somente_ida");
+                copiarIataContexto(payload, contexto, "origem");
+                copiarIataContexto(payload, contexto, "destino");
+                copiarCabineContexto(payload, contexto);
+                copiarDataContexto(payload, contexto, "periodoInicio");
+                copiarDataContexto(payload, contexto, "periodoFim");
+                copiarModoContexto(payload, contexto);
+                int quantidade = payload.path("quantidadeAplicada").asInt(0);
+                if (quantidade >= 1 && quantidade <= 10) {
+                    contexto.put("limiteAlternativas", quantidade);
+                }
+                if (contexto.containsKey("origem") && contexto.containsKey("destino")) {
+                    return contexto;
+                }
+            } catch (Exception ignored) {
+                // Historico legado ou malformado nao deve bloquear a conversa.
+            }
+            return Map.of();
+        }
+        return Map.of();
+    }
+
+    private Map<String, Object> contextoIdaVolta(JsonNode payload) {
+        Map<String, Object> contexto = new LinkedHashMap<>();
+        contexto.put("tipoViagem", "ida_volta");
+        copiarIataContexto(payload, contexto, "origem");
+        copiarIataContexto(payload, contexto, "destino");
+        copiarCabineContexto(payload, contexto);
+        copiarDataContexto(payload, contexto, "dataIdaInicio");
+        copiarDataContexto(payload, contexto, "dataIdaFim");
+        copiarDataContexto(payload, contexto, "dataVoltaInicio");
+        copiarDataContexto(payload, contexto, "dataVoltaFim");
+        if (contexto.containsKey("dataIdaInicio")) {
+            contexto.put("periodoInicio", contexto.get("dataIdaInicio"));
+        }
+        if (contexto.containsKey("dataIdaFim")) {
+            contexto.put("periodoFim", contexto.get("dataIdaFim"));
+        }
+        copiarInteiroContexto(payload, contexto, "duracaoMinimaDias", 1, 365);
+        copiarInteiroContexto(payload, contexto, "duracaoMaximaDias", 1, 365);
+        copiarInteiroContexto(payload, contexto, "quantidadeAplicada", 1, 10,
+                "limiteAlternativas");
+        String politica = payload.path("politicaCompanhia").asText("")
+                .toLowerCase(Locale.ROOT);
+        if (List.of("comparar", "mesma", "diferentes").contains(politica)) {
+            contexto.put("politicaCompanhia", politica);
+        }
+        String modo = payload.path("modoResposta").asText("").toLowerCase(Locale.ROOT);
+        if (List.of("resumo", "alternativas", "companhias").contains(modo)) {
+            contexto.put("modoResposta", modo);
+        }
+        return contexto;
+    }
+
+    private void copiarInteiroContexto(JsonNode payload,
+                                       Map<String, Object> contexto,
+                                       String campo,
+                                       int minimo,
+                                       int maximo) {
+        copiarInteiroContexto(payload, contexto, campo, minimo, maximo, campo);
+    }
+
+    private void copiarInteiroContexto(JsonNode payload,
+                                       Map<String, Object> contexto,
+                                       String campo,
+                                       int minimo,
+                                       int maximo,
+                                       String destino) {
+        if (!payload.path(campo).canConvertToInt()) {
+            return;
+        }
+        int valor = payload.path(campo).asInt();
+        if (valor >= minimo && valor <= maximo) {
+            contexto.put(destino, valor);
+        }
+    }
+
+    private void copiarIataContexto(JsonNode payload,
+                                    Map<String, Object> contexto,
+                                    String campo) {
+        String iata = payload.path(campo).asText("").trim().toUpperCase(Locale.ROOT);
+        if (iata.matches("[A-Z]{3}")) {
+            contexto.put(campo, iata);
+        }
+    }
+
+    private void copiarCabineContexto(JsonNode payload,
+                                      Map<String, Object> contexto) {
+        String cabine = payload.path("cabine").asText("").trim().toUpperCase(Locale.ROOT);
+        if (cabine.matches("[YWCF]")) {
+            contexto.put("cabine", cabine);
+        }
+    }
+
+    private void copiarDataContexto(JsonNode payload,
+                                    Map<String, Object> contexto,
+                                    String campo) {
+        String valor = payload.path(campo).asText(null);
+        if (valor == null) {
+            return;
+        }
+        try {
+            contexto.put(campo, LocalDate.parse(valor).toString());
+        } catch (RuntimeException ignored) {
+            // Ignora datas legadas invalidas.
+        }
+    }
+
+    private void copiarModoContexto(JsonNode payload,
+                                    Map<String, Object> contexto) {
+        String modo = payload.path("modoResposta").asText("").toLowerCase(Locale.ROOT);
+        if (List.of("resumo", "alternativas", "cabines", "mensal").contains(modo)) {
+            contexto.put("modoResposta", modo);
+        }
     }
 
     private String roleHistorico(Mensagem mensagem, Integer codgUsuario) {
@@ -435,6 +642,28 @@ public class ChatConfiancaIaService {
         return null;
     }
 
+    private Map<String, Object> extrairPayloadMelhoresTarifasAereas(
+            ChatResponseDTO response) {
+        if (response == null || response.toolCalls() == null) {
+            return null;
+        }
+        for (int i = response.toolCalls().size() - 1; i >= 0; i--) {
+            var toolCall = response.toolCalls().get(i);
+            if (toolCall == null
+                    || !("search_cheapest_airfares".equals(toolCall.name())
+                    || "search_cheapest_roundtrip_airfares".equals(toolCall.name()))
+                    || toolCall.arguments() == null) {
+                continue;
+            }
+            Object schema = toolCall.arguments().get("schema");
+            if ("chat.melhores-tarifas-aereas.v1".equals(schema)
+                    || "chat.melhores-tarifas-aereas-ida-volta.v1".equals(schema)) {
+                return new LinkedHashMap<>(toolCall.arguments());
+            }
+        }
+        return null;
+    }
+
     private String respostaReservasRecentesOuFallback(JsonNode payload) {
         if (payload == null) {
             return fallbackConfia();
@@ -458,8 +687,10 @@ public class ChatConfiancaIaService {
                 : "Encontrei " + quantidade + " reservas recentes da sua agencia.";
     }
 
-    private String metadadosRespostaConfia(ChatConfiancaIaResponse response,
-                                           JsonNode payloadReservasRecentes) {
+    private String metadadosRespostaConfia(
+            ChatConfiancaIaResponse response,
+            JsonNode payloadReservasRecentes,
+            Map<String, Object> payloadMelhoresTarifasAereas) {
         Map<String, Object> dados = new HashMap<>();
         dados.put("origem", "CONFIA");
         dados.put("sugerirAtendente", response.isSugerirAtendente());
@@ -469,6 +700,14 @@ public class ChatConfiancaIaService {
             dados.put("schema", payloadReservasRecentes.path("schema").asText());
             dados.put("reservasRecentes", objectMapper.convertValue(
                     payloadReservasRecentes.path("reservasRecentes"), Object.class));
+        }
+        if (payloadMelhoresTarifasAereas != null) {
+            Object schema = payloadMelhoresTarifasAereas.get("schema");
+            if ("chat.melhores-tarifas-aereas-ida-volta.v1".equals(schema)) {
+                dados.put("melhoresTarifasAereasIdaVolta", payloadMelhoresTarifasAereas);
+            } else {
+                dados.put("melhoresTarifasAereas", payloadMelhoresTarifasAereas);
+            }
         }
         try {
             return objectMapper.writeValueAsString(dados);

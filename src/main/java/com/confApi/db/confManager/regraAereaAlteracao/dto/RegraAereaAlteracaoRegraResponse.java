@@ -38,6 +38,7 @@ public class RegraAereaAlteracaoRegraResponse {
     private String baseCalculoMulta;
     private Boolean porPassageiro;
     private Boolean porTrecho;
+    private Boolean exigeRemarcacaoConjunta;
 
     private Boolean permiteNoShow;
     private Boolean exigeReemissao;

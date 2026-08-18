@@ -3,7 +3,13 @@ package com.confApi.chatconfianca.service;
 import com.confApi.aereo.AereoClient;
 import com.confApi.aereo.dto.ConsultarLocalizadorRequest;
 import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
+import com.confApi.aereo.dto.FamiliaPreco;
+import com.confApi.aereo.dto.Preco;
+import com.confApi.aereo.dto.PrecoTipo;
 import com.confApi.aereo.dto.Reserva;
+import com.confApi.aereo.dto.TarifarRequest;
+import com.confApi.aereo.dto.TarifarResponse;
+import com.confApi.aereo.dto.Trecho;
 import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
 import com.confApi.chatconfianca.dto.enums.StatusConversa;
 import com.confApi.chatconfianca.dto.model.Conversa;
@@ -16,6 +22,10 @@ import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoRespon
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.db.confManager.aeroporto.AeroportoService;
 import com.confApi.db.confManager.regraAereaAlteracao.RegraAereaAlteracaoManagerService;
+import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoCalculoResponse;
+import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaRequest;
+import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
+import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoRegraResponse;
 import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.exception.RegraDeNegocioException;
 import com.confApi.hub.aereo.dto.Bilhete;
@@ -545,6 +555,96 @@ class ChatConfiancaRemarcacaoServiceTest {
     }
 
     @Test
+    void deveAtivarFluxoConjuntoPelaConfiguracaoDaRegra() {
+        simulacao.setStatus("AGUARDANDO_TRECHO");
+        Passageiro passageiro = passageiro("Maria", "ADT", "001", "ATIVO");
+        Reserva reserva = new Reserva();
+        reserva.setLocalizador("ABC123");
+        reserva.setPassageiros(List.of(passageiro));
+        reserva.setViagens(List.of(
+                trechoReserva("CGB", "BSB", "1234"),
+                trechoReserva("BSB", "CGB", "5678")));
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(reserva));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+        when(aeroportoService.findIatasAeroportosNacionais())
+                .thenReturn(java.util.Set.of("CGB", "BSB"));
+        when(regraService.simular(any())).thenReturn(regraPermitida(true));
+
+        RemarcacaoRequest.SelecionarTrecho request = new RemarcacaoRequest.SelecionarTrecho();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setTrechoIndice(0);
+        RemarcacaoSimulacaoResponse response =
+                service.selecionarTrecho(SIMULACAO_ID, request);
+
+        assertTrue(response.isRemarcacaoConjunta());
+        assertEquals(2, response.getQuantidadeTrechos());
+        assertEquals("[0,1]", simulacao.getTrechosIndicesJson());
+        assertTrue(simulacao.getTrechosOriginaisJson().contains("5678"));
+    }
+
+    @Test
+    void deveExigirSelecaoDaVoltaAntesDeTarifarRemarcacaoConjunta() throws Exception {
+        prepararSimulacaoConjunta();
+
+        RemarcacaoSimulacaoResponse response =
+                service.simular(SIMULACAO_ID, simular(0, 0));
+
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.isRemarcacaoConjunta());
+        assertEquals(2, response.getQuantidadeTrechos());
+        assertEquals(2, response.getOrdemTrechoAtual());
+        assertEquals(Integer.valueOf(1), simulacao.getTrechoIndice());
+        assertTrue(simulacao.getOfertaSelecionadaJson().contains("\"trechoIndice\":0"));
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void deveTarifarIdaEVoltaEAplicarRegraEmDoisTrechos() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+
+        prepararTarifacaoPermitida();
+
+        RemarcacaoSimulacaoResponse response =
+                service.simular(SIMULACAO_ID, simular(0, 0));
+
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertEquals(2, response.getPrevia().getTrechosSelecionados().size());
+        ArgumentCaptor<TarifarRequest> tarifaRequest = ArgumentCaptor.forClass(TarifarRequest.class);
+        verify(aereoClient).tarifar(tarifaRequest.capture());
+        assertEquals("IDA-ID", tarifaRequest.getValue().getIdentificacaoViagem());
+        assertEquals("VOLTA-ID", tarifaRequest.getValue().getIdentificacaoDaViagemVolta());
+        assertEquals(List.of(1, 2), tarifaRequest.getValue().getClasses().stream()
+                .map(item -> item.getTrecho()).distinct().collect(java.util.stream.Collectors.toList()));
+
+        ArgumentCaptor<RegraAereaAlteracaoConsultaRequest> regraRequest =
+                ArgumentCaptor.forClass(RegraAereaAlteracaoConsultaRequest.class);
+        verify(regraService).simular(regraRequest.capture());
+        assertEquals(2, regraRequest.getValue().getQuantidadeTrechos());
+        assertFalse(regraRequest.getValue().getFamiliaTarifariaAlterada());
+    }
+
+    @Test
+    void deveInformarAoManagerQuandoAlgumTrechoMudaDeFamilia() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa(
+                        "VOLTA-ID", "BSB", "CGB", "5678", "PLUS", "Plus"))));
+        prepararTarifacaoPermitida();
+
+        service.simular(SIMULACAO_ID, simular(0, 0));
+
+        ArgumentCaptor<RegraAereaAlteracaoConsultaRequest> regraRequest =
+                ArgumentCaptor.forClass(RegraAereaAlteracaoConsultaRequest.class);
+        verify(regraService).simular(regraRequest.capture());
+        assertTrue(regraRequest.getValue().getFamiliaTarifariaAlterada());
+    }
+
+    @Test
     void deveRegistrarCartaoComoPreferenciaSemProcessarPagamento() throws Exception {
         prepararPrevia("437.17");
 
@@ -779,6 +879,133 @@ class ChatConfiancaRemarcacaoServiceTest {
         request.setLocalizador(localizador);
         request.setCodgAgenciaSessao(999);
         return request;
+    }
+
+    private RemarcacaoRequest.Simular simular(int opcao, int familia) {
+        RemarcacaoRequest.Simular request = new RemarcacaoRequest.Simular();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setOpcaoIndice(opcao);
+        request.setFamiliaIndice(familia);
+        return request;
+    }
+
+    private void prepararSimulacaoConjunta() throws Exception {
+        simulacao.setStatus("AGUARDANDO_OPCAO");
+        simulacao.setTrechoIndice(0);
+        simulacao.setOrigem("CGB");
+        simulacao.setDestino("BSB");
+        simulacao.setCompanhiaIata("G3");
+        simulacao.setTrechosIndicesJson("[0,1]");
+        simulacao.setPassageirosJson(
+                "{\"escopo\":\"INDIVIDUAL\",\"indices\":[0],\"passageiros\":[]}");
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("IDA-ID", "CGB", "BSB", "1234"))));
+
+        Passageiro passageiro = passageiro("Maria", "ADT", "001", "ATIVO");
+        Reserva reserva = new Reserva();
+        reserva.setLocalizador("ABC123");
+        reserva.setPassageiros(List.of(passageiro));
+        reserva.setViagens(List.of(
+                trechoReserva("CGB", "BSB", "1234"),
+                trechoReserva("BSB", "CGB", "5678")));
+        ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
+        hub.setReservas(List.of(reserva));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+    }
+
+    private Trecho opcaoPesquisa(String identificacao, String origem, String destino, String numero) {
+        return opcaoPesquisa(identificacao, origem, destino, numero, "LIGHT", "Light");
+    }
+
+    private Trecho opcaoPesquisa(
+            String identificacao,
+            String origem,
+            String destino,
+            String numero,
+            String familiaCodigo,
+            String familiaNome) {
+        Trecho trecho = new Trecho();
+        trecho.setSistema("Wooba");
+        trecho.setIdentificacaoDaViagem(identificacao);
+        trecho.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, "G3", "GOL"));
+        trecho.setOrigem(new com.confApi.hub.aereo.dto.Aeroporto(origem, origem));
+        trecho.setDestino(new com.confApi.hub.aereo.dto.Aeroporto(destino, destino));
+        Voo voo = voo(origem, destino, numero);
+        voo.setIdentificacaoDoVoo("VOO-" + numero);
+        trecho.setVoos(List.of(voo));
+        FamiliaPreco familia = new FamiliaPreco();
+        familia.setClasse("Y");
+        familia.setBaseTarifaria("YBR");
+        familia.setTipo(familiaNome);
+        familia.setFamilia(new com.confApi.aereo.dto.Familia(
+                familiaNome, familiaCodigo));
+        Preco preco = new Preco();
+        preco.setTotalGeral(360.0);
+        familia.setPreco(preco);
+        trecho.setFamilias(List.of(familia));
+        return trecho;
+    }
+
+    private TrechoReserva trechoReserva(String origem, String destino, String numero) {
+        TrechoReserva trecho = new TrechoReserva();
+        trecho.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, "G3", "GOL"));
+        trecho.setOrigem(new com.confApi.hub.aereo.dto.Aeroporto(origem, origem));
+        trecho.setDestino(new com.confApi.hub.aereo.dto.Aeroporto(destino, destino));
+        trecho.setVoos(List.of(voo(origem, destino, numero)));
+        return trecho;
+    }
+
+    private Voo voo(String origem, String destino, String numero) {
+        Voo voo = new Voo();
+        voo.setCiaMandatoria(new com.confApi.hub.aereo.dto.Companhia(1, "G3", "GOL"));
+        voo.setNumeroVoo(numero);
+        voo.setFamilia("Light");
+        voo.setFamiliaCodigo("LIGHT");
+        voo.setOrigem(new com.confApi.hub.aereo.dto.Aeroporto(origem, origem));
+        voo.setDestino(new com.confApi.hub.aereo.dto.Aeroporto(destino, destino));
+        voo.setDataPartida(java.util.Date.from(
+                LocalDateTime.now().plusDays(30).atZone(java.time.ZoneId.systemDefault()).toInstant()));
+        voo.setHoraPartida("10:30");
+        voo.setDataChegada(java.util.Date.from(
+                LocalDateTime.now().plusDays(30).plusHours(2)
+                        .atZone(java.time.ZoneId.systemDefault()).toInstant()));
+        voo.setHoraChegada("12:30");
+        return voo;
+    }
+
+    private void prepararTarifacaoPermitida() {
+        TarifarResponse tarifa = new TarifarResponse();
+        Preco preco = new Preco();
+        preco.setMoeda("BRL");
+        PrecoTipo adulto = new PrecoTipo();
+        adulto.setValorTarifa(300.0);
+        adulto.setValorTaxaEmbarque(60.0);
+        preco.setPrecoAdulto(adulto);
+        tarifa.setPreco(preco);
+        when(aereoClient.tarifar(any())).thenReturn(tarifa);
+        when(regraService.simular(any())).thenReturn(regraPermitida(false));
+    }
+
+    private RegraAereaAlteracaoConsultaResponse regraPermitida(boolean remarcacaoConjunta) {
+        RegraAereaAlteracaoRegraResponse regra = new RegraAereaAlteracaoRegraResponse();
+        regra.setId(10L);
+        regra.setPermiteAlteracao(true);
+        regra.setExigeRemarcacaoConjunta(remarcacaoConjunta);
+        RegraAereaAlteracaoCalculoResponse calculo = new RegraAereaAlteracaoCalculoResponse();
+        calculo.setCalculoCompleto(true);
+        calculo.setValorTarifaBase(BigDecimal.ZERO);
+        calculo.setValorNovaTarifa(new BigDecimal("300.00"));
+        calculo.setValorTaxasBase(BigDecimal.ZERO);
+        calculo.setValorNovasTaxas(new BigDecimal("60.00"));
+        calculo.setValorMulta(BigDecimal.ZERO);
+        calculo.setDiferencaTarifaria(BigDecimal.ZERO);
+        calculo.setTaxaServico(BigDecimal.ZERO);
+        calculo.setTotalPrevisto(BigDecimal.ZERO);
+        RegraAereaAlteracaoConsultaResponse response = new RegraAereaAlteracaoConsultaResponse();
+        response.setStatus("PERMITIDA");
+        response.setRegra(regra);
+        response.setCalculo(calculo);
+        return response;
     }
 
     private ReservasEmitidasRemarcacaoResponse respostaSelecao(
