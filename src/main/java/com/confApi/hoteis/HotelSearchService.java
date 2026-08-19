@@ -12,10 +12,20 @@ import com.confApi.hoteis.model.pesquisa.HotelPesquisaModelFront;
 import com.confApi.hoteis.model.reserva.CancelarReservaRequestHotelFront;
 import com.confApi.hoteis.model.reserva.HotelCarregaModelFront;
 import com.confApi.hoteis.model.reserva.ReservarRequestFront;
+import com.confApi.hub.enumerador.TipoLimite;
 import com.confApi.hub.hotel.dto.HotelReserva;
+import com.confApi.hub.limites.LimitesService;
+import com.confApi.hub.limites.dto.Disponibilidade;
+import com.confApi.hub.limites.dto.LimiteCreditoRQ;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -30,6 +40,9 @@ public class HotelSearchService {
 
     @Autowired
     private CacheHotelService cacheHotelService;
+
+    @Autowired
+    private LimitesService limitesService;
 
     public HotelSearchService(
             HotelClient hubClient,
@@ -80,6 +93,132 @@ public class HotelSearchService {
 
 
         return reserva;
+    }
+
+    public HotelReserva efetuarReserva2(ReservarRequestFront req, String idAgencia) {
+
+        validarLimiteFaturado(req, idAgencia);
+
+
+        // Só executa quando o limite faturado for suficiente
+        return hubClient.efetuarReserva(req);
+    }
+
+    private void validarLimiteFaturado(ReservarRequestFront req, String idAgencia) {
+
+        if (req == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Os dados da reserva não foram informados."
+            );
+        }
+
+        if (idAgencia == null || idAgencia.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "O identificador da agência não foi informado."
+            );
+        }
+
+        if (req.getAcomodacoes() == null
+                || req.getAcomodacoes().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "A reserva não possui acomodações."
+            );
+        }
+
+        BigDecimal valorReserva = req.getAcomodacoes()
+                .stream()
+                .filter(Objects::nonNull)
+                .map(acomodacao -> {
+                    if (acomodacao.getTarifaHotel() == null) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST,
+                                "A acomodação não possui tarifa."
+                        );
+                    }
+
+                    Double valorNet = acomodacao
+                            .getTarifaHotel()
+                            .getValorTotalEstadiaNet();
+
+                    if (valorNet == null
+                            || valorNet.isNaN()
+                            || valorNet.isInfinite()
+                            || valorNet <= 0) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST,
+                                "Acomodação sem valor total NET válido."
+                        );
+                    }
+
+                    return BigDecimal.valueOf(valorNet);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (valorReserva.signum() <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "O valor total da reserva deve ser maior que zero."
+            );
+        }
+
+        LimiteCreditoRQ limiteCreditoRQ = new LimiteCreditoRQ();
+        limiteCreditoRQ.setIdErp(idAgencia);
+
+        Disponibilidade disponibilidade = limitesService.consultaLimiteApi(limiteCreditoRQ);
+
+
+        if (disponibilidade == null
+                || disponibilidade.getLimiteCredito() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Não foi possível consultar o limite da agência."
+            );
+        }
+
+        String totalDisponivelFaturado = disponibilidade
+                .getLimiteCredito()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(limite ->
+                        TipoLimite.FATURADO
+                                == limite.getTipoLimite())
+                .map(limite -> limite.getTotalDisponivel())
+                .filter(Objects::nonNull)
+                .filter(total -> !total.isBlank())
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "A agência não possui limite do tipo FATURADO."
+                ));
+
+        BigDecimal limiteFaturado;
+
+        try {
+            limiteFaturado = new BigDecimal(
+                    totalDisponivelFaturado
+                            .trim()
+                            .replace(".", "")
+                            .replace(",", ".")
+            );
+        } catch (NumberFormatException exception) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "O total disponível do limite FATURADO é inválido.",
+                    exception
+            );
+        }
+
+        if (limiteFaturado.compareTo(valorReserva) < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    String.format(
+                            "Limite faturado insuficiente. "
+                    )
+            );
+        }
     }
 
     public HotelReserva carregarReserva(HotelCarregaModelFront req) {
