@@ -215,7 +215,7 @@ public class HotelSearchService {
             throw new ResponseStatusException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     String.format(
-                            "Limite faturado insuficiente. "
+                            "Não foi possível criar a reserva: limite faturado insuficiente."
                     )
             );
         }
