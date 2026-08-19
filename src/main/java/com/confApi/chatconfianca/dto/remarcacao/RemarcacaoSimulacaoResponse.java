@@ -21,6 +21,9 @@ public class RemarcacaoSimulacaoResponse {
     private LocalDateTime expiraEm;
     private boolean permiteEncaminhar;
     private boolean permiteSelecionarTodos;
+    private boolean remarcacaoConjunta;
+    private Integer ordemTrechoAtual;
+    private Integer quantidadeTrechos;
     private boolean exigeFormaPagamento;
     private List<Trecho> trechos = new ArrayList<>();
     private List<Passageiro> passageiros = new ArrayList<>();
@@ -119,6 +122,7 @@ public class RemarcacaoSimulacaoResponse {
     public static class Previa {
         private OpcaoVoo voo;
         private Familia familia;
+        private List<TrechoSelecionado> trechosSelecionados = new ArrayList<>();
         private String moeda = "BRL";
         private BigDecimal tarifaOriginal;
         private BigDecimal novaTarifa;
@@ -133,6 +137,13 @@ public class RemarcacaoSimulacaoResponse {
         private String regraResumo;
         private String aviso;
         private LocalDateTime validoAte;
+    }
+
+    @Data
+    public static class TrechoSelecionado {
+        private Integer trechoIndice;
+        private OpcaoVoo voo;
+        private Familia familia;
     }
 
     @Data

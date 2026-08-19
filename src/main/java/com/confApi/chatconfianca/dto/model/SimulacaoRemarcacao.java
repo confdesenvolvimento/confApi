@@ -21,6 +21,8 @@ public class SimulacaoRemarcacao {
     private String origem;
     private String destino;
     private String trechoOriginalJson;
+    private String trechosIndicesJson;
+    private String trechosOriginaisJson;
     private String passageirosJson;
     private String criteriosJson;
     private Long regraId;

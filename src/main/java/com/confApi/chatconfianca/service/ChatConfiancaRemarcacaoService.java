@@ -247,7 +247,7 @@ public class ChatConfiancaRemarcacaoService {
         simulacao = salvar(simulacao);
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
                 "Qual trecho deseja alterar?",
-                "Escolha um trecho futuro. Nesta primeira versao, simulamos um trecho por vez.");
+                "Escolha o trecho que deseja alterar. A regra da companhia indicara se os demais tambem precisam ser remarcados.");
         response.setTrechos(montarTrechos(reserva, indicesElegiveis, null));
         registrarEvento(simulacao, "REMARCACAO_AGUARDANDO_TRECHO",
                 "Aguardando escolha do trecho da reserva.", null);
@@ -283,7 +283,8 @@ public class ChatConfiancaRemarcacaoService {
 
         Reserva reserva = carregarReserva(simulacao, montarSessao(simulacao));
         TrechoReserva trecho = trecho(reserva, simulacao.getTrechoIndice());
-        List<RemarcacaoSimulacaoResponse.Passageiro> passageiros = montarPassageiros(reserva, trecho);
+        List<RemarcacaoSimulacaoResponse.Passageiro> passageiros = montarPassageiros(
+                reserva, indicesTrechosSimulacao(simulacao));
         String escopo = request.getEscopo().trim().toUpperCase(Locale.ROOT);
         List<Integer> indicesSelecionados = new ArrayList<>();
 
@@ -400,19 +401,49 @@ public class ChatConfiancaRemarcacaoService {
 
         SessaoChatResponse sessao = montarSessao(simulacao);
         Reserva reserva = carregarReserva(simulacao, sessao);
-        TrechoReserva original = trecho(reserva, simulacao.getTrechoIndice());
         List<Passageiro> passageirosSelecionados = passageirosSelecionados(reserva, simulacao);
         if (passageirosSelecionados.isEmpty()) {
             throw regra(409, "Selecione quem deseja remarcar antes de calcular a previa.");
         }
-        simulacao.setOfertaSelecionadaJson(null);
+
+        RemarcacaoSimulacaoResponse.OpcaoVoo opcaoView = montarOpcao(opcao, request.getOpcaoIndice());
+        RemarcacaoSimulacaoResponse.Familia familiaView = montarFamilia(familia, request.getFamiliaIndice());
+        SelecaoPersistida selecao = selecaoPersistida(simulacao);
+        adicionarSelecaoTrecho(selecao, simulacao.getTrechoIndice(), opcao, familia,
+                opcaoView, familiaView);
+        simulacao.setOfertaSelecionadaJson(json(selecao));
         simulacao.setCalculoJson(null);
         limparPreferenciaPagamento(simulacao);
+
+        List<Integer> indicesObrigatorios = indicesTrechosSimulacao(simulacao);
+        Integer proximoTrecho = proximoTrechoPendente(indicesObrigatorios, selecao);
+        if (proximoTrecho != null) {
+            TrechoReserva proximoOriginal = trecho(reserva, proximoTrecho);
+            ativarTrecho(simulacao, proximoOriginal, proximoTrecho);
+            simulacao.setCriteriosJson(null);
+            simulacao.setResultadosJson(null);
+            simulacao.setStatus(AGUARDANDO_CRITERIOS);
+            simulacao = salvar(simulacao);
+
+            RemarcacaoSimulacaoResponse response = respostaCriterios(simulacao, proximoOriginal,
+                    "A regra desta companhia exige remarcar tambem o outro trecho. "
+                            + "Voce pode escolher o mesmo dia e voo da reserva original.");
+            preencherPassageirosSelecionados(response, simulacao);
+            registrarEvento(simulacao, "REMARCACAO_CONJUNTA_PROXIMO_TRECHO",
+                    "Primeiro trecho selecionado; aguardando a selecao do trecho "
+                            + simulacao.getOrigem() + " - " + simulacao.getDestino() + ".",
+                    json(Map.of("trechoIndice", proximoTrecho,
+                            "trechosObrigatorios", indicesObrigatorios)));
+            registrarCard(simulacao, response);
+            return response;
+        }
+
         simulacao.setStatus(CALCULANDO);
         simulacao = salvar(simulacao);
 
         TarifarResponse tarifa = aereoClient.tarifar(
-                montarTarifacao(opcao, familia, passageirosSelecionados));
+                montarTarifacao(ordenarSelecoes(indicesObrigatorios, selecao),
+                        passageirosSelecionados));
         if (tarifa == null || tarifa.getException() != null || tarifa.getPreco() == null) {
             simulacao.setStatus(AGUARDANDO_OPCAO);
             simulacao = salvar(simulacao);
@@ -432,20 +463,21 @@ public class ChatConfiancaRemarcacaoService {
                             + "A equipe precisa cotar essa opcao manualmente.");
         }
 
-        RemarcacaoSimulacaoResponse.OpcaoVoo opcaoView = montarOpcao(opcao, request.getOpcaoIndice());
-        RemarcacaoSimulacaoResponse.Familia familiaView = montarFamilia(familia, request.getFamiliaIndice());
+        List<SelecaoTrechoPersistida> selecoesOrdenadas =
+                ordenarSelecoes(indicesObrigatorios, selecao);
+        SelecaoTrechoPersistida primeiraSelecao = selecoesOrdenadas.get(0);
+        selecao.setOpcao(primeiraSelecao.getOpcaoView());
+        selecao.setFamilia(primeiraSelecao.getFamiliaView());
+        TrechoReserva original = trecho(reserva, indicesObrigatorios.get(0));
         CalculoPassageiros calculoPassageiros = montarPreviaPassageiros(
                 reserva, original, tarifa.getPreco(), passageirosSelecionados,
-                opcaoView, familiaView, simulacao);
+                primeiraSelecao.getOpcaoView(), primeiraSelecao.getFamiliaView(),
+                selecoesOrdenadas, indicesObrigatorios, simulacao);
         if (!calculoPassageiros.isPermitido()) {
             simulacao.setRegraSnapshotJson(json(calculoPassageiros.getRegras()));
             return bloquear(simulacao, calculoPassageiros.getMotivo());
         }
         RemarcacaoSimulacaoResponse.Previa previa = calculoPassageiros.getPrevia();
-        SelecaoPersistida selecao = new SelecaoPersistida();
-        selecao.setOpcao(opcaoView);
-        selecao.setFamilia(familiaView);
-
         simulacao.setOfertaSelecionadaJson(json(selecao));
         simulacao.setCalculoJson(json(previa));
         simulacao.setRegraId(calculoPassageiros.getRegraId());
@@ -461,6 +493,8 @@ public class ChatConfiancaRemarcacaoService {
                 "Previa da alteracao",
                 "Confira os valores estimados. Um atendente precisa validar a disponibilidade e concluir a remarcacao.");
         response.setPrevia(previa);
+        preencherTrechoOriginal(response, simulacao);
+        preencherPassageirosSelecionados(response, simulacao);
         preencherPagamento(response, simulacao, previa, true);
         Map<String, Object> dadosEvento = new LinkedHashMap<>();
         dadosEvento.put("totalEstimado", previa.getTotalEstimado());
@@ -512,6 +546,8 @@ public class ChatConfiancaRemarcacaoService {
         response.setFormasPagamento(formas);
         response.setFormaPagamentoSelecionada(selecionada);
         response.setPermiteEncaminhar(chatService.departamentoRemarcacaoDisponivel(simulacao.getConversaId()));
+        preencherTrechoOriginal(response, simulacao);
+        preencherPassageirosSelecionados(response, simulacao);
 
         Map<String, Object> dadosEvento = new LinkedHashMap<>();
         dadosEvento.put("codigo", forma.getCodigo());
@@ -640,7 +676,7 @@ public class ChatConfiancaRemarcacaoService {
                 Reserva reserva = carregarReserva(simulacao, montarSessao(simulacao));
                 if (reserva != null && simulacao.getTrechoIndice() != null) {
                     passageiros = montarPassageiros(
-                            reserva, trecho(reserva, simulacao.getTrechoIndice()));
+                            reserva, indicesTrechosSimulacao(simulacao));
                 }
             }
             if (passageiros != null) {
@@ -659,7 +695,9 @@ public class ChatConfiancaRemarcacaoService {
             response.getCriterios().setPeriodo(criterios.getPeriodo());
             response.getCriterios().setSomenteDireto(Boolean.TRUE.equals(criterios.getSomenteDireto()));
         }
-        if (AGUARDANDO_CRITERIOS.equals(simulacao.getStatus())) {
+        if (AGUARDANDO_CRITERIOS.equals(simulacao.getStatus())
+                || PREVIA_DISPONIVEL.equals(simulacao.getStatus())
+                || ENCAMINHADO.equals(simulacao.getStatus())) {
             preencherTrechoOriginal(response, simulacao);
         }
         if (!vazio(simulacao.getResultadosJson())) {
@@ -671,6 +709,7 @@ public class ChatConfiancaRemarcacaoService {
             response.setPrevia(previa);
         }
         if (PREVIA_DISPONIVEL.equals(simulacao.getStatus())) {
+            preencherPassageirosSelecionados(response, simulacao);
             preencherPagamento(response, simulacao, previa, true);
         } else {
             response.setExigeFormaPagamento(false);
@@ -702,8 +741,23 @@ public class ChatConfiancaRemarcacaoService {
             return bloquear(simulacao, motivo, false);
         }
 
+        List<Integer> indicesObrigatorios = resolverIndicesTrechosObrigatorios(
+                reserva, indice, regra);
+        if (indicesObrigatorios.size() > 2) {
+            return bloquear(simulacao,
+                    "A regra exige remarcacao conjunta de mais de dois trechos. "
+                            + "A equipe precisa tratar este itinerario manualmente.",
+                    false);
+        }
+        simulacao.setTrechosIndicesJson(json(indicesObrigatorios));
+        simulacao.setTrechosOriginaisJson(json(indicesObrigatorios.stream()
+                .map(item -> trecho(reserva, item))
+                .collect(Collectors.toList())));
+
         Map<String, Object> dadosEvento = new LinkedHashMap<>();
         dadosEvento.put("trechoIndice", indice);
+        dadosEvento.put("trechosObrigatorios", indicesObrigatorios);
+        dadosEvento.put("remarcacaoConjunta", indicesObrigatorios.size() > 1);
         dadosEvento.put("regraId", simulacao.getRegraId());
         registrarEvento(simulacao, "REMARCACAO_TRECHO_SELECIONADO",
                 "Trecho " + simulacao.getOrigem() + " - " + simulacao.getDestino() + " selecionado.",
@@ -715,7 +769,8 @@ public class ChatConfiancaRemarcacaoService {
             SimulacaoRemarcacao simulacao,
             Reserva reserva,
             TrechoReserva trecho) {
-        List<RemarcacaoSimulacaoResponse.Passageiro> passageiros = montarPassageiros(reserva, trecho);
+        List<RemarcacaoSimulacaoResponse.Passageiro> passageiros = montarPassageiros(
+                reserva, indicesTrechosSimulacao(simulacao));
         List<RemarcacaoSimulacaoResponse.Passageiro> elegiveis = passageiros.stream()
                 .filter(RemarcacaoSimulacaoResponse.Passageiro::isElegivel)
                 .collect(Collectors.toList());
@@ -761,6 +816,16 @@ public class ChatConfiancaRemarcacaoService {
     private List<RemarcacaoSimulacaoResponse.Passageiro> montarPassageiros(
             Reserva reserva,
             TrechoReserva trecho) {
+        if (reserva == null || reserva.getViagens() == null) {
+            return new ArrayList<>();
+        }
+        int indice = reserva.getViagens().indexOf(trecho);
+        return montarPassageiros(reserva, indice < 0 ? List.of() : List.of(indice));
+    }
+
+    private List<RemarcacaoSimulacaoResponse.Passageiro> montarPassageiros(
+            Reserva reserva,
+            List<Integer> indicesTrechos) {
         List<RemarcacaoSimulacaoResponse.Passageiro> resultado = new ArrayList<>();
         if (reserva == null || reserva.getPassageiros() == null) {
             return resultado;
@@ -772,7 +837,16 @@ public class ChatConfiancaRemarcacaoService {
             dto.setIdentificador(identificadorPassageiro(origem, indice));
             dto.setNome(nomePassageiro(origem, indice));
             dto.setTipo(tipoPassageiro(origem));
-            String impedimento = impedimentoPassageiroTrecho(origem, trecho);
+            String impedimento = null;
+            for (Integer trechoIndice : indicesTrechos) {
+                TrechoReserva trechoObrigatorio = trecho(reserva, trechoIndice);
+                impedimento = impedimentoPassageiroTrecho(origem, trechoObrigatorio);
+                if (impedimento != null) {
+                    impedimento += " Trecho " + iata(trechoObrigatorio.getOrigem())
+                            + "-" + iata(trechoObrigatorio.getDestino()) + ".";
+                    break;
+                }
+            }
             dto.setElegivel(impedimento == null);
             dto.setMotivoInelegibilidade(impedimento);
             resultado.add(dto);
@@ -1360,24 +1434,48 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     private TarifarRequest montarTarifacao(
-            Trecho trecho,
-            FamiliaPreco familia,
+            List<SelecaoTrechoPersistida> selecoes,
             List<Passageiro> passageirosSelecionados) {
+        if (selecoes == null || selecoes.isEmpty()) {
+            throw regra(409, "Selecione os voos obrigatorios antes de calcular a previa.");
+        }
+        Trecho primeiroTrecho = selecoes.get(0).getOpcao();
         TarifarRequest request = new TarifarRequest();
-        request.setSistema(trecho.getSistema());
+        request.setSistema(primeiroTrecho.getSistema());
         request.setAgencia(null);
-        request.setIdentificacaoViagem(trecho.getIdentificacaoDaViagem());
         request.setClasses(new ArrayList<>());
-        for (Voo voo : trecho.getVoos()) {
-            ClasseSelecionada classe = new ClasseSelecionada();
-            classe.setBaseTarifaria(familia.getBaseTarifaria());
-            classe.setClasse(familia.getClasse());
-            classe.setFamilia(familia.getFamilia() == null ? null : familia.getFamilia().getCodgFamilia());
-            classe.setNumero(voo.getNumeroVoo());
-            classe.setIdentificacaoDeVoo(voo.getIdentificacaoDoVoo());
-            classe.setSistema(trecho.getSistema());
-            classe.setTrecho(1);
-            request.getClasses().add(classe);
+        for (int indiceSelecao = 0; indiceSelecao < selecoes.size(); indiceSelecao++) {
+            SelecaoTrechoPersistida selecao = selecoes.get(indiceSelecao);
+            Trecho trecho = selecao.getOpcao();
+            FamiliaPreco familia = selecao.getFamilia();
+            if (trecho == null || familia == null) {
+                throw regra(409, "A selecao dos trechos obrigatorios esta incompleta.");
+            }
+            if (!java.util.Objects.equals(primeiroTrecho.getSistema(), trecho.getSistema())) {
+                throw regra(409,
+                        "Os trechos obrigatorios foram encontrados em sistemas diferentes. "
+                                + "A equipe precisa concluir esta remarcacao manualmente.");
+            }
+            if (indiceSelecao == 0) {
+                request.setIdentificacaoViagem(trecho.getIdentificacaoDaViagem());
+            } else if (indiceSelecao == 1) {
+                request.setIdentificacaoDaViagemVolta(trecho.getIdentificacaoDaViagem());
+            } else {
+                throw regra(409,
+                        "A tarifacao automatica suporta no maximo dois trechos obrigatorios.");
+            }
+            for (Voo voo : trecho.getVoos()) {
+                ClasseSelecionada classe = new ClasseSelecionada();
+                classe.setBaseTarifaria(familia.getBaseTarifaria());
+                classe.setClasse(familia.getClasse());
+                classe.setFamilia(familia.getFamilia() == null
+                        ? null : familia.getFamilia().getCodgFamilia());
+                classe.setNumero(voo.getNumeroVoo());
+                classe.setIdentificacaoDeVoo(voo.getIdentificacaoDoVoo());
+                classe.setSistema(trecho.getSistema());
+                classe.setTrecho(indiceSelecao + 1);
+                request.getClasses().add(classe);
+            }
         }
         request.setPassageiroTipoQtds(new ArrayList<>());
         contagensPassageiros(passageirosSelecionados).forEach((tipo, quantidade) -> {
@@ -1404,7 +1502,8 @@ public class ChatConfiancaRemarcacaoService {
                 novasTaxas,
                 BigDecimal.ZERO,
                 decimal(reserva.getValorReserva() == null ? null : reserva.getValorReserva().getValor()),
-                Math.max(1, reserva.getPassageiros() == null ? 0 : reserva.getPassageiros().size()));
+                Math.max(1, reserva.getPassageiros() == null ? 0 : reserva.getPassageiros().size()),
+                1);
     }
 
     private RegraAereaAlteracaoConsultaRequest montarRequestRegra(
@@ -1416,7 +1515,8 @@ public class ChatConfiancaRemarcacaoService {
             BigDecimal novasTaxas,
             BigDecimal taxaServico,
             BigDecimal totalOriginal,
-            int quantidadePassageiros) {
+            int quantidadePassageiros,
+            int quantidadeTrechos) {
         Voo voo = primeiroVoo(trecho);
         RegraAereaAlteracaoConsultaRequest request = new RegraAereaAlteracaoConsultaRequest();
         request.setCompanhia(companhiaTrecho(trecho));
@@ -1434,7 +1534,7 @@ public class ChatConfiancaRemarcacaoService {
         request.setValorTotalReserva(totalOriginal);
         request.setDataEmissaoReserva(reserva == null ? null : reserva.getDataEmissao());
         request.setQuantidadePassageiros(Math.max(1, quantidadePassageiros));
-        request.setQuantidadeTrechos(1);
+        request.setQuantidadeTrechos(Math.max(1, quantidadeTrechos));
         request.setExigirRegraAprovada(true);
         request.setValidadeMaximaDias(90);
         return request;
@@ -1447,11 +1547,21 @@ public class ChatConfiancaRemarcacaoService {
             List<Passageiro> passageirosSelecionados,
             RemarcacaoSimulacaoResponse.OpcaoVoo opcao,
             RemarcacaoSimulacaoResponse.Familia familia,
+            List<SelecaoTrechoPersistida> selecoes,
+            List<Integer> indicesTrechos,
             SimulacaoRemarcacao simulacao) {
         CalculoPassageiros resultado = new CalculoPassageiros();
         RemarcacaoSimulacaoResponse.Previa previa = new RemarcacaoSimulacaoResponse.Previa();
         previa.setVoo(opcao);
         previa.setFamilia(familia);
+        for (SelecaoTrechoPersistida selecao : selecoes) {
+            RemarcacaoSimulacaoResponse.TrechoSelecionado item =
+                    new RemarcacaoSimulacaoResponse.TrechoSelecionado();
+            item.setTrechoIndice(selecao.getTrechoIndice());
+            item.setVoo(selecao.getOpcaoView());
+            item.setFamilia(selecao.getFamiliaView());
+            previa.getTrechosSelecionados().add(item);
+        }
         previa.setMoeda(vazio(preco.getMoeda()) ? "BRL" : preco.getMoeda());
         previa.setTarifaOriginal(BigDecimal.ZERO);
         previa.setNovaTarifa(BigDecimal.ZERO);
@@ -1465,7 +1575,10 @@ public class ChatConfiancaRemarcacaoService {
 
         boolean houveRateioOriginal = false;
         String resumoRegra = null;
-        String familiaOriginal = familiaOriginal(trecho);
+        String familiaOriginal = familiasOriginais(reserva, indicesTrechos);
+        Boolean familiaTarifariaAlterada = indicesTrechos.size() > 1
+                ? familiaTarifariaAlterada(reserva, indicesTrechos, selecoes)
+                : null;
         Map<Integer, List<BigDecimal>> taxasEmbarquePorTrecho =
                 carregarTaxasEmbarquePorTrecho(reserva);
         Map<String, Integer> quantidadesPorTipo = contagensPassageiros(passageirosSelecionados);
@@ -1482,12 +1595,14 @@ public class ChatConfiancaRemarcacaoService {
                     quantidadeTipo, ComponentePreco.TARIFA);
             BigDecimal novaTaxaEmbarqueTrecho = novasTaxasPassageiro(
                     novoPreco, quantidadeTipo, normalizacaoPreco);
-            BigDecimal novaTaxaEmbarque = novaTaxaEmbarqueComTrechos(
-                    novaTaxaEmbarqueTrecho,
-                    originais,
-                    taxasEmbarquePorTrecho.get(indice),
-                    simulacao.getTrechoIndice(),
-                    reserva.getViagens() == null ? 0 : reserva.getViagens().size());
+            BigDecimal novaTaxaEmbarque = indicesTrechos.size() > 1
+                    ? novaTaxaEmbarqueTrecho
+                    : novaTaxaEmbarqueComTrechos(
+                            novaTaxaEmbarqueTrecho,
+                            originais,
+                            taxasEmbarquePorTrecho.get(indice),
+                            simulacao.getTrechoIndice(),
+                            reserva.getViagens() == null ? 0 : reserva.getViagens().size());
             // O valor enviado ao Manager representa somente o acréscimo de DU/taxas
             // de serviço. A tarifa original já pode conter DU, RC e RAV.
             BigDecimal taxaServicoNova = novaTaxaServicoPassageiro(
@@ -1509,7 +1624,9 @@ public class ChatConfiancaRemarcacaoService {
                     novaTaxaEmbarque,
                     diferencaTaxaServico,
                     originais.getTotal(),
-                    1);
+                    1,
+                    indicesTrechos.size());
+            regraRequest.setFamiliaTarifariaAlterada(familiaTarifariaAlterada);
             RegraAereaAlteracaoConsultaResponse regra = regraService.simular(regraRequest);
             resultado.getRegras().add(regra);
             RegraAereaAlteracaoCalculoResponse calculo = regra == null ? null : regra.getCalculo();
@@ -1567,7 +1684,11 @@ public class ChatConfiancaRemarcacaoService {
 
         previa.setTotalSelecionado(previa.getTotalEstimado());
         previa.setRegraResumo(resumoRegra);
-        previa.setAviso(houveRateioOriginal
+        previa.setAviso(indicesTrechos.size() > 1
+                ? "A regra da companhia foi aplicada conjuntamente aos "
+                        + indicesTrechos.size() + " trechos selecionados. "
+                        + "Esta e uma estimativa; valores e assentos dependem de validacao final."
+                : houveRateioOriginal
                 ? "Estimativa por passageiro com valores originais rateados entre os trechos. "
                         + "A companhia e o atendente devem validar valores e assentos antes da conclusao."
                 : "Esta e uma estimativa por passageiro, nao uma alteracao concluida. "
@@ -1729,6 +1850,11 @@ public class ChatConfiancaRemarcacaoService {
         response.setMensagem(mensagem);
         response.setMotivoBloqueio(simulacao.getMotivoBloqueio());
         response.setExpiraEm(simulacao.getExpiraEm());
+        List<Integer> indices = indicesTrechosSimulacao(simulacao);
+        response.setRemarcacaoConjunta(indices.size() > 1);
+        response.setQuantidadeTrechos(indices.size());
+        int ordemAtual = indices.indexOf(simulacao.getTrechoIndice());
+        response.setOrdemTrechoAtual(ordemAtual < 0 ? null : ordemAtual + 1);
         return response;
     }
 
@@ -1771,6 +1897,19 @@ public class ChatConfiancaRemarcacaoService {
             return;
         }
         try {
+            if (!vazio(simulacao.getTrechosOriginaisJson())) {
+                List<TrechoReserva> originais = mapper.readValue(
+                        simulacao.getTrechosOriginaisJson(),
+                        new TypeReference<List<TrechoReserva>>() { });
+                List<Integer> indices = indicesTrechosSimulacao(simulacao);
+                List<RemarcacaoSimulacaoResponse.Trecho> trechos = new ArrayList<>();
+                for (int i = 0; i < originais.size(); i++) {
+                    Integer indice = i < indices.size() ? indices.get(i) : i;
+                    trechos.add(montarTrecho(originais.get(i), indice, true));
+                }
+                response.setTrechos(trechos);
+                return;
+            }
             TrechoReserva original = ler(simulacao.getTrechoOriginalJson(), TrechoReserva.class);
             response.setTrechos(List.of(
                     montarTrecho(original, simulacao.getTrechoIndice(), true)));
@@ -1780,6 +1919,22 @@ public class ChatConfiancaRemarcacaoService {
                             + simulacao.getId() + ". O encaminhamento sera mantido.",
                     ex);
         }
+    }
+
+    private void preencherPassageirosSelecionados(
+            RemarcacaoSimulacaoResponse response,
+            SimulacaoRemarcacao simulacao) {
+        if (response == null || simulacao == null) {
+            return;
+        }
+        PassageirosPersistidos persistidos = selecaoPassageiros(simulacao);
+        List<RemarcacaoSimulacaoResponse.Passageiro> passageiros = persistidos.getPassageiros();
+        if (passageiros == null || passageiros.isEmpty()) {
+            return;
+        }
+        marcarPassageirosSelecionados(passageiros, persistidos.getIndices());
+        response.setPassageiros(passageiros);
+        response.setPermiteSelecionarTodos(permiteSelecionarTodos(passageiros));
     }
 
     private List<RemarcacaoSimulacaoResponse.FormaPagamento> montarFormasPagamento(
@@ -2139,6 +2294,129 @@ public class ChatConfiancaRemarcacaoService {
         }
         if (resultado.values().stream().mapToInt(Integer::intValue).sum() == 0) resultado.put("ADT", 1);
         return resultado;
+    }
+
+    private List<Integer> resolverIndicesTrechosObrigatorios(
+            Reserva reserva,
+            Integer indiceSelecionado,
+            RegraAereaAlteracaoConsultaResponse regra) {
+        if (regra == null || regra.getRegra() == null
+                || !Boolean.TRUE.equals(regra.getRegra().getExigeRemarcacaoConjunta())) {
+            return List.of(indiceSelecionado);
+        }
+        TrechoReserva selecionado = trecho(reserva, indiceSelecionado);
+        String companhia = companhiaCanonica(companhiaTrecho(selecionado));
+        if (vazio(companhia)) {
+            return List.of(indiceSelecionado);
+        }
+        List<Integer> elegiveis = indicesTrechosElegiveis(reserva);
+        List<Integer> resultado = elegiveis.stream()
+                .filter(indice -> companhia.equals(companhiaCanonica(
+                        companhiaTrecho(trecho(reserva, indice)))))
+                .sorted()
+                .collect(Collectors.toList());
+        if (!resultado.contains(indiceSelecionado)) {
+            resultado.add(indiceSelecionado);
+            Collections.sort(resultado);
+        }
+        return resultado.isEmpty() ? List.of(indiceSelecionado) : resultado;
+    }
+
+    private List<Integer> indicesTrechosSimulacao(SimulacaoRemarcacao simulacao) {
+        if (simulacao == null) {
+            return new ArrayList<>();
+        }
+        if (!vazio(simulacao.getTrechosIndicesJson())) {
+            try {
+                return mapper.readValue(
+                        simulacao.getTrechosIndicesJson(),
+                        new TypeReference<List<Integer>>() { });
+            } catch (JsonProcessingException ex) {
+                throw regra(500, "Os trechos obrigatorios salvos na simulacao estao invalidos.");
+            }
+        }
+        return simulacao.getTrechoIndice() == null
+                ? new ArrayList<>() : new ArrayList<>(List.of(simulacao.getTrechoIndice()));
+    }
+
+    private SelecaoPersistida selecaoPersistida(SimulacaoRemarcacao simulacao) {
+        if (simulacao == null || vazio(simulacao.getOfertaSelecionadaJson())) {
+            return new SelecaoPersistida();
+        }
+        SelecaoPersistida selecao = ler(
+                simulacao.getOfertaSelecionadaJson(), SelecaoPersistida.class);
+        if (selecao.getTrechos() == null) {
+            selecao.setTrechos(new ArrayList<>());
+        }
+        return selecao;
+    }
+
+    private void adicionarSelecaoTrecho(
+            SelecaoPersistida selecao,
+            Integer trechoIndice,
+            Trecho opcao,
+            FamiliaPreco familia,
+            RemarcacaoSimulacaoResponse.OpcaoVoo opcaoView,
+            RemarcacaoSimulacaoResponse.Familia familiaView) {
+        if (selecao.getTrechos() == null) {
+            selecao.setTrechos(new ArrayList<>());
+        }
+        selecao.getTrechos().removeIf(item -> java.util.Objects.equals(
+                item.getTrechoIndice(), trechoIndice));
+        SelecaoTrechoPersistida item = new SelecaoTrechoPersistida();
+        item.setTrechoIndice(trechoIndice);
+        item.setOpcao(opcao);
+        item.setFamilia(familia);
+        item.setOpcaoView(opcaoView);
+        item.setFamiliaView(familiaView);
+        selecao.getTrechos().add(item);
+        if (selecao.getOpcao() == null) {
+            selecao.setOpcao(opcaoView);
+            selecao.setFamilia(familiaView);
+        }
+    }
+
+    private Integer proximoTrechoPendente(
+            List<Integer> indicesObrigatorios,
+            SelecaoPersistida selecao) {
+        Set<Integer> selecionados = selecao.getTrechos().stream()
+                .map(SelecaoTrechoPersistida::getTrechoIndice)
+                .collect(Collectors.toSet());
+        return indicesObrigatorios.stream()
+                .filter(indice -> !selecionados.contains(indice))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private List<SelecaoTrechoPersistida> ordenarSelecoes(
+            List<Integer> indicesObrigatorios,
+            SelecaoPersistida selecao) {
+        Map<Integer, SelecaoTrechoPersistida> porIndice = selecao.getTrechos().stream()
+                .collect(Collectors.toMap(
+                        SelecaoTrechoPersistida::getTrechoIndice,
+                        item -> item,
+                        (primeiro, segundo) -> segundo,
+                        LinkedHashMap::new));
+        List<SelecaoTrechoPersistida> resultado = new ArrayList<>();
+        for (Integer indice : indicesObrigatorios) {
+            SelecaoTrechoPersistida item = porIndice.get(indice);
+            if (item == null) {
+                throw regra(409, "Selecione todos os trechos obrigatorios antes de calcular a previa.");
+            }
+            resultado.add(item);
+        }
+        return resultado;
+    }
+
+    private void ativarTrecho(
+            SimulacaoRemarcacao simulacao,
+            TrechoReserva trecho,
+            Integer indice) {
+        simulacao.setTrechoIndice(indice);
+        simulacao.setOrigem(iata(trecho.getOrigem()));
+        simulacao.setDestino(iata(trecho.getDestino()));
+        simulacao.setCompanhiaIata(companhiaTrecho(trecho));
+        simulacao.setTrechoOriginalJson(json(trecho));
     }
 
     private BigDecimal valorTarifaOriginal(Reserva reserva) {
@@ -2574,6 +2852,71 @@ public class ChatConfiancaRemarcacaoService {
         return primeiro(voo.getFamilia(), voo.getFamiliaCodigo(), voo.getBaseTarifaria());
     }
 
+    private String familiasOriginais(Reserva reserva, List<Integer> indicesTrechos) {
+        if (indicesTrechos == null || indicesTrechos.isEmpty()) {
+            return null;
+        }
+        return indicesTrechos.stream()
+                .map(indice -> familiaOriginal(trecho(reserva, indice)))
+                .filter(familia -> !vazio(familia))
+                .distinct()
+                .collect(Collectors.joining(" / "));
+    }
+
+    private boolean familiaTarifariaAlterada(
+            Reserva reserva,
+            List<Integer> indicesTrechos,
+            List<SelecaoTrechoPersistida> selecoes) {
+        if (reserva == null || indicesTrechos == null || indicesTrechos.isEmpty()
+                || selecoes == null || selecoes.isEmpty()) {
+            return true;
+        }
+        Map<Integer, SelecaoTrechoPersistida> selecoesPorTrecho = selecoes.stream()
+                .filter(java.util.Objects::nonNull)
+                .filter(item -> item.getTrechoIndice() != null)
+                .collect(Collectors.toMap(
+                        SelecaoTrechoPersistida::getTrechoIndice,
+                        item -> item,
+                        (primeiro, segundo) -> segundo));
+        for (Integer indice : indicesTrechos) {
+            SelecaoTrechoPersistida selecao = selecoesPorTrecho.get(indice);
+            if (selecao == null
+                    || !mesmaFamiliaTarifaria(
+                            trecho(reserva, indice), selecao.getFamilia())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean mesmaFamiliaTarifaria(
+            TrechoReserva original,
+            FamiliaPreco novaFamilia) {
+        Voo vooOriginal = primeiroVoo(original);
+        if (vooOriginal == null || novaFamilia == null) {
+            return false;
+        }
+        String codigoOriginal = chaveFamilia(vooOriginal.getFamiliaCodigo());
+        String codigoNovo = chaveFamilia(novaFamilia.getFamilia() == null
+                ? null : novaFamilia.getFamilia().getCodgFamilia());
+        if (!vazio(codigoOriginal) && !vazio(codigoNovo)) {
+            return codigoOriginal.equals(codigoNovo);
+        }
+
+        String nomeOriginal = chaveFamilia(primeiro(
+                vooOriginal.getFamilia(), vooOriginal.getFamiliaCodigo()));
+        String nomeNovo = chaveFamilia(novaFamilia.getFamilia() == null
+                ? novaFamilia.getTipo()
+                : primeiro(novaFamilia.getFamilia().getDescricaoFamilia(),
+                        novaFamilia.getTipo()));
+        return !vazio(nomeOriginal) && !vazio(nomeNovo)
+                && nomeOriginal.equals(nomeNovo);
+    }
+
+    private String chaveFamilia(String valor) {
+        return normalizar(valor).replaceAll("[^a-z0-9]", "");
+    }
+
     private BigDecimal somar(BigDecimal primeiro, BigDecimal segundo) {
         return zero(primeiro).add(zero(segundo)).setScale(2, RoundingMode.HALF_UP);
     }
@@ -2884,6 +3227,16 @@ public class ChatConfiancaRemarcacaoService {
     private static class SelecaoPersistida {
         private RemarcacaoSimulacaoResponse.OpcaoVoo opcao;
         private RemarcacaoSimulacaoResponse.Familia familia;
+        private List<SelecaoTrechoPersistida> trechos = new ArrayList<>();
+    }
+
+    @Data
+    private static class SelecaoTrechoPersistida {
+        private Integer trechoIndice;
+        private Trecho opcao;
+        private FamiliaPreco familia;
+        private RemarcacaoSimulacaoResponse.OpcaoVoo opcaoView;
+        private RemarcacaoSimulacaoResponse.Familia familiaView;
     }
 
     @Data

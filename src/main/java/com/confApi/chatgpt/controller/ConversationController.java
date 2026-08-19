@@ -62,12 +62,19 @@ public class ConversationController {
 
         List<ToolDefinition> tools = new ArrayList<>();
 
-        String tipoConsulta = chatService.identificarTipoConsultaViagem(req.input());
-        //Aqui é para identificar se é busca de aereo ou hotel
-        if ("aereo".equals(tipoConsulta)) {
-            tools.add(ToolSchemas.searchFlights());
-        } else if ("hotel".equals(tipoConsulta)) {
-            tools.add(ToolSchemas.searchHotels());
+        if (chatService.isConsultaMelhorTarifaAereaIdaVolta(
+                req.input(), messages, false)) {
+            tools.add(ToolSchemas.searchCheapestRoundtripAirfares());
+        } else if (chatService.isConsultaMelhorTarifaAerea(req.input(), messages)) {
+            tools.add(ToolSchemas.searchCheapestAirfares());
+        } else {
+            String tipoConsulta = chatService.identificarTipoConsultaViagem(req.input());
+            //Aqui é para identificar se é busca de aereo ou hotel
+            if ("aereo".equals(tipoConsulta)) {
+                tools.add(ToolSchemas.searchFlights());
+            } else if ("hotel".equals(tipoConsulta)) {
+                tools.add(ToolSchemas.searchHotels());
+            }
         }
 
         ChatRequestDTO chatReq = new ChatRequestDTO(
@@ -89,6 +96,14 @@ public class ConversationController {
             }
         }
 
+        List<ChatActionDTO> todasAcoes = new ArrayList<>(actions);
+        if (charResp.actions() != null) {
+            charResp.actions().stream()
+                    .filter(Objects::nonNull)
+                    .filter(action -> !todasAcoes.contains(action))
+                    .forEach(todasAcoes::add);
+        }
+
         return new ChatResponseDTO(
                 charResp.id(),
                 charResp.content(),
@@ -96,7 +111,7 @@ public class ConversationController {
                 charResp.audio(),
                 charResp.keywords(),
                 charResp.history(),
-                actions
+                todasAcoes
         );
     }
 

@@ -1,5 +1,8 @@
 package com.confApi.chatgpt.tools;
 
+import com.confApi.cacheHotel.MelhoresTarifasAereasService;
+import com.confApi.cacheHotel.MelhoresTarifasAereasIdaVoltaService;
+import com.confApi.exception.RegraDeNegocioException;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -8,12 +11,65 @@ import java.util.Map;
 
 @Component
 public class ToolRouter {
+    private final MelhoresTarifasAereasService melhoresTarifasAereasService;
+    private final MelhoresTarifasAereasIdaVoltaService melhoresTarifasAereasIdaVoltaService;
+
+    public ToolRouter(MelhoresTarifasAereasService melhoresTarifasAereasService,
+                      MelhoresTarifasAereasIdaVoltaService melhoresTarifasAereasIdaVoltaService) {
+        this.melhoresTarifasAereasService = melhoresTarifasAereasService;
+        this.melhoresTarifasAereasIdaVoltaService = melhoresTarifasAereasIdaVoltaService;
+    }
+
     public Map<String,Object> execute(String name, Map<String,Object> args) {
         return switch (name) {
             case "search_flights" -> buildFlightResponse(args);
             case "search_hotels" -> buildHotelResponse(args);
+            case "search_cheapest_airfares" -> consultarMelhoresTarifas(args);
+            case "search_cheapest_roundtrip_airfares" -> consultarMelhoresTarifasIdaVolta(args);
             default -> Map.of("status","ERROR","message","tool not found");
         };
+    }
+
+    private Map<String, Object> consultarMelhoresTarifasIdaVolta(Map<String, Object> args) {
+        try {
+            return melhoresTarifasAereasIdaVoltaService.consultar(args);
+        } catch (IllegalArgumentException | RegraDeNegocioException ex) {
+            return Map.of(
+                    "status", "ERROR",
+                    "tipo", "melhores_tarifas_aereas_ida_volta",
+                    "mensagem", ex.getMessage(),
+                    "actions", List.of());
+        } catch (RuntimeException ex) {
+            return Map.of(
+                    "status", "ERROR",
+                    "tipo", "melhores_tarifas_aereas_ida_volta",
+                    "mensagem", "Nao foi possivel consultar as tarifas aereas de ida e volta agora.",
+                    "actions", List.of());
+        }
+    }
+
+    private Map<String, Object> consultarMelhoresTarifas(Map<String, Object> args) {
+        try {
+            return melhoresTarifasAereasService.consultar(args);
+        } catch (IllegalArgumentException ex) {
+            return Map.of(
+                    "status", "ERROR",
+                    "tipo", "melhores_tarifas_aereas",
+                    "mensagem", ex.getMessage(),
+                    "actions", List.of());
+        } catch (RegraDeNegocioException ex) {
+            return Map.of(
+                    "status", "ERROR",
+                    "tipo", "melhores_tarifas_aereas",
+                    "mensagem", ex.getMessage(),
+                    "actions", List.of());
+        } catch (RuntimeException ex) {
+            return Map.of(
+                    "status", "ERROR",
+                    "tipo", "melhores_tarifas_aereas",
+                    "mensagem", "Nao foi possivel consultar as tarifas aereas agora.",
+                    "actions", List.of());
+        }
     }
 
     private Map<String, Object> buildFlightResponse(Map<String, Object> args) {
@@ -29,6 +85,9 @@ public class ToolRouter {
         resp.put("qtdADT", args.get("adt") == null ? 1 : args.get("adt"));
         resp.put("qtdCHD", 0);
         resp.put("qtdINF", 0);
+        if (args.get("cabine") != null) {
+            resp.put("cabine", args.get("cabine"));
+        }
         if (args.get("tipoConsulta") != null) {
             resp.put("tipoConsulta", args.get("tipoConsulta"));
         }

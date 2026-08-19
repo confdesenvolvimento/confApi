@@ -28,6 +28,7 @@ public class RegraAereaAlteracaoConsultaRequest {
 
     private Integer quantidadePassageiros;
     private Integer quantidadeTrechos;
+    private Boolean familiaTarifariaAlterada;
 
     private Boolean exigirRegraAprovada;
     private Integer validadeMaximaDias;

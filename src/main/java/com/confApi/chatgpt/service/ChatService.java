@@ -58,6 +58,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.text.Normalizer;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -98,7 +99,7 @@ public class ChatService {
 
     public ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords, List<ChatMessageDTO> history) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
-        ObjectMapper om = new ObjectMapper();
+        ObjectMapper om = new ObjectMapper().findAndRegisterModules();
 
         // 0) Normaliza e aplica trim no histórico
         List<ChatMessageDTO> baseHistory = (history != null) ? history : new ArrayList<>();
@@ -130,9 +131,18 @@ public class ChatService {
                             "parameters", td.jsonSchema()
                     ))).toList();
         }
+        String ferramentaMelhoresTarifas = req.tools() != null
+                && req.tools().size() == 1
+                && isFerramentaMelhoresTarifas(req.tools().get(0).name())
+                && (ultimaMensagemTemRotaDeTarifa(req.messages())
+                || contextoLocalTarifasTemRota(req.metadata()))
+                ? req.tools().get(0).name()
+                : null;
+        boolean forcarConsultaMelhoresTarifas = ferramentaMelhoresTarifas != null;
 
         // 2) Loop de execução até não haver mais tool_calls
         List<ToolCallDTO> collectedToolCalls = new ArrayList<>();
+        List<ChatActionDTO> toolActions = new ArrayList<>();
         String assistantContentFinal = null;
         String completionId = null;
 
@@ -140,7 +150,17 @@ public class ChatService {
             Map<String, Object> payload = new HashMap<>();
             payload.put("model", model);
             payload.put("messages", workingMessages);
-            if (toolsSpec != null) payload.put("tools", toolsSpec);
+            if (toolsSpec != null) {
+                payload.put("tools", toolsSpec);
+                if (forcarConsultaMelhoresTarifas) {
+                    payload.put("tool_choice", collectedToolCalls.isEmpty()
+                            ? Map.of(
+                                    "type", "function",
+                                    "function", Map.of(
+                                            "name", ferramentaMelhoresTarifas))
+                            : "none");
+                }
+            }
 
             Request request = new Request.Builder()
                     .url(props.getBaseUrl() + "/v1/chat/completions")
@@ -163,6 +183,20 @@ public class ChatService {
                 boolean hasToolCalls = tc.isArray() && tc.size() > 0;
 
                 if (hasToolCalls) {
+                    boolean executouMelhoresTarifas = false;
+                    Map<String, Object> assistantToolMessage = new LinkedHashMap<>();
+                    assistantToolMessage.put("role", "assistant");
+                    if (assistantContent != null) {
+                        assistantToolMessage.put("content", assistantContent);
+                    }
+                    assistantToolMessage.put(
+                            "tool_calls",
+                            om.convertValue(
+                                    tc,
+                                    new TypeReference<List<Map<String, Object>>>() {
+                                    }));
+                    workingMessages.add(assistantToolMessage);
+
                     // Para cada tool_call: executa e devolve role:"tool"
                     for (JsonNode n : tc) {
                         String name = n.path("function").path("name").asText();
@@ -170,8 +204,16 @@ public class ChatService {
                         String toolCallId = n.path("id").asText(); // alguns providers retornam
 
                         Map<String, Object> args = om.readValue(argsStr, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+                        if ("search_cheapest_airfares".equals(name)) {
+                            args = completarArgumentosComContextoLocalTarifas(
+                                    args, req.metadata(), req.messages());
+                        } else if ("search_cheapest_roundtrip_airfares".equals(name)) {
+                            args = completarArgumentosComContextoLocalTarifasIdaVolta(
+                                    args, req.metadata(), req.messages());
+                        }
                         Map<String, Object> result = tools.execute(name, args);
                         collectedToolCalls.add(new ToolCallDTO(name, result));
+                        executouMelhoresTarifas |= isFerramentaMelhoresTarifas(name);
 
                         String toolContent = om.writeValueAsString(result);
                         Map<String, Object> toolMsg = new HashMap<>();
@@ -182,6 +224,14 @@ public class ChatService {
                             toolMsg.put("tool_call_id", toolCallId);
                         }
                         workingMessages.add(toolMsg);
+                    }
+
+                    if (executouMelhoresTarifas) {
+                        ToolCallDTO ultimaTool = collectedToolCalls.get(
+                                collectedToolCalls.size() - 1);
+                        Object mensagem = ultimaTool.arguments().get("mensagem");
+                        assistantContentFinal = mensagem == null ? "" : mensagem.toString();
+                        break;
                     }
 
                     // Continua o loop: o modelo responderá agora já “vendo” os resultados das tools
@@ -201,13 +251,29 @@ public class ChatService {
         }
         updatedHistory.add(new ChatMessageDTO("assistant", assistantContentFinal));
 
-        // 🔽 ADICIONAR AQUI
         if (!collectedToolCalls.isEmpty()) {
             ToolCallDTO lastTool = collectedToolCalls.get(collectedToolCalls.size() - 1);
 
             if ("search_hotels".equals(lastTool.name()) || "search_flights".equals(lastTool.name())) {
                 assistantContentFinal = om.writeValueAsString(lastTool.arguments());
+            } else if (isFerramentaMelhoresTarifas(lastTool.name())) {
+                Object mensagem = lastTool.arguments().get("mensagem");
+                if (mensagem != null && !mensagem.toString().isBlank()) {
+                    assistantContentFinal = mensagem.toString();
+                }
+                Object actions = lastTool.arguments().get("actions");
+                if (actions != null) {
+                    toolActions = om.convertValue(
+                            actions,
+                            new TypeReference<List<ChatActionDTO>>() {
+                            });
+                }
             }
+        }
+        if (!updatedHistory.isEmpty()) {
+            updatedHistory.set(
+                    updatedHistory.size() - 1,
+                    new ChatMessageDTO("assistant", assistantContentFinal));
         }
 
         return new ChatResponseDTO(
@@ -216,7 +282,8 @@ public class ChatService {
                 collectedToolCalls,
                 null,
                 keywords == null ? new ArrayList<>() : keywords,
-                updatedHistory
+                updatedHistory,
+                toolActions
         );
     }
 
@@ -2457,6 +2524,496 @@ Formato esperado:
                 - Pergunta: "Quero remarcar a reserva ABC123" → Resposta: "simular_remarcacao"
                 - Pergunta fora do contexto → Resposta: "desconhecido"
                 """;
+    }
+
+    private boolean ultimaMensagemTemRotaDeTarifa(List<ChatMessageDTO> messages) {
+        if (messages == null) {
+            return false;
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessageDTO message = messages.get(i);
+            if (message != null
+                    && "user".equals(message.role())
+                    && (isConsultaMelhorTarifaAerea(message.content())
+                    || isConsultaMelhorTarifaAereaIdaVolta(message.content()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isFerramentaMelhoresTarifas(String nome) {
+        return "search_cheapest_airfares".equals(nome)
+                || "search_cheapest_roundtrip_airfares".equals(nome);
+    }
+
+    private boolean contextoLocalTarifasTemRota(Map<String, Object> metadata) {
+        Map<?, ?> contexto = contextoLocalTarifas(metadata);
+        return iataValido(contexto.get("origem")) && iataValido(contexto.get("destino"));
+    }
+
+    private Map<String, Object> completarArgumentosComContextoLocalTarifas(
+            Map<String, Object> argumentos,
+            Map<String, Object> metadata,
+            List<ChatMessageDTO> messages) {
+        Map<String, Object> resultado = new LinkedHashMap<>();
+        if (argumentos != null) {
+            resultado.putAll(argumentos);
+        }
+        Map<?, ?> contexto = contextoLocalTarifas(metadata);
+        boolean rotaExplicitaMudou = rotaExplicitaMudou(resultado, contexto);
+        copiarContextoSeAusente(resultado, contexto, "origem", "origem");
+        copiarContextoSeAusente(resultado, contexto, "destino", "destino");
+
+        String modo = Objects.toString(resultado.get("modoResposta"), "");
+        if ("cabines".equalsIgnoreCase(modo)
+                || ultimaMensagemSolicitaTodasCabines(messages)) {
+            resultado.remove("cabine");
+        } else if (!rotaExplicitaMudou) {
+            copiarContextoSeAusente(resultado, contexto, "cabine", "cabine");
+        }
+
+        boolean periodoExplicito = resultado.containsKey("mes")
+                || resultado.containsKey("mesIda")
+                || resultado.containsKey("dataInicio")
+                || resultado.containsKey("dataFim");
+        if (!rotaExplicitaMudou && !periodoExplicito) {
+            copiarContextoSeAusente(
+                    resultado, contexto, "periodoInicio", "dataInicio");
+            copiarContextoSeAusente(
+                    resultado, contexto, "periodoFim", "dataFim");
+        }
+        if (!rotaExplicitaMudou && "alternativas".equalsIgnoreCase(modo)) {
+            copiarContextoSeAusente(
+                    resultado, contexto, "limiteAlternativas", "limiteAlternativas");
+        }
+        return resultado;
+    }
+
+    private Map<String, Object> completarArgumentosComContextoLocalTarifasIdaVolta(
+            Map<String, Object> argumentos,
+            Map<String, Object> metadata,
+            List<ChatMessageDTO> messages) {
+        Map<String, Object> resultado = new LinkedHashMap<>();
+        if (argumentos != null) {
+            resultado.putAll(argumentos);
+        }
+        Map<?, ?> contexto = contextoLocalTarifas(metadata);
+        boolean rotaExplicitaMudou = rotaExplicitaMudou(resultado, contexto);
+        copiarContextoSeAusente(resultado, contexto, "origem", "origem");
+        copiarContextoSeAusente(resultado, contexto, "destino", "destino");
+
+        String modo = Objects.toString(resultado.get("modoResposta"), "");
+        if (ultimaMensagemSolicitaTodasCabines(messages)) {
+            resultado.remove("cabine");
+        } else if (!rotaExplicitaMudou) {
+            copiarContextoSeAusente(resultado, contexto, "cabine", "cabine");
+        }
+        if (rotaExplicitaMudou) {
+            return resultado;
+        }
+
+        copiarPeriodoIdaVoltaSeAusente(resultado, contexto,
+                "mesIda", "dataIda", "dataIdaInicio", "dataIdaFim");
+        if (!resultado.containsKey("mesIda")
+                && !resultado.containsKey("dataIda")
+                && !resultado.containsKey("dataIdaInicio")
+                && !resultado.containsKey("dataIdaFim")) {
+            copiarContextoSeAusente(resultado, contexto,
+                    "periodoInicio", "dataIdaInicio");
+            copiarContextoSeAusente(resultado, contexto,
+                    "periodoFim", "dataIdaFim");
+        }
+        copiarPeriodoIdaVoltaSeAusente(resultado, contexto,
+                "mesVolta", "dataVolta", "dataVoltaInicio", "dataVoltaFim");
+        copiarContextoSeAusente(resultado, contexto,
+                "duracaoMinimaDias", "duracaoMinimaDias");
+        copiarContextoSeAusente(resultado, contexto,
+                "duracaoMaximaDias", "duracaoMaximaDias");
+        copiarContextoSeAusente(resultado, contexto,
+                "politicaCompanhia", "politicaCompanhia");
+        if ("alternativas".equalsIgnoreCase(modo)) {
+            copiarContextoSeAusente(resultado, contexto,
+                    "limiteAlternativas", "limiteAlternativas");
+        }
+        return resultado;
+    }
+
+    private void copiarPeriodoIdaVoltaSeAusente(Map<String, Object> destino,
+                                                Map<?, ?> contexto,
+                                                String mes,
+                                                String data,
+                                                String inicio,
+                                                String fim) {
+        boolean explicito = destino.containsKey(mes)
+                || destino.containsKey(data)
+                || destino.containsKey(inicio)
+                || destino.containsKey(fim);
+        if (!explicito) {
+            copiarContextoSeAusente(destino, contexto, inicio, inicio);
+            copiarContextoSeAusente(destino, contexto, fim, fim);
+        }
+    }
+
+    private boolean rotaExplicitaMudou(Map<String, Object> argumentos,
+                                       Map<?, ?> contexto) {
+        return campoExplicitoMudou(argumentos, contexto, "origem")
+                || campoExplicitoMudou(argumentos, contexto, "destino");
+    }
+
+    private boolean campoExplicitoMudou(Map<String, Object> argumentos,
+                                        Map<?, ?> contexto,
+                                        String campo) {
+        Object atual = argumentos.get(campo);
+        Object anterior = contexto.get(campo);
+        return iataValido(atual)
+                && iataValido(anterior)
+                && !atual.toString().trim().equalsIgnoreCase(anterior.toString().trim());
+    }
+
+    private boolean ultimaMensagemSolicitaTodasCabines(List<ChatMessageDTO> messages) {
+        if (messages == null) {
+            return false;
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessageDTO message = messages.get(i);
+            if (message == null || !"user".equals(message.role()) || message.content() == null) {
+                continue;
+            }
+            String texto = Normalizer.normalize(message.content(), Normalizer.Form.NFD)
+                    .replaceAll("\\p{M}", "")
+                    .trim()
+                    .toLowerCase(Locale.ROOT);
+            return texto.equals("geral")
+                    || texto.contains("pode ser geral")
+                    || texto.contains("todas as cabines")
+                    || texto.contains("qualquer cabine")
+                    || texto.contains("sem preferencia");
+        }
+        return false;
+    }
+
+    private Map<?, ?> contextoLocalTarifas(Map<String, Object> metadata) {
+        if (metadata == null) {
+            return Map.of();
+        }
+        Object contexto = metadata.get("contextoLocalMelhoresTarifasAereas");
+        return contexto instanceof Map<?, ?> mapa ? mapa : Map.of();
+    }
+
+    private void copiarContextoSeAusente(Map<String, Object> destino,
+                                         Map<?, ?> contexto,
+                                         String campoContexto,
+                                         String campoDestino) {
+        Object atual = destino.get(campoDestino);
+        if (atual != null && !atual.toString().isBlank()) {
+            return;
+        }
+        Object valor = contexto.get(campoContexto);
+        if (valor != null && !valor.toString().isBlank()) {
+            destino.put(campoDestino, valor);
+        }
+    }
+
+    private boolean iataValido(Object valor) {
+        return valor != null
+                && valor.toString().trim().toUpperCase(Locale.ROOT).matches("[A-Z]{3}");
+    }
+
+    public boolean isSolicitacaoSomenteIda(String input) {
+        String texto = normalizarTarifa(input);
+        return texto.contains("so ida")
+                || texto.contains("so de ida")
+                || texto.contains("somente ida")
+                || texto.contains("somente de ida")
+                || texto.contains("apenas ida")
+                || texto.contains("apenas a ida")
+                || texto.contains("apenas de ida")
+                || texto.contains("sem volta")
+                || texto.contains("agora ida") && !texto.contains("volta");
+    }
+
+    public boolean isConsultaMelhorTarifaAereaIdaVolta(String input) {
+        if (input == null || input.isBlank() || isSolicitacaoSomenteIda(input)) {
+            return false;
+        }
+        String texto = normalizarTarifa(input);
+        if (temContextoHotel(texto) || !temRotaTarifa(texto)) {
+            return false;
+        }
+        boolean idaVolta = mencionaIdaVolta(texto);
+        boolean perguntaTarifa = texto.contains("mais barato")
+                || texto.contains("mais barata")
+                || texto.contains("menor preco")
+                || texto.contains("menor tarifa")
+                || texto.contains("melhor tarifa")
+                || texto.contains("melhores tarifas")
+                || texto.contains("melhores datas")
+                || texto.contains("mais em conta")
+                || texto.contains("total combinado")
+                || texto.contains("preco")
+                || texto.contains("tarifa");
+        return idaVolta && perguntaTarifa;
+    }
+
+    public boolean isConsultaMelhorTarifaAereaIdaVolta(
+            String input,
+            List<ChatMessageDTO> contexto,
+            boolean possuiContextoEstruturado) {
+        return isConsultaMelhorTarifaAereaIdaVolta(
+                input, contexto, possuiContextoEstruturado, null);
+    }
+
+    public boolean isConsultaMelhorTarifaAereaIdaVolta(
+            String input,
+            List<ChatMessageDTO> contexto,
+            boolean possuiContextoEstruturado,
+            String tipoViagemContexto) {
+        if (isConsultaMelhorTarifaAereaIdaVolta(input)) {
+            return true;
+        }
+        if (input == null || input.isBlank() || isSolicitacaoSomenteIda(input)) {
+            return false;
+        }
+        String texto = normalizarTarifa(input);
+        if (temContextoHotel(texto)) {
+            return false;
+        }
+        String ultimaResposta = contexto == null
+                ? ""
+                : ultimaRespostaAssistenteNormalizada(contexto);
+        boolean contextoIdaVolta = "ida_volta".equals(tipoViagemContexto)
+                || ultimaResposta.contains("ida e volta")
+                || ultimaResposta.contains("total combinado")
+                || ultimaResposta.contains("companhias diferentes")
+                || ultimaResposta.contains("mesma companhia");
+        if (mencionaIdaVolta(texto)) {
+            boolean contextoTarifa = contextoIdaVolta
+                    || ultimaResposta.contains("a menor tarifa de ")
+                    || ultimaResposta.contains("datas mais baratas de ")
+                    || ultimaResposta.contains("melhor opcao por cabine");
+            return possuiContextoEstruturado || contextoTarifa;
+        }
+        boolean novaBuscaConvencional = texto.contains("pesquise voo")
+                || texto.contains("pesquisar voo")
+                || texto.contains("buscar voo")
+                || texto.contains("busque voo")
+                || texto.contains("ver disponibilidade")
+                || texto.contains("consultar disponibilidade");
+        if (novaBuscaConvencional) {
+            return false;
+        }
+        boolean refinamento = texto.contains("mesma companhia")
+                || texto.contains("mesma cia")
+                || texto.contains("cias iguais")
+                || texto.contains("companhias iguais")
+                || texto.contains("companhias diferentes")
+                || texto.contains("companhia diferente")
+                || texto.contains("cias diferentes")
+                || texto.contains("cias separadas")
+                || texto.contains("cias distintas")
+                || texto.contains("companhias distintas")
+                || texto.contains("compare as companhias")
+                || texto.contains("comparar companhias")
+                || texto.contains("alternativa")
+                || texto.contains("opcao")
+                || texto.contains("opcoes")
+                || texto.contains("mais opcoes")
+                || texto.contains("outras datas")
+                || texto.contains("melhores datas")
+                || texto.contains("segunda opcao")
+                || texto.contains("terceira opcao")
+                || texto.contains("compare")
+                || texto.contains("comparar")
+                || texto.contains("diferenca")
+                || texto.contains("mes a mes")
+                || texto.contains("cada mes")
+                || texto.contains("cabine")
+                || texto.contains("economica")
+                || texto.contains("premium")
+                || texto.contains("executiva")
+                || texto.contains("primeira classe")
+                || texto.contains("resumo")
+                || texto.equals("geral")
+                || texto.contains("pode ser geral")
+                || texto.contains("todas as cabines")
+                || texto.contains("qualquer cabine")
+                || texto.contains("sem preferencia")
+                || texto.contains("proximo mes")
+                || texto.contains("outro mes")
+                || texto.contains("duracao")
+                || temRotaTarifa(texto)
+                || (texto.contains(" para ")
+                && (texto.startsWith("agora ") || texto.startsWith("e ")))
+                || texto.matches(".*\\b[0-9]+\\s+dias?\\b.*")
+                || texto.matches(".*\\b(?:[2-9]|10)\\s+(?:dias|datas|opcoes)\\b.*")
+                || texto.matches(".*\\b20[0-9]{2}-[0-9]{2}(?:-[0-9]{2})?\\b.*")
+                || texto.matches(".*\\b[0-3]?[0-9]/[01]?[0-9](?:/20[0-9]{2})?\\b.*")
+                || texto.matches(".*\\b(janeiro|fevereiro|marco|abril|maio|junho|"
+                + "julho|agosto|setembro|outubro|novembro|dezembro)\\b.*");
+        return refinamento && contextoIdaVolta;
+    }
+
+    private boolean mencionaIdaVolta(String texto) {
+        return texto.contains("ida e volta")
+                || texto.contains("ida/volta")
+                || texto.contains("ida-volta")
+                || texto.contains("roundtrip")
+                || texto.contains("round trip")
+                || texto.contains("bate e volta")
+                || texto.contains("com retorno")
+                || texto.matches(".*\\bvolta\\b.*");
+    }
+
+    private boolean temContextoHotel(String texto) {
+        return texto.contains("hotel")
+                || texto.contains("hoteis")
+                || texto.contains("hospedagem")
+                || texto.contains("diaria")
+                || texto.contains("check-in")
+                || texto.contains("checkout");
+    }
+
+    private boolean temRotaTarifa(String texto) {
+        return texto.matches(
+                ".*\\b[a-z]{3}\\b\\s*(?:para|a|x|/|-)\\s*\\b[a-z]{3}\\b.*")
+                || (texto.contains(" para ") && (texto.contains(" de ")
+                || texto.contains(" saindo ")))
+                || (texto.contains(" entre ") && texto.contains(" e "));
+    }
+
+    private String normalizarTarifa(String input) {
+        if (input == null) {
+            return "";
+        }
+        return Normalizer.normalize(input, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .trim()
+                .toLowerCase(Locale.ROOT);
+    }
+
+    public boolean isConsultaMelhorTarifaAerea(String input) {
+        if (input == null || input.isBlank()) {
+            return false;
+        }
+        String texto = Normalizer.normalize(input, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT);
+        boolean perguntaPreco = texto.contains("mais barato")
+                || texto.contains("mais barata")
+                || texto.contains("menor preco")
+                || texto.contains("menor tarifa")
+                || texto.contains("melhor tarifa")
+                || texto.contains("melhores tarifas")
+                || texto.contains("mais em conta")
+                || texto.contains("preco por dia")
+                || texto.contains("tarifa por dia")
+                || texto.contains("dia mais barato");
+        boolean contextoHotel = texto.contains("hotel")
+                || texto.contains("hospedagem")
+                || texto.contains("diaria")
+                || texto.contains("check-in")
+                || texto.contains("checkout");
+        boolean rotaInformada = texto.matches(
+                ".*\\b[a-z]{3}\\b\\s*(?:para|a|x|/|-)\\s*\\b[a-z]{3}\\b.*")
+                || (texto.contains(" para ") && (texto.contains(" de ")
+                || texto.contains(" saindo ")))
+                || (texto.contains(" entre ") && texto.contains(" e "));
+        return perguntaPreco && rotaInformada && !contextoHotel;
+    }
+
+    public boolean isConsultaMelhorTarifaAerea(String input,
+                                               List<ChatMessageDTO> contexto) {
+        return isConsultaMelhorTarifaAerea(input, contexto, false);
+    }
+
+    public boolean isConsultaMelhorTarifaAerea(String input,
+                                               List<ChatMessageDTO> contexto,
+                                               boolean possuiContextoEstruturado) {
+        if (isConsultaMelhorTarifaAerea(input)) {
+            return true;
+        }
+        if (input == null || input.isBlank() || contexto == null) {
+            return false;
+        }
+        String texto = Normalizer.normalize(input, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT);
+        if (texto.contains("hotel")
+                || texto.contains("hoteis")
+                || texto.contains("hospedagem")
+                || texto.contains("diaria")
+                || texto.contains("check-in")
+                || texto.contains("checkout")) {
+            return false;
+        }
+        if (isSolicitacaoSomenteIda(input)) {
+            if (possuiContextoEstruturado) {
+                return true;
+            }
+            String ultimaRespostaAssistente = ultimaRespostaAssistenteNormalizada(contexto);
+            return ultimaRespostaAssistente.contains("ida e volta")
+                    || ultimaRespostaAssistente.contains("total combinado")
+                    || ultimaRespostaAssistente.contains("a menor tarifa de ");
+        }
+        boolean complemento = texto.contains("economica")
+                || texto.contains("premium")
+                || texto.contains("executiva")
+                || texto.contains("primeira classe")
+                || texto.contains("cabine")
+                || texto.contains("alternativa")
+                || texto.contains("mais opcoes")
+                || texto.contains("outras datas")
+                || texto.contains("melhores datas")
+                || texto.contains("compare")
+                || texto.contains("comparar")
+                || texto.contains("diferenca")
+                || texto.contains("mes a mes")
+                || texto.contains("cada mes")
+                || texto.contains("segunda opcao")
+                || texto.contains("terceira opcao")
+                || texto.contains("resumo")
+                || texto.contains("todas as cabines")
+                || texto.contains("pode ser geral")
+                || texto.contains("qualquer cabine")
+                || texto.contains("sem preferencia")
+                || texto.equals("geral")
+                || texto.contains("proximo mes")
+                || texto.contains("outro mes")
+                || texto.matches(".*\\b(?:[2-9]|10)\\s+(?:dias|datas|opcoes)\\b.*")
+                || texto.matches(".*\\b20[0-9]{2}-[0-9]{2}\\b.*")
+                || texto.matches(".*\\b(janeiro|fevereiro|marco|abril|maio|junho|"
+                + "julho|agosto|setembro|outubro|novembro|dezembro)\\b.*");
+        if (!complemento) {
+            return false;
+        }
+        if (possuiContextoEstruturado) {
+            return true;
+        }
+        String ultimaRespostaAssistente = ultimaRespostaAssistenteNormalizada(contexto);
+        return ultimaRespostaAssistente.contains("a menor tarifa de ")
+                || ultimaRespostaAssistente.contains("melhor opcao por cabine")
+                || ultimaRespostaAssistente.contains("data mais barata de ")
+                || ultimaRespostaAssistente.contains("datas mais baratas de ")
+                || ultimaRespostaAssistente.contains(
+                        "comparacao das menores tarifas por cabine de ")
+                || ultimaRespostaAssistente.contains("melhor dia de cada mes de ")
+                || ultimaRespostaAssistente.contains("nao encontrei tarifas de ");
+    }
+
+    private String ultimaRespostaAssistenteNormalizada(List<ChatMessageDTO> contexto) {
+        for (int i = contexto.size() - 1; i >= 0; i--) {
+            ChatMessageDTO message = contexto.get(i);
+            if (message == null
+                    || !"assistant".equals(message.role())
+                    || message.content() == null) {
+                continue;
+            }
+            return Normalizer.normalize(message.content(), Normalizer.Form.NFD)
+                    .replaceAll("\\p{M}", "")
+                    .toLowerCase(Locale.ROOT);
+        }
+        return "";
     }
 
     public String identificarTipoConsultaViagem(String input) throws IOException {
