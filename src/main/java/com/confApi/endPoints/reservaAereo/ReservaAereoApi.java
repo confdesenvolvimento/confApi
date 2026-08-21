@@ -16,6 +16,8 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
@@ -298,6 +300,79 @@ public class ReservaAereoApi {
             alertarErro("Erro ao atualizar status da reserva aerea no Manager. Id " + codgReservaAereo, e);
             throw e;
         }
+    }
+
+    public Boolean consultarPermissaoGrupo(Integer codgUsuarioSolicitante, String loginUsuarioSolicitante) {
+        try {
+            ConfAppResp token = confAppService.token();
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                    .path("/reservaAereo/grupo/permissao")
+                    .queryParam("codgUsuarioSolicitante", codgUsuarioSolicitante)
+                    .queryParam("loginUsuarioSolicitante", loginUsuarioSolicitante)
+                    .toUriString();
+
+            ResponseEntity<Boolean> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(defaultHeaders(token.getToken())),
+                    Boolean.class
+            );
+            return response.getBody();
+        } catch (HttpStatusCodeException e) {
+            throw erroManager(e, "consultar permissão de grupo");
+        }
+    }
+
+    public Boolean consultarGrupo(Integer codgReservaAereo) {
+        try {
+            ConfAppResp token = confAppService.token();
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                    .path("/reservaAereo/{id}/grupo")
+                    .buildAndExpand(codgReservaAereo)
+                    .toUriString();
+
+            ResponseEntity<Boolean> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(defaultHeaders(token.getToken())),
+                    Boolean.class
+            );
+            return response.getBody();
+        } catch (HttpStatusCodeException e) {
+            throw erroManager(e, "consultar identificação de grupo");
+        }
+    }
+
+    public void atualizarGrupo(Integer codgReservaAereo, GrupoReservaAereoRequest request) {
+        try {
+            ConfAppResp token = confAppService.token();
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                    .path("/reservaAereo/{id}/grupo")
+                    .buildAndExpand(codgReservaAereo)
+                    .toUriString();
+
+            restTemplate.exchange(
+                    url,
+                    HttpMethod.PUT,
+                    new HttpEntity<>(request, defaultHeaders(token.getToken())),
+                    Void.class
+            );
+        } catch (HttpStatusCodeException e) {
+            throw erroManager(e, "atualizar identificação de grupo");
+        }
+    }
+
+    private ResponseStatusException erroManager(HttpStatusCodeException e, String operacao) {
+        String detalhe = e.getResponseBodyAsString();
+        String mensagem = detalhe == null || detalhe.trim().isEmpty()
+                ? "Manager recusou a operação."
+                : detalhe;
+        LOG.log(Level.WARNING, "Erro ao {0} no Manager. Status: {1}",
+                new Object[]{operacao, e.getStatusCode().value()});
+        return new ResponseStatusException(e.getStatusCode(), mensagem, e);
     }
 
     private void alertarErro(String mensagem, Exception e) {
