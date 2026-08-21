@@ -4,6 +4,8 @@ import com.confApi.aereo.AereoClient;
 import com.confApi.aereo.dto.ConsultarLocalizadorRequest;
 import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
 import com.confApi.aereo.dto.FamiliaPreco;
+import com.confApi.aereo.dto.PesquisaRequestDTO;
+import com.confApi.aereo.dto.PesquisaResponse;
 import com.confApi.aereo.dto.Preco;
 import com.confApi.aereo.dto.PrecoTipo;
 import com.confApi.aereo.dto.Reserva;
@@ -426,6 +428,75 @@ class ChatConfiancaRemarcacaoServiceTest {
         RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
 
         assertEquals("A reserva nao retornou passageiros.", response.getMensagem());
+    }
+
+    @Test
+    void deveTratarLaEJjComoMesmaCompanhiaAoValidarCodeshare() {
+        prepararInicioLatam("LA", "JJ", "LA", false);
+
+        RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
+
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertNull(response.getMotivoBloqueio());
+        verify(regraService).simular(any());
+    }
+
+    @Test
+    void deveManterBloqueioDeCodeshareComOperadoraDeOutraCompanhia() {
+        prepararInicioLatam("LA", "LA", "AA", false);
+
+        RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
+
+        assertEquals("NAO_ELEGIVEL", response.getStatus());
+        assertEquals(
+                "Nao encontrei trecho futuro nacional, ativo e sem codeshare que possa ser simulado automaticamente.",
+                response.getMotivoBloqueio());
+        verify(regraService, never()).simular(any());
+    }
+
+    @Test
+    void deveManterBloqueioQuandoHubMarcaCodeshareExplicitamente() {
+        prepararInicioLatam("LA", "LA", "LA", true);
+
+        RemarcacaoSimulacaoResponse response = service.iniciar(iniciar(501, "ABC123"));
+
+        assertEquals("NAO_ELEGIVEL", response.getStatus());
+        verify(regraService, never()).simular(any());
+    }
+
+    @Test
+    void devePesquisarLatamComoLaEAceitarDisponibilidadeLaParaSimulacaoJj() throws Exception {
+        simulacao.setStatus("AGUARDANDO_CRITERIOS");
+        simulacao.setOrigem("CGB");
+        simulacao.setDestino("BSB");
+        simulacao.setCompanhiaIata("JJ");
+        simulacao.setPassageirosJson(
+                "{\"escopo\":\"INDIVIDUAL\",\"indices\":[0],\"passageiros\":[]}");
+        when(aereoClient.carregarReserva(any())).thenReturn(
+                reservaLatamElegivel("JJ", "LA", "LA", false));
+
+        Trecho opcao = opcaoPesquisa("LATAM-ID", "CGB", "BSB", "3895");
+        opcao.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, "LA", "LATAM"));
+        opcao.getVoos().get(0).setCiaMandatoria(
+                new com.confApi.hub.aereo.dto.Companhia(1, "LA", "LATAM"));
+        PesquisaResponse disponibilidade = new PesquisaResponse();
+        disponibilidade.setTrechos1(List.of(opcao));
+        when(aereoClient.pesquisarDisponibilidade(any())).thenReturn(List.of(disponibilidade));
+
+        RemarcacaoRequest.Pesquisar request = new RemarcacaoRequest.Pesquisar();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setData(LocalDate.now().plusDays(10));
+        request.setPeriodo("QUALQUER");
+        request.setSomenteDireto(false);
+
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, request);
+
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals(1, response.getOpcoes().size());
+        ArgumentCaptor<PesquisaRequestDTO> pesquisa =
+                ArgumentCaptor.forClass(PesquisaRequestDTO.class);
+        verify(aereoClient).pesquisarDisponibilidade(pesquisa.capture());
+        assertEquals("LA", pesquisa.getValue().getCompanhias().get(0).getCodigoIata());
     }
 
     @Test
@@ -1046,6 +1117,53 @@ class ChatConfiancaRemarcacaoServiceTest {
         trecho.setVoos(List.of());
         reserva.setViagens(List.of(trecho));
         return reserva;
+    }
+
+    private void prepararInicioLatam(
+            String companhiaTrecho,
+            String companhiaMandatoria,
+            String companhiaOperadora,
+            boolean codeshare) {
+        when(manager.get(
+                contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "ABC123", "LA", "Wooba")));
+        when(aereoClient.carregarReserva(any())).thenReturn(reservaLatamElegivel(
+                companhiaTrecho, companhiaMandatoria, companhiaOperadora, codeshare));
+        when(aeroportoService.findIatasAeroportosNacionais())
+                .thenReturn(java.util.Set.of("CGB", "BSB"));
+        when(regraService.simular(any())).thenReturn(regraPermitida(false));
+    }
+
+    private ConsultarLocalizadorResponse reservaLatamElegivel(
+            String companhiaTrecho,
+            String companhiaMandatoria,
+            String companhiaOperadora,
+            boolean codeshare) {
+        Reserva reserva = new Reserva();
+        reserva.setLocalizador("ABC123");
+        reserva.setSistema("Wooba");
+        reserva.setDataEmissao(new java.util.Date());
+        reserva.setPassageiros(List.of(passageiro("Maria", "ADT", "001", "ATIVO")));
+
+        TrechoReserva trecho = new TrechoReserva();
+        trecho.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(
+                1, companhiaTrecho, companhiaTrecho));
+        trecho.setOrigem(new com.confApi.hub.aereo.dto.Aeroporto("CGB", "Cuiaba"));
+        trecho.setDestino(new com.confApi.hub.aereo.dto.Aeroporto("BSB", "Brasilia"));
+
+        Voo voo = voo("CGB", "BSB", "1234");
+        voo.setCiaMandatoria(new com.confApi.hub.aereo.dto.Companhia(
+                1, companhiaMandatoria, companhiaMandatoria));
+        voo.setCiaOperadora(new com.confApi.hub.aereo.dto.Companhia(
+                1, companhiaOperadora, companhiaOperadora));
+        voo.setIsCodeShare(codeshare);
+        trecho.setVoos(List.of(voo));
+        reserva.setViagens(List.of(trecho));
+
+        ConsultarLocalizadorResponse response = new ConsultarLocalizadorResponse();
+        response.setReservas(List.of(reserva));
+        return response;
     }
 
     private void prepararPrevia(String total) throws Exception {
