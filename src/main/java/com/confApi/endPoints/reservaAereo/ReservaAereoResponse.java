@@ -93,19 +93,20 @@ public class ReservaAereoResponse {
         this.recebimentos = new ArrayList<>();
 
         // 1) preenche a partir da API (hub) – equivalente ao populaReservaFromApi
+        boolean valoresPreenchidosPeloHub = false;
         if (pesquisaResponseHubList != null) {
-            preencherComHub(pesquisaResponseHubList);
+            valoresPreenchidosPeloHub = preencherComHub(pesquisaResponseHubList);
         }
 
         // 2) overlay com dados do banco – equivalente ao populaReservaFromDB
         if (pesquisaResponseDb != null) {
-            preencherComDb(pesquisaResponseDb);
+            preencherComDb(pesquisaResponseDb, valoresPreenchidosPeloHub);
         }
     }
 
-    private void preencherComHub(ConsultarLocalizadorResponseHub hub) {
+    private boolean preencherComHub(ConsultarLocalizadorResponseHub hub) {
         if (hub.getReservas() == null || hub.getReservas().isEmpty()) {
-            return;
+            return false;
         }
 
         var reservaApi = hub.getReservas().get(0);
@@ -157,11 +158,12 @@ public class ReservaAereoResponse {
                 }
 
                 if (paxApi.getNascimento() != null) {
-                    p.setNascimento(paxApi.getNascimento().toString());
+                    p.setNascimento(formatarDataNascimento(paxApi.getNascimento()));
                 }
 
                 // Bilhetes
                 if (paxApi.getBilhetes() != null && !paxApi.getBilhetes().isEmpty()) {
+                    p.setBilhetes(new ArrayList<>());
                     paxApi.getBilhetes().forEach(b -> {
                         BilheteResponse bilheteResponse = new BilheteResponse(b);
                         p.getBilhetes().add(bilheteResponse);
@@ -190,14 +192,16 @@ public class ReservaAereoResponse {
             this.taxaEmbarqueGeral = safeDouble(vb.getTaxaEmbarque());
             this.taxaDUGeral = safeDouble(vb.getTaxaDU());
             this.taxaAssento = safeDouble(vb.getTaxaAssento());
+            return true;
         }
 
+        return false;
     }
 
     /* ============================================================
        Preencher com dados do DB (equivalente ao populaReservaFromDB)
        ============================================================ */
-    private void preencherComDb(ReservaAereo db) {
+    private void preencherComDb(ReservaAereo db, boolean valoresPreenchidosPeloHub) {
 
         this.codgReservaAereoDB = db.getCodgReservaAereo().longValue();
 
@@ -268,7 +272,7 @@ public class ReservaAereoResponse {
                 }
 
                 // valores / tarifas
-                if (paxDb.getReservaValores() != null) {
+                if (!valoresPreenchidosPeloHub && paxDb.getReservaValores() != null) {
                     paxDb.getReservaValores().forEach(reservaValorDB -> {
 
                         // atualiza totais gerais
@@ -280,9 +284,10 @@ public class ReservaAereoResponse {
                         double taxaRc = safeDouble(reservaValorDB.getValorRc());
                         double taxaComb = safeDouble(reservaValorDB.getValorTaxaCombustivel());
                         double taxaAssento = safeDouble(reservaValorDB.getValorAssento());
+                        double tarifaConsiderada = tarifa > 0.0 ? tarifa : tarifaNet;
 
-                        this.valorTotalReserva += tarifa + tarifaNet + taxaEmb + taxaDu + taxaRav + taxaRc + taxaComb + taxaAssento;
-                        this.tarifaGeral += tarifa;
+                        this.valorTotalReserva += tarifaConsiderada + taxaEmb + taxaDu + taxaRav + taxaRc + taxaComb + taxaAssento;
+                        this.tarifaGeral += tarifaConsiderada;
                         this.tarifaNetGeral += tarifaNet;
                         this.taxaEmbarqueGeral += taxaEmb;
                         this.taxaDUGeral += taxaDu;
@@ -342,6 +347,13 @@ public class ReservaAereoResponse {
         return v == null ? 0.0 : v;
     }
 
+    private String formatarDataNascimento(Date nascimento) {
+        return nascimento.toInstant()
+                .atZone(ZoneId.of("America/Sao_Paulo"))
+                .toLocalDate()
+                .format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+    }
+
     // mesmo conceito do convertDataApi do legado – ajuste para o formato real
     private Date convertDataApi(String dataApi) {
         // exemplo para "/Date(1771453500000-0300)/"
@@ -367,4 +379,3 @@ public class ReservaAereoResponse {
         }
     }
 }
-

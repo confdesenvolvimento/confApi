@@ -60,8 +60,12 @@ public class RecebimentoModel implements Serializable {
         this.nomeFormaPagamento = recebimentoResponse.getNomeFormaPagamento();
         this.valorEntrada = recebimentoResponse.getValorEntrada();
         this.valorPagamento = recebimentoResponse.getValorPagamento();
-        this.formaDePagamento = new FormaPagamentoModel(recebimentoResponse.getFormaDePagamento());
-        this.cartaoSelecionado = new CartaoModel(recebimentoResponse.getCartaoSelecionado());
+        this.formaDePagamento = recebimentoResponse.getFormaDePagamento() != null
+                ? new FormaPagamentoModel(recebimentoResponse.getFormaDePagamento())
+                : new FormaPagamentoModel(recebimentoResponse.getCodgFormaPagamento());
+        this.cartaoSelecionado = recebimentoResponse.getCartaoSelecionado() != null
+                ? new CartaoModel(recebimentoResponse.getCartaoSelecionado())
+                : null;
         this.statusRecebimento = recebimentoResponse.getStatusRecebimento();
         this.dataRecebimento = recebimentoResponse.getDataRecebimento();
         this.codgRecebimento = recebimentoResponse.getCodgRecebimento();
