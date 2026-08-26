@@ -42,6 +42,11 @@ public class HotelSearchController {
         return service.efetuarReserva(req);
     }
 
+    @PostMapping("/efetuarReserva2")
+    public HotelReserva efetuarReserva2(@RequestBody ReservarRequestFront req, @RequestParam String idAgencia) {
+        return service.efetuarReserva2(req, idAgencia);
+    }
+
     @PostMapping("/carregarReserva")
     public HotelReserva carregarReserva(@RequestBody HotelCarregaModelFront req) {
         return service.carregarReserva(req);

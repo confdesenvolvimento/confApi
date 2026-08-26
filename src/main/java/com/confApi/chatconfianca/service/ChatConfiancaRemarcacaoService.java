@@ -1088,8 +1088,10 @@ public class ChatConfiancaRemarcacaoService {
             if (Boolean.TRUE.equals(voo.getIsCodeShare())) return true;
             String mandatoria = voo.getCiaMandatoria() == null ? null : voo.getCiaMandatoria().getCodigoIata();
             String operadora = voo.getCiaOperadora() == null ? null : voo.getCiaOperadora().getCodigoIata();
-            if (!vazio(mandatoria) && !vazio(operadora) && !mandatoria.equalsIgnoreCase(operadora)) return true;
-            if (!vazio(mandatoria) && !vazio(companhia) && !mandatoria.equalsIgnoreCase(companhia)) return true;
+            if (!vazio(mandatoria) && !vazio(operadora)
+                    && !companhiasEquivalentes(mandatoria, operadora)) return true;
+            if (!vazio(mandatoria) && !vazio(companhia)
+                    && !companhiasEquivalentes(mandatoria, companhia)) return true;
         }
         return false;
     }
@@ -1363,6 +1365,18 @@ public class ChatConfiancaRemarcacaoService {
         return "JJ".equals(codigo) || "LA".equals(codigo) ? "LATAM" : codigo;
     }
 
+    private boolean companhiasEquivalentes(String primeira, String segunda) {
+        return companhiaCanonica(primeira).equals(companhiaCanonica(segunda));
+    }
+
+    private String companhiaIataPesquisa(String companhiaIata) {
+        if (vazio(companhiaIata)) {
+            return companhiaIata;
+        }
+        String codigo = companhiaIata.trim().toUpperCase(Locale.ROOT);
+        return "JJ".equals(codigo) ? "LA" : codigo;
+    }
+
     private PesquisaRequestDTO montarPesquisa(SimulacaoRemarcacao simulacao,
                                                TrechoReserva original,
                                                SessaoChatResponse sessao,
@@ -1385,8 +1399,9 @@ public class ChatConfiancaRemarcacaoService {
         request.setSistemas(Collections.singletonList(new Sistema(0, "WO", 0)));
         Companhia companhia = new Companhia();
         companhia.setId(idCompanhia(original));
-        companhia.setCodigoIata(simulacao.getCompanhiaIata());
-        companhia.setDescricao(simulacao.getCompanhiaIata());
+        String companhiaIataPesquisa = companhiaIataPesquisa(simulacao.getCompanhiaIata());
+        companhia.setCodigoIata(companhiaIataPesquisa);
+        companhia.setDescricao(companhiaIataPesquisa);
         request.setCompanhias(Collections.singletonList(companhia));
         IdentificacaoAgenciaModel identificacao = new IdentificacaoAgenciaModel();
         identificacao.setCodgAgencia(simulacao.getCodgAgencia());
@@ -1422,13 +1437,13 @@ public class ChatConfiancaRemarcacaoService {
                 || trecho.getFamilias() == null || trecho.getFamilias().isEmpty()) return false;
         if (!simulacao.getOrigem().equalsIgnoreCase(iata(trecho.getOrigem()))
                 || !simulacao.getDestino().equalsIgnoreCase(iata(trecho.getDestino()))) return false;
-        if (!simulacao.getCompanhiaIata().equalsIgnoreCase(companhiaTrecho(trecho))) return false;
+        if (!companhiasEquivalentes(simulacao.getCompanhiaIata(), companhiaTrecho(trecho))) return false;
         if (Boolean.TRUE.equals(criterios.getSomenteDireto())
                 && (trecho.getVoos().size() > 1 || (trecho.getNumeroParadas() != null && trecho.getNumeroParadas() > 0))) return false;
         for (Voo voo : trecho.getVoos()) {
             if (Boolean.TRUE.equals(voo.getIsCodeShare())) return false;
             String iata = voo.getCiaMandatoria() == null ? null : voo.getCiaMandatoria().getCodigoIata();
-            if (!vazio(iata) && !simulacao.getCompanhiaIata().equalsIgnoreCase(iata)) return false;
+            if (!vazio(iata) && !companhiasEquivalentes(simulacao.getCompanhiaIata(), iata)) return false;
         }
         return periodoCompativel(horaPrimeiroVoo(trecho), criterios.getPeriodo());
     }
