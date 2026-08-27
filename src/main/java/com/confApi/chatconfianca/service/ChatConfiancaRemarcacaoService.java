@@ -109,6 +109,9 @@ public class ChatConfiancaRemarcacaoService {
     private static final String CANCELADO = "CANCELADO";
     private static final String ESCOPO_TODOS = "TODOS";
     private static final String ESCOPO_INDIVIDUAL = "INDIVIDUAL";
+    private static final String NOVO_VALOR_MINIMO_IGUAL_OU_MAIOR = "IGUAL_OU_MAIOR";
+    private static final String MENSAGEM_TARIFA_ABAIXO_MINIMO =
+            "A regra da companhia permite a remarcacao somente para tarifa igual ou superior a tarifa original.";
     private static final int PAGAMENTO_FATURA = 1;
     private static final int PAGAMENTO_CARTAO = 2;
     private static final BigDecimal LIMITE_DU_DIFERENCA_TARIFA = new BigDecimal("400.00");
@@ -360,14 +363,19 @@ public class ChatConfiancaRemarcacaoService {
         PesquisaRequestDTO pesquisa = montarPesquisa(
                 simulacao, original, sessao, request, passageirosSelecionados);
         List<PesquisaResponse> retornos = aereoClient.pesquisarDisponibilidade(pesquisa);
-        List<Trecho> opcoes = filtrarOpcoes(retornos, simulacao, request);
+        List<Trecho> opcoes = filtrarOpcoes(
+                retornos, simulacao, request, reserva, passageirosSelecionados);
 
         if (opcoes.isEmpty()) {
             simulacao.setStatus(AGUARDANDO_CRITERIOS);
             simulacao.setResultadosJson(null);
             simulacao = salvar(simulacao);
+            boolean exigeTarifaMinima = exigeTarifaIgualOuMaior(regraSnapshot(simulacao));
             RemarcacaoSimulacaoResponse response = respostaCriterios(simulacao, original,
-                    "Nao encontrei voos compativeis nessa data e periodo. Tente outra combinacao.");
+                    exigeTarifaMinima
+                            ? "Nao encontrei voos compativeis com tarifa igual ou superior a tarifa original. "
+                                    + "Tente outra data ou periodo."
+                            : "Nao encontrei voos compativeis nessa data e periodo. Tente outra combinacao.");
             registrarEvento(simulacao, "REMARCACAO_PESQUISA_SEM_RESULTADO",
                     "Pesquisa sem opcoes compativeis.", json(request));
             registrarCard(simulacao, response);
@@ -1414,20 +1422,94 @@ public class ChatConfiancaRemarcacaoService {
 
     private List<Trecho> filtrarOpcoes(List<PesquisaResponse> respostas,
                                        SimulacaoRemarcacao simulacao,
-                                       RemarcacaoRequest.Pesquisar criterios) {
+                                       RemarcacaoRequest.Pesquisar criterios,
+                                       Reserva reserva,
+                                       List<Passageiro> passageirosSelecionados) {
         if (respostas == null) return new ArrayList<>();
+        boolean exigeTarifaMinima = exigeTarifaIgualOuMaior(regraSnapshot(simulacao));
         List<Trecho> resultado = new ArrayList<>();
         Set<String> chaves = new HashSet<>();
         for (PesquisaResponse resposta : respostas) {
             if (resposta == null || resposta.getTrechos1() == null) continue;
             for (Trecho trecho : resposta.getTrechos1()) {
                 if (!opcaoCompativel(trecho, simulacao, criterios)) continue;
+                if (exigeTarifaMinima) {
+                    filtrarFamiliasPorTarifaMinima(trecho, reserva, passageirosSelecionados);
+                }
+                if (trecho.getFamilias() == null || trecho.getFamilias().isEmpty()) continue;
                 String chave = numerosVoos(trecho) + "|" + horaPrimeiroVoo(trecho) + "|" + trecho.getSistema();
                 if (chaves.add(chave)) resultado.add(trecho);
             }
         }
         resultado.sort((a, b) -> valorMenor(a).compareTo(valorMenor(b)));
         return resultado.stream().limit(LIMITE_OPCOES).collect(Collectors.toList());
+    }
+
+    private void filtrarFamiliasPorTarifaMinima(
+            Trecho trecho,
+            Reserva reserva,
+            List<Passageiro> passageirosSelecionados) {
+        if (trecho == null || trecho.getFamilias() == null) return;
+        trecho.setFamilias(trecho.getFamilias().stream()
+                .filter(familia -> familiaAtendeTarifaMinima(
+                        familia, reserva, passageirosSelecionados))
+                .collect(Collectors.toList()));
+    }
+
+    private boolean familiaAtendeTarifaMinima(
+            FamiliaPreco familia,
+            Reserva reserva,
+            List<Passageiro> passageirosSelecionados) {
+        Preco preco = familia == null ? null : familia.getPreco();
+        if (preco == null || reserva == null || reserva.getPassageiros() == null
+                || passageirosSelecionados == null || passageirosSelecionados.isEmpty()) {
+            return false;
+        }
+
+        if (possuiTarifaParaTodos(preco, passageirosSelecionados)) {
+            NormalizacaoPreco normalizacao = identificarNormalizacaoPreco(
+                    preco, passageirosSelecionados);
+            Map<String, Integer> quantidadesPorTipo = contagensPassageiros(passageirosSelecionados);
+            for (Passageiro passageiro : passageirosSelecionados) {
+                int indice = reserva == null || reserva.getPassageiros() == null
+                        ? -1 : reserva.getPassageiros().indexOf(passageiro);
+                BigDecimal tarifaOriginal = valoresOriginaisPassageiro(
+                        reserva, passageiro, indice).getTarifa();
+                String tipo = tipoPassageiro(passageiro);
+                BigDecimal novaTarifa = normalizacao.porPassageiro(
+                        decimal(precoTipo(preco, tipo).getValorTarifa()),
+                        quantidadesPorTipo.getOrDefault(tipo, 1),
+                        ComponentePreco.TARIFA);
+                if (!tarifaIgualOuMaior(tarifaOriginal, novaTarifa)) return false;
+            }
+            return true;
+        }
+
+        BigDecimal novaTarifaTotal = decimal(preco.getTotalTarifa());
+        if (novaTarifaTotal == null && passageirosSelecionados.size() == 1) {
+            novaTarifaTotal = decimal(preco.getTarifa());
+        }
+        return tarifaIgualOuMaior(
+                tarifaOriginalPassageiros(reserva, passageirosSelecionados),
+                novaTarifaTotal);
+    }
+
+    private BigDecimal tarifaOriginalPassageiros(
+            Reserva reserva,
+            List<Passageiro> passageirosSelecionados) {
+        if (reserva == null || reserva.getPassageiros() == null
+                || passageirosSelecionados == null || passageirosSelecionados.isEmpty()) {
+            return null;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (Passageiro passageiro : passageirosSelecionados) {
+            int indice = reserva.getPassageiros().indexOf(passageiro);
+            BigDecimal tarifa = valoresOriginaisPassageiro(
+                    reserva, passageiro, indice).getTarifa();
+            if (tarifa == null) return null;
+            total = total.add(tarifa);
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
     }
 
     private boolean opcaoCompativel(Trecho trecho,
@@ -1644,6 +1726,11 @@ public class ChatConfiancaRemarcacaoService {
             regraRequest.setFamiliaTarifariaAlterada(familiaTarifariaAlterada);
             RegraAereaAlteracaoConsultaResponse regra = regraService.simular(regraRequest);
             resultado.getRegras().add(regra);
+            if (exigeTarifaIgualOuMaior(regra)
+                    && !tarifaIgualOuMaior(originais.getTarifa(), novaTarifa)) {
+                resultado.setMotivo(MENSAGEM_TARIFA_ABAIXO_MINIMO);
+                return resultado;
+            }
             RegraAereaAlteracaoCalculoResponse calculo = regra == null ? null : regra.getCalculo();
             boolean calculoIncompleto = calculo == null
                     || !Boolean.TRUE.equals(calculo.getCalculoCompleto());
@@ -2288,6 +2375,24 @@ public class ChatConfiancaRemarcacaoService {
         return response != null && response.getRegra() != null
                 && Boolean.TRUE.equals(response.getRegra().getPermiteAlteracao())
                 && response.getStatus() != null && response.getStatus().startsWith("PERMITIDA");
+    }
+
+    private RegraAereaAlteracaoConsultaResponse regraSnapshot(SimulacaoRemarcacao simulacao) {
+        if (simulacao == null || vazio(simulacao.getRegraSnapshotJson())) return null;
+        return ler(simulacao.getRegraSnapshotJson(), RegraAereaAlteracaoConsultaResponse.class);
+    }
+
+    private boolean exigeTarifaIgualOuMaior(RegraAereaAlteracaoConsultaResponse response) {
+        return response != null && response.getRegra() != null
+                && NOVO_VALOR_MINIMO_IGUAL_OU_MAIOR.equalsIgnoreCase(
+                        response.getRegra().getNovoValorMinimo() == null
+                                ? null : response.getRegra().getNovoValorMinimo().trim());
+    }
+
+    private boolean tarifaIgualOuMaior(BigDecimal tarifaOriginal, BigDecimal novaTarifa) {
+        return tarifaOriginal != null && novaTarifa != null
+                && novaTarifa.setScale(2, RoundingMode.HALF_UP)
+                        .compareTo(tarifaOriginal.setScale(2, RoundingMode.HALF_UP)) >= 0;
     }
 
     private boolean possuiBilhetes(Reserva reserva) {

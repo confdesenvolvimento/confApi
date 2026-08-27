@@ -935,7 +935,7 @@ public class ChatService {
         adicionarAcao(
                 acoes,
                 codigo,
-                localizador == null ? "Selecionar reserva" : "Simular alteracao",
+                localizador == null ? "Selecionar reserva" : "Simular remarcacao",
                 localizador == null
                         ? "Escolha uma reserva emitida da sua agencia para iniciar a simulacao."
                         : "Abra o seletor com o localizador informado como filtro inicial.",
@@ -1186,7 +1186,7 @@ public class ChatService {
         }
         List<Map<String, Object>> acoes = montarAcoesDisponiveisLocalizador(reserva.getLocalizador());
         if (podeSimularRemarcacao(reserva)) {
-            adicionarAcao(acoes, "simular_remarcacao", "Simular alteracao",
+            adicionarAcao(acoes, "simular_remarcacao", "Simular remarcacao",
                     "Pesquisar outro voo da mesma companhia e calcular uma previa da remarcacao.",
                     false, true, false);
         }
@@ -1323,7 +1323,15 @@ public class ChatService {
     }
 
     private boolean isReservaEmitida(Reserva reserva) {
-        return reserva != null && (reserva.getDataEmissao() != null || possuiBilhetes(reserva));
+        if (reserva == null) {
+            return false;
+        }
+        String status = normalizarTexto(reserva.getStatus());
+        boolean statusEmitido = "emitida".equals(status)
+                || "emitido".equals(status)
+                || "issued".equals(status)
+                || "ticketed".equals(status);
+        return statusEmitido || reserva.getDataEmissao() != null || possuiBilhetes(reserva);
     }
 
     private boolean possuiBilhetes(Reserva reserva) {

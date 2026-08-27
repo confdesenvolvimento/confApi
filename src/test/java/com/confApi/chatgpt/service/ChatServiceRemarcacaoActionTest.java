@@ -19,6 +19,11 @@ import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.familia.FamiliaService;
 import com.confApi.db.confManager.faturas.FaturasService;
 import com.confApi.db.wooba.checkin.CheckinService;
+import com.confApi.hub.aereo.dto.Bilhete;
+import com.confApi.hub.aereo.dto.Companhia;
+import com.confApi.hub.aereo.dto.Passageiro;
+import com.confApi.hub.aereo.dto.TrechoReserva;
+import com.confApi.hub.aereo.dto.Voo;
 import com.confApi.hub.limites.LimitesService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,9 +32,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -137,10 +143,51 @@ class ChatServiceRemarcacaoActionTest {
         assertEquals("reserva_aerea_detalhes",
                 service.classificarIntencaoOperacionalDeterministica("Mostre a reserva ABC123"));
         assertEquals("reserva_aerea_detalhes",
+                service.classificarIntencaoOperacionalDeterministica(
+                        "Mostre os dados do localizador ABC123"));
+        assertEquals("reserva_aerea_detalhes",
                 service.classificarIntencaoOperacionalDeterministica("Mostrar a reserva ABC123"));
         assertEquals("simular_remarcacao",
                 service.classificarIntencaoOperacionalDeterministica("Simular remarcação ABC123"));
         verifyNoInteractions(openAiClient, aereoClient, regrasReservaService, reservasService);
+    }
+
+    @Test
+    void consultaDeLocalizadorEmitidoElegivelDeveOferecerSimulacao() {
+        when(aereoClient.carregarReserva(any()))
+                .thenReturn(consultaReservaEmitidaElegivel("ABC123"));
+        List<ChatMessageDTO> messages = new ArrayList<>();
+
+        List<String> keywords = service.actionApis(
+                messages, request("Mostre os dados do localizador ABC123"));
+        List<ChatActionDTO> actions = service.extrairAcoesDisponiveis(messages);
+
+        assertTrue(keywords.contains("reserva_aerea_detalhes"));
+        ChatActionDTO simular = actions.stream()
+                .filter(action -> "simular_remarcacao".equals(action.code()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("ABC123", simular.localizador());
+        assertTrue(simular.prompt().contains("preencher a busca"));
+        verifyNoInteractions(openAiClient, regrasReservaService, reservasService);
+    }
+
+    @Test
+    void statusEmitidaSemBilheteDeveGerarAlertaMasNaoOferecerSimulacao() {
+        Reserva reserva = new Reserva();
+        reserva.setLocalizador("ABC123");
+        reserva.setStatus("EMITIDA");
+        ConsultarLocalizadorResponse consulta = new ConsultarLocalizadorResponse();
+        consulta.setReservas(List.of(reserva));
+        when(aereoClient.carregarReserva(any())).thenReturn(consulta);
+        List<ChatMessageDTO> messages = new ArrayList<>();
+
+        service.actionApis(messages, request("Mostre os dados do localizador ABC123"));
+        List<ChatActionDTO> actions = service.extrairAcoesDisponiveis(messages);
+
+        assertTrue(messages.get(0).content().contains("RESERVA_EMITIDA"));
+        assertTrue(actions.stream().noneMatch(action ->
+                "simular_remarcacao".equals(action.code())));
     }
 
     @Test
@@ -359,6 +406,29 @@ class ChatServiceRemarcacaoActionTest {
         reserva.setLocalizador(localizador);
         reserva.setStatus("CONFIRMADA");
         reserva.setPermiteCancelar(permiteCancelar);
+        ConsultarLocalizadorResponse response = new ConsultarLocalizadorResponse();
+        response.setReservas(List.of(reserva));
+        return response;
+    }
+
+    private ConsultarLocalizadorResponse consultaReservaEmitidaElegivel(String localizador) {
+        Bilhete bilhete = new Bilhete();
+        bilhete.setNumero("1271234567890");
+        bilhete.setStatus("ATIVO");
+        Passageiro passageiro = new Passageiro();
+        passageiro.setBilhetes(List.of(bilhete));
+
+        Voo voo = new Voo();
+        voo.setDataPartida(new Date(System.currentTimeMillis() + 86_400_000L));
+        TrechoReserva trecho = new TrechoReserva();
+        trecho.setCompanhia(new Companhia(1, "G3", "GOL"));
+        trecho.setVoos(List.of(voo));
+
+        Reserva reserva = new Reserva();
+        reserva.setLocalizador(localizador);
+        reserva.setStatus("EMITIDA");
+        reserva.setPassageiros(List.of(passageiro));
+        reserva.setViagens(List.of(trecho));
         ConsultarLocalizadorResponse response = new ConsultarLocalizadorResponse();
         response.setReservas(List.of(reserva));
         return response;
