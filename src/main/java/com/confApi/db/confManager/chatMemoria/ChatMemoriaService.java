@@ -37,7 +37,6 @@ public class ChatMemoriaService {
             // Monta URL
             String urlBase = UrlConfig.URL_CONFIANCA_MANAGER;
             String url = String.format("%schatMemoria/base/%s", urlBase, base);
-            System.out.println("findByBase -> " + url);
 
             //  Cabeçalhos da requisição
             HttpHeaders headers = new HttpHeaders();
@@ -55,7 +54,9 @@ public class ChatMemoriaService {
             );
 
             List<ChatMemoria> resultado = responseEntity.getBody();
-            System.out.println("findByBase Result -> " + resultado);
+            Logger.getLogger(getClass().getName()).log(Level.FINE,
+                    "Memorias do chat recuperadas para a base {0}: {1} registros.",
+                    new Object[]{base, resultado == null ? 0 : resultado.size()});
             return resultado != null ? resultado : Collections.emptyList();
 
         } catch (Exception e) {

@@ -216,6 +216,27 @@ class ChatConfiancaServiceTest {
     }
 
     @Test
+    void handoffDaConfiaDeveUsarDepartamentoEscolhidoPeloUsuario() {
+        fixture.conversa = conversaParaRemarcacao(999L, StatusConversa.AGUARDANDO_SOLICITANTE);
+        fixture.solicitanteParticipante = true;
+        when(manager.get(
+                "chat-confianca/persistencia/departamento-unidades/" + DEPARTAMENTO_UNIDADE_ID,
+                DepartamentoUnidade.class))
+                .thenReturn(fixture.departamentoUnidade);
+
+        Conversa encaminhada = service.encaminharConversaParaAtendente(
+                CONVERSA_ID,
+                SOLICITANTE,
+                DEPARTAMENTO_UNIDADE_ID,
+                "Cliente confirmou a equipe.");
+
+        assertEquals(DEPARTAMENTO_UNIDADE_ID, encaminhada.getDepartamentoUnidadeId());
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, encaminhada.getStatus());
+        assertNotNull(fixture.fila);
+        assertEquals(DEPARTAMENTO_UNIDADE_ID, fixture.fila.getDepartamentoUnidadeId());
+    }
+
+    @Test
     void conversaHumanaDeveContinuarBloqueadaForaDoHorario() {
         fixture.departamentoUnidade.setHorarioAtendimentoJson("{}");
         fixture.departamentoUnidade.setMensagemForaHorario("Atendimento humano indisponivel.");

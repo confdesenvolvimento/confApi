@@ -8,6 +8,9 @@ import com.confApi.chatconfianca.dto.model.Mensagem;
 import com.confApi.chatconfianca.dto.request.PerguntarConfiaRequest;
 import com.confApi.chatconfianca.dto.response.ChatConfiancaIaResponse;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
+import com.confApi.chatconfianca.intencao.ChatIntencaoClassificacao;
+import com.confApi.chatconfianca.intencao.ChatMemoriaRecuperacaoShadowAuditService;
+import com.confApi.chatconfianca.intencao.ChatIntencaoShadowService;
 import com.confApi.chatgpt.dto.ChatMessageDTO;
 import com.confApi.chatgpt.dto.ChatRequestDTO;
 import com.confApi.chatgpt.dto.ChatResponseDTO;
@@ -21,6 +24,7 @@ import com.confApi.exception.RegraDeNegocioException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -29,10 +33,12 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,19 +47,34 @@ public class ChatConfiancaIaService {
     private final ChatService chatService;
     private final ProfilePromptRegistry profiles;
     private final ObjectMapper objectMapper;
+    private final ChatIntencaoShadowService chatIntencaoShadowService;
+    private final ChatMemoriaRecuperacaoShadowAuditService chatMemoriaRecuperacaoAuditService;
+
+    private record SugestaoRoteamento(DepartamentoUnidade departamento,
+                                      int confianca,
+                                      String intencao,
+                                      List<String> topicos,
+                                      String motivo) {
+    }
 
     public ChatConfiancaIaService(ChatConfiancaService chatConfiancaService,
                                   ChatService chatService,
                                   ProfilePromptRegistry profiles,
-                                  ObjectMapper objectMapper) {
+                                  ObjectMapper objectMapper,
+                                  ChatIntencaoShadowService chatIntencaoShadowService,
+                                  ChatMemoriaRecuperacaoShadowAuditService chatMemoriaRecuperacaoAuditService) {
         this.chatConfiancaService = chatConfiancaService;
         this.chatService = chatService;
         this.profiles = profiles;
         this.objectMapper = objectMapper;
+        this.chatIntencaoShadowService = chatIntencaoShadowService;
+        this.chatMemoriaRecuperacaoAuditService = chatMemoriaRecuperacaoAuditService;
     }
 
     public ChatConfiancaIaResponse perguntar(PerguntarConfiaRequest request) {
         validarPergunta(request);
+        ChatIntencaoClassificacao classificacaoSombra =
+                chatIntencaoShadowService.classificar(request.getMensagem());
 
         SessaoChatResponse sessao = chatConfiancaService.montarSessao(request.getCodgUsuario(), request.getCodgAgenciaSessao());
         Conversa conversa = request.getConversaId() == null
@@ -63,15 +84,15 @@ public class ChatConfiancaIaService {
                 ? new ArrayList<>()
                 : chatConfiancaService.listarMensagens(conversa.getId(), request.getCodgUsuario(), false, false);
 
-        DepartamentoUnidade departamento = resolverDepartamento(request, conversa);
+        SugestaoRoteamento roteamento = sugerirRoteamento(request);
         if (conversa == null) {
             conversa = chatConfiancaService.iniciarConversaAssistida(
                     request.getCodgUsuario(),
-                    departamento.getId(),
-                    assuntoOuPadrao(request, departamento),
+                    null,
+                    assuntoOuPadrao(request),
                     request.getMensagem(),
                     request.getPrioridade(),
-                    metadadosInicioConfia(request, departamento),
+                    metadadosInicioConfia(request, roteamento),
                     request.getCodgAgenciaSessao()
             );
         }
@@ -85,9 +106,48 @@ public class ChatConfiancaIaService {
         ChatConfiancaIaResponse response = new ChatConfiancaIaResponse();
         response.setConversa(conversa);
         response.setMensagemUsuario(mensagemUsuario);
-        response.setDepartamentoSugerido(departamento);
+        response.setDepartamentoSugerido(roteamento.departamento());
+        response.setDepartamentoSugeridoConfianca(
+                roteamento.departamento() == null ? null : roteamento.confianca());
+        response.setIntencao(roteamento.intencao());
+        response.getTopicos().addAll(roteamento.topicos());
 
         ChatResponseDTO respostaConfia = chamarConfia(request, sessao, historico);
+        List<String> topicosAtualizados = mesclarTopicos(
+                roteamento.topicos(),
+                respostaConfia == null ? null : respostaConfia.keywords());
+        String intencaoAtualizada = topicosAtualizados.isEmpty()
+                ? roteamento.intencao()
+                : topicosAtualizados.get(0);
+        String metadadosAtualizados = metadadosContextoConfia(
+                conversa.getMetadadosJson(),
+                request,
+                roteamento,
+                intencaoAtualizada,
+                topicosAtualizados);
+        metadadosAtualizados = metadadosClassificacaoSombra(
+                metadadosAtualizados, intencaoAtualizada, classificacaoSombra);
+        Conversa conversaAtualizada = chatConfiancaService.atualizarMetadadosConversaAssistida(
+                conversa.getId(), metadadosAtualizados);
+        if (conversaAtualizada != null) {
+            conversa = conversaAtualizada;
+        } else {
+            conversa.setMetadadosJson(metadadosAtualizados);
+        }
+        response.setConversa(conversa);
+        response.setIntencao(intencaoAtualizada);
+        response.getTopicos().clear();
+        response.getTopicos().addAll(topicosAtualizados);
+        chatIntencaoShadowService.registrarComparacao(
+                conversa.getId(),
+                mensagemUsuario == null ? null : mensagemUsuario.getId(),
+                intencaoAtualizada,
+                classificacaoSombra);
+        chatMemoriaRecuperacaoAuditService.registrar(
+                conversa.getId(),
+                mensagemUsuario == null ? null : mensagemUsuario.getId(),
+                baseMemoria(sessao),
+                classificacaoSombra);
         JsonNode payloadReservasRecentes = extrairPayloadReservasRecentes(respostaConfia);
         Map<String, Object> payloadMelhoresTarifasAereas =
                 extrairPayloadMelhoresTarifasAereas(respostaConfia);
@@ -131,6 +191,7 @@ public class ChatConfiancaIaService {
             Conversa encaminhada = chatConfiancaService.encaminharConversaParaAtendente(
                     conversa.getId(),
                     request.getCodgUsuario(),
+                    request.getDepartamentoUnidadeId(),
                     "Cliente solicitou atendimento humano durante conversa com a ConfIA."
             );
             response.setConversa(encaminhada);
@@ -148,6 +209,7 @@ public class ChatConfiancaIaService {
         Conversa conversa = chatConfiancaService.encaminharConversaParaAtendente(
                 request.getConversaId(),
                 request.getCodgUsuario(),
+                request.getDepartamentoUnidadeId(),
                 isBlank(request.getMensagem())
                         ? "Cliente solicitou atendimento humano."
                         : request.getMensagem()
@@ -160,6 +222,12 @@ public class ChatConfiancaIaService {
         return response;
     }
 
+    private String baseMemoria(SessaoChatResponse sessao) {
+        return sessao == null || sessao.getUnidade() == null
+                ? "Confianca"
+                : sessao.getUnidade().getNomeUnidade();
+    }
+
     private ChatResponseDTO chamarConfia(PerguntarConfiaRequest request,
                                          SessaoChatResponse sessao,
                                          List<Mensagem> historico) {
@@ -170,7 +238,7 @@ public class ChatConfiancaIaService {
                     : sessao.getAgencia().getCodgAgencia().longValue();
             ConversationRequestDTO conversation = new ConversationRequestDTO(
                     "confia",
-                    sessao.getUnidade() == null ? "Confianca" : sessao.getUnidade().getNomeUnidade(),
+                    baseMemoria(sessao),
                     idErp(sessao),
                     codgAgencia,
                     request.getCodgUsuario().longValue(),
@@ -462,21 +530,59 @@ public class ChatConfiancaIaService {
         return Objects.equals(mensagem.getRemetenteCodgUsuario(), codgUsuario) ? "user" : "assistant";
     }
 
-    private DepartamentoUnidade resolverDepartamento(PerguntarConfiaRequest request, Conversa conversa) {
-        List<DepartamentoUnidade> departamentos = chatConfiancaService.listarDepartamentosDisponiveisPorUsuario(request.getCodgUsuario(), request.getCodgAgenciaSessao());
-        if (departamentos == null || departamentos.isEmpty()) {
-            throw regra("Nenhum departamento disponivel para o chat.");
+    private SugestaoRoteamento sugerirRoteamento(PerguntarConfiaRequest request) {
+        List<DepartamentoUnidade> disponiveis =
+                chatConfiancaService.listarDepartamentosRoteamentoPorUsuario(
+                        request.getCodgUsuario(), request.getCodgAgenciaSessao());
+        List<DepartamentoUnidade> departamentos = disponiveis == null
+                ? new ArrayList<>()
+                : disponiveis;
+
+        List<String> topicos = detectarTopicos(request.getMensagem());
+        String intencao = topicos.isEmpty() ? "orientacao_geral" : topicos.get(0);
+        if (departamentos.isEmpty()) {
+            return new SugestaoRoteamento(null, 0, intencao, topicos,
+                    "Nenhuma equipe humana elegivel para sugestao.");
         }
-        Long departamentoId = conversa != null ? conversa.getDepartamentoUnidadeId() : request.getDepartamentoUnidadeId();
-        if (departamentoId != null) {
-            return departamentos.stream()
-                    .filter(item -> departamentoId.equals(item.getId()))
+
+        if (request.getDepartamentoUnidadeId() != null) {
+            DepartamentoUnidade explicito = departamentos.stream()
+                    .filter(item -> request.getDepartamentoUnidadeId().equals(item.getId()))
                     .findFirst()
-                    .orElse(departamentos.get(0));
+                    .orElse(null);
+            if (explicito != null) {
+                return new SugestaoRoteamento(explicito, 100, intencao, topicos,
+                        "Equipe escolhida explicitamente pelo usuario.");
+            }
         }
-        return departamentos.stream()
-                .max((a, b) -> Integer.compare(scoreDepartamento(a, request.getMensagem()), scoreDepartamento(b, request.getMensagem())))
-                .orElse(departamentos.get(0));
+
+        DepartamentoUnidade melhor = null;
+        int melhorScore = 0;
+        int segundoScore = 0;
+        boolean empate = false;
+        for (DepartamentoUnidade departamento : departamentos) {
+            int score = scoreDepartamento(departamento, request.getMensagem());
+            if (score > melhorScore) {
+                segundoScore = melhorScore;
+                melhorScore = score;
+                melhor = departamento;
+                empate = false;
+            } else if (score == melhorScore && score > 0) {
+                empate = true;
+            } else if (score > segundoScore) {
+                segundoScore = score;
+            }
+        }
+
+        if (melhor == null || melhorScore < 10 || empate) {
+            return new SugestaoRoteamento(null, 0, intencao, topicos,
+                    empate ? "Mais de uma equipe possui a mesma aderencia."
+                            : "A mensagem ainda nao oferece confianca suficiente.");
+        }
+        int confianca = Math.min(95,
+                70 + Math.min(20, melhorScore) + Math.min(5, melhorScore - segundoScore));
+        return new SugestaoRoteamento(melhor, confianca, intencao, topicos,
+                "Sugestao calculada por aderencia entre o tema e a configuracao da equipe.");
     }
 
     private int scoreDepartamento(DepartamentoUnidade departamento, String mensagem) {
@@ -489,12 +595,41 @@ public class ChatConfiancaIaService {
                 score += 3;
             }
         }
-        score += scorePorGrupo(texto, entrada, "financeiro", "limite", "fatura", "boleto", "cobranca", "pagamento");
+        score += scorePorGrupo(texto, entrada, "financeiro", "limite", "fatura", "boleto", "cobranca", "pagamento", "bsp", "faturamento", "vencimento");
         score += scorePorGrupo(texto, entrada, "reembolso", "cancelamento", "devolucao", "estorno");
         score += scorePorGrupo(texto, entrada, "aereo", "voo", "localizador", "reserva", "bilhete", "emissao", "checkin");
         score += scorePorGrupo(texto, entrada, "hotel", "hospedagem", "diaria");
         score += scorePorGrupo(texto, entrada, "suporte", "sistema", "erro", "acesso", "senha", "tecnologia");
         return score;
+    }
+
+    private List<String> detectarTopicos(String mensagem) {
+        String texto = normalizar(mensagem);
+        Set<String> topicos = new LinkedHashSet<>();
+        adicionarTopico(topicos, texto, "financeiro",
+                "financeiro", "limite", "fatura", "boleto", "cobranca", "pagamento",
+                "bsp", "faturamento", "vencimento");
+        adicionarTopico(topicos, texto, "reembolso_cancelamento",
+                "reembolso", "cancelamento", "devolucao", "estorno");
+        adicionarTopico(topicos, texto, "aereo",
+                "aereo", "voo", "localizador", "reserva", "bilhete", "emissao", "checkin");
+        adicionarTopico(topicos, texto, "hotel",
+                "hotel", "hospedagem", "diaria");
+        adicionarTopico(topicos, texto, "suporte",
+                "suporte", "sistema", "erro", "acesso", "senha", "tecnologia");
+        return new ArrayList<>(topicos);
+    }
+
+    private void adicionarTopico(Set<String> topicos,
+                                 String texto,
+                                 String topico,
+                                 String... termos) {
+        for (String termo : termos) {
+            if (texto.contains(termo)) {
+                topicos.add(topico);
+                return;
+            }
+        }
     }
 
     private int scorePorGrupo(String departamento, String entrada, String... termos) {
@@ -519,7 +654,7 @@ public class ChatConfiancaIaService {
                 || texto.contains("estorno");
     }
 
-    private String assuntoOuPadrao(PerguntarConfiaRequest request, DepartamentoUnidade departamento) {
+    private String assuntoOuPadrao(PerguntarConfiaRequest request) {
         if (!isBlank(request.getAssunto())) {
             return request.getAssunto().trim();
         }
@@ -528,19 +663,134 @@ public class ChatConfiancaIaService {
                     ? request.getMensagem().trim().substring(0, 80)
                     : request.getMensagem().trim();
         }
-        return departamento.getNomeExibicao();
+        return "Atendimento ConfIA";
     }
 
-    private String metadadosInicioConfia(PerguntarConfiaRequest request, DepartamentoUnidade departamento) {
-        Map<String, Object> dados = new HashMap<>();
-        dados.put("origem", "CONFIA");
-        dados.put("departamentoSugeridoId", departamento.getId());
-        dados.put("departamentoSugerido", departamento.getNomeExibicao());
-        dados.put("prioridade", request.getPrioridade() == null ? PrioridadeConversa.NORMAL : request.getPrioridade());
+    private String metadadosInicioConfia(PerguntarConfiaRequest request,
+                                         SugestaoRoteamento roteamento) {
+        return metadadosContextoConfia(
+                null,
+                request,
+                roteamento,
+                roteamento.intencao(),
+                roteamento.topicos());
+    }
+
+    private String metadadosContextoConfia(String metadadosAtuais,
+                                           PerguntarConfiaRequest request,
+                                           SugestaoRoteamento roteamento,
+                                           String intencao,
+                                           List<String> topicos) {
         try {
+            ObjectNode dados = objectMapper.createObjectNode();
+            if (!isBlank(metadadosAtuais)) {
+                JsonNode existente = objectMapper.readTree(metadadosAtuais);
+                if (existente != null && existente.isObject()) {
+                    dados.setAll((ObjectNode) existente);
+                }
+            }
+            dados.put("origem", "CONFIA");
+            dados.put("prioridade", Objects.toString(
+                    request.getPrioridade() == null
+                            ? PrioridadeConversa.NORMAL
+                            : request.getPrioridade()));
+            dados.put("intencaoAtual", isBlank(intencao) ? "orientacao_geral" : intencao);
+            var topicosNode = dados.putArray("topicos");
+            mesclarTopicos(topicos, null).forEach(topicosNode::add);
+            dados.put("roteamentoUltimoMotivo", roteamento.motivo());
+            if (roteamento.departamento() != null) {
+                dados.put("departamentoSugeridoId", roteamento.departamento().getId());
+                dados.put("departamentoSugerido", roteamento.departamento().getNomeExibicao());
+                dados.put("departamentoSugeridoConfianca", roteamento.confianca());
+            }
             return objectMapper.writeValueAsString(dados);
-        } catch (JsonProcessingException e) {
-            return null;
+        } catch (Exception e) {
+            Map<String, Object> fallback = new LinkedHashMap<>();
+            fallback.put("origem", "CONFIA");
+            fallback.put("intencaoAtual", isBlank(intencao) ? "orientacao_geral" : intencao);
+            fallback.put("topicos", topicos == null ? List.of() : topicos);
+            try {
+                return objectMapper.writeValueAsString(fallback);
+            } catch (JsonProcessingException ignored) {
+                return "{\"origem\":\"CONFIA\"}";
+            }
+        }
+    }
+
+    private String metadadosClassificacaoSombra(String metadadosAtuais,
+                                                String intencaoAtual,
+                                                ChatIntencaoClassificacao sombra) {
+        if (sombra == null || !sombra.possuiResultadoObservavel()) {
+            return metadadosAtuais;
+        }
+        try {
+            ObjectNode dados = objectMapper.createObjectNode();
+            if (!isBlank(metadadosAtuais)) {
+                JsonNode existente = objectMapper.readTree(metadadosAtuais);
+                if (existente != null && existente.isObject()) {
+                    dados.setAll((ObjectNode) existente);
+                }
+            }
+            ObjectNode classificacao = dados.putObject("classificacaoIntencaoShadow");
+            classificacao.put("modo", "SHADOW");
+            classificacao.put("fonte", sombra.getFonte());
+            classificacao.put("status", sombra.getStatus());
+            if (sombra.getIntencaoId() == null) {
+                classificacao.putNull("intencaoId");
+            } else {
+                classificacao.put("intencaoId", sombra.getIntencaoId());
+            }
+            if (sombra.getCodigo() == null) {
+                classificacao.putNull("intencao");
+            } else {
+                classificacao.put("intencao", sombra.getCodigo());
+            }
+            classificacao.put("nome", sombra.getNome());
+            classificacao.put("score", sombra.getScore());
+            classificacao.put("segundoScore", sombra.getSegundoScore());
+            classificacao.put("confianca", sombra.getConfianca());
+            classificacao.put("intencaoAtual", intencaoAtual);
+            classificacao.put("coincideComAtual",
+                    sombra.getCodigo() != null
+                            && sombra.getCodigo().equalsIgnoreCase(
+                            Objects.toString(intencaoAtual, "")));
+            var positivos = classificacao.putArray("termosPositivos");
+            sombra.getTermosPositivos().forEach(positivos::add);
+            var negativos = classificacao.putArray("termosNegativos");
+            sombra.getTermosNegativos().forEach(negativos::add);
+            ObjectNode recuperacao = classificacao.putObject("recuperacaoMemoriaShadow");
+            recuperacao.put("status", sombra.getStatusRecuperacaoMemoria());
+            List<Integer> memoriasRecuperadas = sombra.getMemoriasRecuperadas() == null
+                    ? List.of() : sombra.getMemoriasRecuperadas();
+            recuperacao.put("quantidade", memoriasRecuperadas.size());
+            var memoriaIds = recuperacao.putArray("memoriaIds");
+            memoriasRecuperadas.forEach(memoriaIds::add);
+            return objectMapper.writeValueAsString(dados);
+        } catch (Exception ex) {
+            return metadadosAtuais;
+        }
+    }
+
+    private List<String> mesclarTopicos(List<String> topicos, List<String> keywords) {
+        Set<String> resultado = new LinkedHashSet<>();
+        adicionarTopicosNormalizados(resultado, topicos);
+        adicionarTopicosNormalizados(resultado, keywords);
+        return new ArrayList<>(resultado);
+    }
+
+    private void adicionarTopicosNormalizados(Set<String> destino, List<String> valores) {
+        if (valores == null) {
+            return;
+        }
+        for (String valor : valores) {
+            String normalizado = normalizar(valor).trim()
+                    .replaceAll("[^a-z0-9]+", "_")
+                    .replaceAll("^_+|_+$", "");
+            if (!normalizado.isEmpty()) {
+                destino.add(normalizado.length() <= 60
+                        ? normalizado
+                        : normalizado.substring(0, 60));
+            }
         }
     }
 
