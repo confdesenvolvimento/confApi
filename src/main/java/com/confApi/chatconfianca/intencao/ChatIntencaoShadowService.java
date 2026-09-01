@@ -15,8 +15,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
+import java.text.Normalizer;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
@@ -86,6 +88,12 @@ public class ChatIntencaoShadowService {
     }
 
     public ChatIntencaoClassificacao classificar(String mensagem) {
+        return classificar(mensagem, null, null);
+    }
+
+    public ChatIntencaoClassificacao classificar(String mensagem,
+                                                 Integer codgUnidade,
+                                                 String baseAtual) {
         if (!properties.isShadowEnabled()) {
             return ChatIntencaoClassificacao.status("DESABILITADO");
         }
@@ -97,7 +105,7 @@ public class ChatIntencaoShadowService {
                 perfis,
                 properties.getMinScore(),
                 properties.getMinMargin());
-        enriquecerRecuperacaoMemoria(resultado);
+        enriquecerRecuperacaoMemoria(resultado, codgUnidade, baseAtual);
         return resultado;
     }
 
@@ -122,17 +130,21 @@ public class ChatIntencaoShadowService {
         return atualizadoEm;
     }
 
-    private void enriquecerRecuperacaoMemoria(ChatIntencaoClassificacao resultado) {
+    private void enriquecerRecuperacaoMemoria(ChatIntencaoClassificacao resultado,
+                                              Integer codgUnidade,
+                                              String baseAtual) {
         long inicio = System.nanoTime();
         try {
-            enriquecerRecuperacaoMemoriaInterno(resultado);
+            enriquecerRecuperacaoMemoriaInterno(resultado, codgUnidade, baseAtual);
         } finally {
             resultado.setTempoRecuperacaoMemoriaMs(
                     Math.max(0L, (System.nanoTime() - inicio) / 1_000_000L));
         }
     }
 
-    private void enriquecerRecuperacaoMemoriaInterno(ChatIntencaoClassificacao resultado) {
+    private void enriquecerRecuperacaoMemoriaInterno(ChatIntencaoClassificacao resultado,
+                                                     Integer codgUnidade,
+                                                     String baseAtual) {
         if (!properties.isMemoryShadowEnabled()) {
             resultado.setStatusRecuperacaoMemoria("DESABILITADO");
             return;
@@ -149,12 +161,34 @@ public class ChatIntencaoShadowService {
             resultado.setStatusRecuperacaoMemoria("SEM_MEMORIA");
             return;
         }
-        resultado.setMemoriasRecuperadas(perfil.getMemorias().stream()
+        List<ChatIntencaoRuntimeDto.Memoria> memoriasCompativeis = perfil.getMemorias().stream()
+                .filter(memoria -> memoriaCompativelComEscopo(
+                        memoria, codgUnidade, baseAtual))
+                .toList();
+        resultado.setMemoriasDetalhadas(List.copyOf(memoriasCompativeis));
+        resultado.setMemoriasRecuperadas(memoriasCompativeis.stream()
                 .map(ChatIntencaoRuntimeDto.Memoria::getCodgMemoria)
                 .filter(Objects::nonNull)
                 .toList());
         resultado.setStatusRecuperacaoMemoria(
                 resultado.getMemoriasRecuperadas().isEmpty() ? "SEM_MEMORIA" : "RECUPERADA");
+    }
+
+    private boolean memoriaCompativelComEscopo(ChatIntencaoRuntimeDto.Memoria memoria,
+                                               Integer codgUnidade,
+                                               String baseAtual) {
+        if (memoria == null) {
+            return false;
+        }
+        if (memoria.getCodgUnidade() != null) {
+            return Objects.equals(memoria.getCodgUnidade(), codgUnidade);
+        }
+        String baseMemoria = normalizarBase(memoria.getBase());
+        if ("geral".equals(baseMemoria)) {
+            return true;
+        }
+        String baseConversa = normalizarBase(baseAtual);
+        return !baseConversa.isEmpty() && Objects.equals(baseMemoria, baseConversa);
     }
 
     private String urlRuntime() {
@@ -168,5 +202,15 @@ public class ChatIntencaoShadowService {
 
     private String normalizarCodigo(String valor) {
         return valor == null ? null : valor.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private String normalizarBase(String valor) {
+        if (valor == null) {
+            return "";
+        }
+        return Normalizer.normalize(valor, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .trim()
+                .toLowerCase(Locale.ROOT);
     }
 }

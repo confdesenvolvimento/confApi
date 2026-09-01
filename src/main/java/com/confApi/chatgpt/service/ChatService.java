@@ -333,7 +333,15 @@ public class ChatService {
     }
 
     public List<String> actionApis(List<ChatMessageDTO> messages, ConversationRequestDTO req) {
-        String keyword = inferirKeywordOperacional(req.input());
+        return actionApis(messages, req, null);
+    }
+
+    public List<String> actionApis(List<ChatMessageDTO> messages,
+                                   ConversationRequestDTO req,
+                                   String keywordDecidida) {
+        String keyword = keywordDecidida == null || keywordDecidida.isBlank()
+                ? inferirKeywordOperacional(req.input())
+                : keywordDecidida.trim();
         boolean intencaoDeterministica = keyword != null;
         if (keyword == null) {
             keyword = "desconhecido";
@@ -386,20 +394,30 @@ public class ChatService {
                 messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
             }
         }
-        if (keyword.equals("limites") && !keywords.contains(keyword)) {
+        boolean consultaFinanceiraBloqueada = isKeywordFinanceira(keyword)
+                && !keywords.contains(keyword)
+                && !possuiContextoFinanceiroDaAgencia(req);
+        if (consultaFinanceiraBloqueada) {
+            messages.add(new ChatMessageDTO("system",
+                    "Dado do sistema: a consulta financeira nao foi executada porque a agencia "
+                            + "autenticada nao possui identificacao ERP valida. Nao utilize dados "
+                            + "de outra agencia ou da unidade como alternativa."));
+        }
+
+        if (keyword.equals("limites") && !keywords.contains(keyword) && !consultaFinanceiraBloqueada) {
             /*Consultar limites de credito*/
            // System.out.println("Limite Erp: " + req.idErp());
             Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
 
         }
-        if (keyword.equals("faturas") && !keywords.contains(keyword)) {
+        if (keyword.equals("faturas") && !keywords.contains(keyword) && !consultaFinanceiraBloqueada) {
             /* Consultar Faturas*/
             // montarMensagemFaturas(req);
             messages.add(montarMensagemFaturas(req));
         }
 
-        if (keyword.equals("boletos") && !keywords.contains(keyword)) {
+        if (keyword.equals("boletos") && !keywords.contains(keyword) && !consultaFinanceiraBloqueada) {
             /* Consultar Boletos*/
             messages.add(montarMensagemFaturasBoleto(req));
             // montarMensagemFaturasBoleto(req);
@@ -436,8 +454,24 @@ public class ChatService {
         return keywords;
     }
 
+    private boolean isKeywordFinanceira(String keyword) {
+        return "limites".equals(keyword) || "faturas".equals(keyword) || "boletos".equals(keyword);
+    }
+
+    private boolean possuiContextoFinanceiroDaAgencia(ConversationRequestDTO req) {
+        if (req == null || req.codgAgencia() == null || req.codgAgencia() <= 0
+                || req.idErp() == null || req.idErp().trim().isEmpty()) {
+            return false;
+        }
+        return !"confia".equalsIgnoreCase(req.idErp().trim());
+    }
+
     public boolean isListagemReservasRecentesDeterministica(String input) {
         return isKeywordUltimasReservasAereas(classificarIntencaoOperacionalDeterministica(input));
+    }
+
+    public String identificarKeywordOperacionalDeterministica(String input) {
+        return classificarIntencaoOperacionalDeterministica(input);
     }
 
     String classificarIntencaoOperacionalDeterministica(String input) {
@@ -728,6 +762,17 @@ public class ChatService {
         String normalizado = normalizarTexto(input);
         if (normalizado.isBlank()) {
             return null;
+        }
+
+        if (contemAlgum(normalizado, "limite", "limites")
+                && contemAlgum(normalizado, "credito", "disponivel", "saldo")) {
+            return "limites";
+        }
+        if (contemAlgum(normalizado, "boleto", "boletos", "linha digitavel")) {
+            return "boletos";
+        }
+        if (contemAlgum(normalizado, "fatura", "faturas")) {
+            return "faturas";
         }
 
         String localizadorDeterministico = extrairLocalizadorDeterministico(input);

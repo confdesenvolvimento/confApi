@@ -358,6 +358,50 @@ class ChatConfiancaServiceTest {
     }
 
     @Test
+    void usuarioDeAgenciaNaoPodeTrocarAgenciaPeloParametroDaSessao() {
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.montarSessao(SOLICITANTE, 999));
+
+        assertEquals(403, erro.getStatus());
+        assertEquals("A agencia informada nao pertence ao usuario.", erro.getMessage());
+    }
+
+    @Test
+    void usuarioInternoNaoPodeSelecionarAgenciaDeOutraUnidade() {
+        RefAgencia agenciaOutraUnidade = new RefAgencia();
+        agenciaOutraUnidade.setCodgAgencia(999);
+        agenciaOutraUnidade.setCodgUnidade(2);
+        agenciaOutraUnidade.setAtivoChat(true);
+        agenciaOutraUnidade.setStatus(1);
+        when(manager.get("chat-confianca/consultas/agencias/999", RefAgencia.class))
+                .thenReturn(agenciaOutraUnidade);
+        when(configService.sincronizarAgenciaReferencia(999)).thenReturn(agenciaOutraUnidade);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.montarSessao(ATENDENTE, 999));
+
+        assertEquals(403, erro.getStatus());
+        assertEquals("A agencia informada nao pertence a unidade do usuario.", erro.getMessage());
+    }
+
+    @Test
+    void conversaDaIaDevePertencerAMesmaAgenciaEUnidadeDaSessao() {
+        fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
+        fixture.conversa.setCodgAgencia(999);
+        fixture.solicitanteParticipante = true;
+        var sessao = service.montarSessao(SOLICITANTE, CODG_AGENCIA);
+
+        RegraDeNegocioException erro = assertThrows(
+                RegraDeNegocioException.class,
+                () -> service.buscarConversaNaSessao(CONVERSA_ID, SOLICITANTE, sessao));
+
+        assertEquals(403, erro.getStatus());
+        assertEquals("A conversa nao pertence a agencia e unidade da sessao atual.", erro.getMessage());
+    }
+
+    @Test
     void gestorAdministrativoSemPerfilAdminContinuaSemAcessoGlobal() {
         fixture.atendente.setCodgAgencia(CODG_AGENCIA);
         fixture.atendente.setTipoUsuario("Administrativo");

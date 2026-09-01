@@ -55,6 +55,8 @@ class ChatServiceRemarcacaoActionTest {
             mock(AereoRegrasReservaService.class);
     private final ChatConfiancaReservaAereaService reservasService =
             mock(ChatConfiancaReservaAereaService.class);
+    private final LimitesService limitesService = mock(LimitesService.class);
+    private final FaturasService faturasService = mock(FaturasService.class);
     private ChatService service;
 
     @BeforeEach
@@ -64,14 +66,74 @@ class ChatServiceRemarcacaoActionTest {
                 mock(OpenAIProperties.class),
                 mock(ToolRouter.class),
                 mock(ChatMemoriaService.class),
-                mock(LimitesService.class),
-                mock(FaturasService.class),
+                limitesService,
+                faturasService,
                 mock(CheckinService.class),
                 mock(FamiliaService.class),
                 mock(AlertaTarifaService.class),
                 reservasService,
                 aereoClient,
                 regrasReservaService);
+    }
+
+    @Test
+    void consultaFinanceiraSemErpDaAgenciaNaoDeveConsultarServicoExterno() {
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        ConversationRequestDTO semErpDaAgencia = new ConversationRequestDTO(
+                "confia",
+                "Confianca",
+                null,
+                321L,
+                101L,
+                "Qual e o meu limite de credito?",
+                new ArrayList<>(),
+                null,
+                false,
+                new ArrayList<>());
+
+        List<String> keywords = service.actionApis(messages, semErpDaAgencia);
+
+        assertTrue(keywords.contains("limites"));
+        assertTrue(messages.stream().anyMatch(item -> item.content().contains(
+                "consulta financeira nao foi executada")));
+        verifyNoInteractions(limitesService);
+        verifyNoInteractions(faturasService);
+    }
+
+    @Test
+    void consultaFinanceiraSemAgenciaNaoDeveReutilizarErpRecebido() {
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        ConversationRequestDTO semAgencia = new ConversationRequestDTO(
+                "confia",
+                "Confianca",
+                "ERP-UNIDADE",
+                0L,
+                101L,
+                "Quero consultar minhas faturas",
+                new ArrayList<>(),
+                null,
+                false,
+                new ArrayList<>());
+
+        service.actionApis(messages, semAgencia);
+
+        verifyNoInteractions(faturasService);
+        assertTrue(messages.stream().anyMatch(item -> item.content().contains(
+                "Nao utilize dados de outra agencia ou da unidade")));
+    }
+
+    @Test
+    void acaoJaDecididaNaoDeveClassificarNovamenteAMensagem() {
+        List<ChatMessageDTO> messages = new ArrayList<>();
+
+        List<String> keywords = service.actionApis(
+                messages,
+                request("Mensagem sem palavra financeira"),
+                "faturas");
+
+        assertTrue(keywords.contains("faturas"));
+        verify(faturasService).faturaSica(any());
+        verifyNoInteractions(openAiClient);
     }
 
     @Test

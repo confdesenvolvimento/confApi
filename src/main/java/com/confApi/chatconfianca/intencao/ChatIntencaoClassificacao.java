@@ -24,6 +24,7 @@ public class ChatIntencaoClassificacao {
     private String fonte = "CHAT_INTENCAO_TERMO_V1";
     private String statusRecuperacaoMemoria = "DESABILITADO";
     private List<Integer> memoriasRecuperadas = new ArrayList<>();
+    private List<ChatIntencaoRuntimeDto.Memoria> memoriasDetalhadas = new ArrayList<>();
     private Long tempoRecuperacaoMemoriaMs = 0L;
 
     public static ChatIntencaoClassificacao status(String status) {

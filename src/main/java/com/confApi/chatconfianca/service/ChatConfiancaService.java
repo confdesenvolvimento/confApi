@@ -133,11 +133,16 @@ public class ChatConfiancaService {
 
         RefAgencia agencia = null;
         if (usuario.getCodgAgencia() != null) {
+            if (codgAgenciaSessao != null
+                    && !Objects.equals(usuario.getCodgAgencia(), codgAgenciaSessao)) {
+                throw regra(403, "A agencia informada nao pertence ao usuario.");
+            }
             agencia = buscarOuSincronizarAgencia(usuario.getCodgAgencia());
             validarAgenciaAtiva(agencia, usuario.getCodgAgencia(), 403);
         } else if (codgAgenciaSessao != null) {
             agencia = buscarOuSincronizarAgencia(codgAgenciaSessao);
             validarAgenciaAtiva(agencia, codgAgenciaSessao, 403);
+            validarAcessoAgenciaSessao(usuario, agencia);
         }
 
         Integer codgUnidade = agencia != null ? agencia.getCodgUnidade() : usuario.getCodgUnidade();
@@ -1162,6 +1167,20 @@ public class ChatConfiancaService {
         validarObrigatorio(codgUsuario, "Informe o usuario.");
         Conversa conversa = buscarConversaOuFalhar(conversaId);
         validarAcessoConversa(conversa, codgUsuario, gestor, "Usuario nao participa da conversa.");
+        return conversa;
+    }
+
+    public Conversa buscarConversaNaSessao(Long conversaId, Integer codgUsuario,
+                                            SessaoChatResponse sessao) {
+        Conversa conversa = buscarConversa(conversaId, codgUsuario, false);
+        Integer codgAgenciaSessao = sessao == null || sessao.getAgencia() == null
+                ? null
+                : sessao.getAgencia().getCodgAgencia();
+        Integer codgUnidadeSessao = unidadeSessao(sessao);
+        if (!Objects.equals(conversa.getCodgAgencia(), codgAgenciaSessao)
+                || !Objects.equals(conversa.getCodgUnidade(), codgUnidadeSessao)) {
+            throw regra(403, "A conversa nao pertence a agencia e unidade da sessao atual.");
+        }
         return conversa;
     }
 
@@ -3014,6 +3033,21 @@ public class ChatConfiancaService {
         return limitarTextoResumo(request.getCategoria().trim() + " - " + motivo, 500);
     }
 
+    private void validarAcessoAgenciaSessao(RefUsuario usuario, RefAgencia agencia) {
+        if (usuario == null || agencia == null) {
+            throw regra(403, "Nao foi possivel validar a agencia da sessao.");
+        }
+        if (usuario.getCodgUnidade() != null
+                && Objects.equals(usuario.getCodgUnidade(), agencia.getCodgUnidade())) {
+            return;
+        }
+        List<String> perfisGlobais = listarPerfis(usuario.getCodgUsuario(), null);
+        if (temPerfil(perfisGlobais, "ADMIN", "ADMIN_CHAT")) {
+            return;
+        }
+        throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
+    }
+
     private void validarTextoObrigatorio(String valor, String mensagem) {
         if (isBlank(valor)) {
             throw regra(400, mensagem);
@@ -3129,7 +3163,7 @@ public class ChatConfiancaService {
 
     private String gerarProtocolo(LocalDateTime agora) {
         String sufixo = UUID.randomUUID().toString().substring(0, 6).toUpperCase(Locale.ROOT);
-        return "CHAT-" + agora.format(PROTOCOLO_FORMAT) + "-" + sufixo;
+        return "CHAT-" /*+ agora.format(PROTOCOLO_FORMAT) + "-"*/ + sufixo;
     }
 
     private String normalizarAssunto(String assunto) {

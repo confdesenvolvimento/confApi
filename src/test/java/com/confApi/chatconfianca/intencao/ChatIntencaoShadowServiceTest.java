@@ -83,6 +83,68 @@ class ChatIntencaoShadowServiceTest {
         assertThat(service.getAtualizadoEm()).isNotNull();
     }
 
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void recuperaSomenteMemoriasCompativeisComUnidadeOuBase() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        ConfAppService confAppService = mock(ConfAppService.class);
+        ChatIntencaoShadowProperties properties = new ChatIntencaoShadowProperties();
+        properties.setShadowEnabled(true);
+        properties.setMemoryShadowEnabled(true);
+        ChatIntencaoShadowService service = new ChatIntencaoShadowService(
+                restTemplate, confAppService, new ChatIntencaoTermoClassifier(), properties,
+                mock(ChatIntencaoShadowAuditService.class));
+        UrlConfig.URL_CONFIANCA_MANAGER = "http://manager/";
+        ConfAppResp token = new ConfAppResp();
+        token.setToken("token-teste");
+        when(confAppService.token()).thenReturn(token);
+        when(restTemplate.exchange(
+                anyString(),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                any(ParameterizedTypeReference.class)))
+                .thenReturn(ResponseEntity.ok(List.of(perfilBoletoComEscopos())));
+
+        service.atualizarCache();
+        ChatIntencaoClassificacao resultado = service.classificar(
+                "Quero consultar meu boleto", 7, "Unidade Cuiabá");
+
+        assertThat(resultado.getStatusRecuperacaoMemoria()).isEqualTo("RECUPERADA");
+        assertThat(resultado.getMemoriasRecuperadas()).containsExactly(25, 26, 28);
+        assertThat(resultado.getMemoriasDetalhadas())
+                .extracting(ChatIntencaoRuntimeDto.Memoria::getCodgMemoria)
+                .containsExactly(25, 26, 28);
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void semEscopoNaoRecuperaMemoriaEspecifica() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        ConfAppService confAppService = mock(ConfAppService.class);
+        ChatIntencaoShadowProperties properties = new ChatIntencaoShadowProperties();
+        properties.setShadowEnabled(true);
+        properties.setMemoryShadowEnabled(true);
+        ChatIntencaoShadowService service = new ChatIntencaoShadowService(
+                restTemplate, confAppService, new ChatIntencaoTermoClassifier(), properties,
+                mock(ChatIntencaoShadowAuditService.class));
+        UrlConfig.URL_CONFIANCA_MANAGER = "http://manager/";
+        ConfAppResp token = new ConfAppResp();
+        token.setToken("token-teste");
+        when(confAppService.token()).thenReturn(token);
+        when(restTemplate.exchange(
+                anyString(),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                any(ParameterizedTypeReference.class)))
+                .thenReturn(ResponseEntity.ok(List.of(perfilBoletoComEscopos())));
+
+        service.atualizarCache();
+        ChatIntencaoClassificacao resultado = service.classificar(
+                "Quero consultar meu boleto");
+
+        assertThat(resultado.getMemoriasRecuperadas()).containsExactly(25);
+    }
+
     private ChatIntencaoRuntimeDto perfilBoleto() {
         ChatIntencaoRuntimeDto perfil = new ChatIntencaoRuntimeDto();
         perfil.setId(15L);
@@ -96,10 +158,34 @@ class ChatIntencaoShadowServiceTest {
         perfil.setTermos(List.of(termo));
         ChatIntencaoRuntimeDto.Memoria memoria = new ChatIntencaoRuntimeDto.Memoria();
         memoria.setCodgMemoria(25);
-        memoria.setBase("Confianca");
+        memoria.setBase("geral");
         memoria.setTexto("Dados do boleto");
         memoria.setPrioridade(100);
         perfil.setMemorias(List.of(memoria));
         return perfil;
+    }
+
+    private ChatIntencaoRuntimeDto perfilBoletoComEscopos() {
+        ChatIntencaoRuntimeDto perfil = perfilBoleto();
+        perfil.setMemorias(List.of(
+                memoria(25, "geral", null),
+                memoria(26, "Unidade Cuiaba", null),
+                memoria(27, "Unidade Palmas", null),
+                memoria(28, "Unidade Palmas", 7),
+                memoria(29, "geral", 8),
+                memoria(30, null, null)));
+        return perfil;
+    }
+
+    private ChatIntencaoRuntimeDto.Memoria memoria(Integer id,
+                                                   String base,
+                                                   Integer codgUnidade) {
+        ChatIntencaoRuntimeDto.Memoria memoria = new ChatIntencaoRuntimeDto.Memoria();
+        memoria.setCodgMemoria(id);
+        memoria.setBase(base);
+        memoria.setCodgUnidade(codgUnidade);
+        memoria.setTexto("Memoria " + id);
+        memoria.setPrioridade(100);
+        return memoria;
     }
 }

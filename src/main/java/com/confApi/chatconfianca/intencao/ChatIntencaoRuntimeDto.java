@@ -29,6 +29,7 @@ public class ChatIntencaoRuntimeDto {
     public static class Memoria {
         private Integer codgMemoria;
         private String base;
+        private Integer codgUnidade;
         private String texto;
         private Integer prioridade;
     }
