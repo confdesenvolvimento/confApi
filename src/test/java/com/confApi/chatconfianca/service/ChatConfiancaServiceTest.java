@@ -387,6 +387,39 @@ class ChatConfiancaServiceTest {
     }
 
     @Test
+    void atendenteVinculadoPodeSelecionarAgenciaDeOutraUnidade() {
+        RefAgencia agenciaOutraUnidade = new RefAgencia();
+        agenciaOutraUnidade.setCodgAgencia(999);
+        agenciaOutraUnidade.setCodgUnidade(2);
+        agenciaOutraUnidade.setAtivoChat(true);
+        agenciaOutraUnidade.setStatus(1);
+
+        RefUnidade outraUnidade = new RefUnidade();
+        outraUnidade.setCodgUnidade(2);
+        outraUnidade.setNomeUnidade("Outra Unidade");
+        outraUnidade.setAtivoChat(true);
+        outraUnidade.setStatus(1);
+
+        DepartamentoUnidade departamentoOutraUnidade = departamentoUnidade();
+        departamentoOutraUnidade.setId(999L);
+        departamentoOutraUnidade.setCodgUnidade(2);
+        fixture.vinculoAtendente.setDepartamentoUnidadeId(999L);
+
+        when(manager.get("chat-confianca/consultas/agencias/999", RefAgencia.class))
+                .thenReturn(agenciaOutraUnidade);
+        when(manager.get("chat-confianca/consultas/unidades/2", RefUnidade.class))
+                .thenReturn(outraUnidade);
+        when(configService.listarDepartamentoUnidadesPorUnidade(2))
+                .thenReturn(Collections.singletonList(departamentoOutraUnidade));
+
+        var sessao = service.montarSessao(ATENDENTE, 999);
+
+        assertTrue(sessao.isAtendente());
+        assertEquals(999, sessao.getAgencia().getCodgAgencia());
+        assertEquals(2, sessao.getUnidade().getCodgUnidade());
+    }
+
+    @Test
     void conversaDaIaDevePertencerAMesmaAgenciaEUnidadeDaSessao() {
         fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
         fixture.conversa.setCodgAgencia(999);

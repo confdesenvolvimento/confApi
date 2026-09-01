@@ -3045,6 +3045,10 @@ public class ChatConfiancaService {
         if (temPerfil(perfisGlobais, "ADMIN", "ADMIN_CHAT")) {
             return;
         }
+        if (atendentePossuiVinculoNaUnidade(
+                usuario.getCodgUsuario(), agencia.getCodgUnidade())) {
+            return;
+        }
         throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
     }
 
