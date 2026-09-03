@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
@@ -67,11 +68,8 @@ public class ChatIntencaoShadowService {
             HttpHeaders headers = new HttpHeaders();
             headers.setAccept(List.of(MediaType.APPLICATION_JSON));
             headers.setBearerAuth(token.getToken());
-            ResponseEntity<List<ChatIntencaoRuntimeDto>> response = restTemplate.exchange(
-                    urlRuntime(),
-                    HttpMethod.GET,
-                    new HttpEntity<>(headers),
-                    new ParameterizedTypeReference<List<ChatIntencaoRuntimeDto>>() {});
+            ResponseEntity<List<ChatIntencaoRuntimeDto>> response =
+                    carregarClassificadorComRetry(headers);
             List<ChatIntencaoRuntimeDto> recebidos = response.getBody();
             perfis = recebidos == null ? Collections.emptyList() : List.copyOf(recebidos);
             cacheInicializado = true;
@@ -79,6 +77,13 @@ public class ChatIntencaoShadowService {
             LOGGER.log(Level.INFO,
                     "Classificador de intencao V1 atualizado em modo sombra: {0} intencoes ativas.",
                     perfis.size());
+        } catch (ResourceAccessException ex) {
+            LOGGER.log(Level.WARNING,
+                    "Confianca Manager indisponivel ao atualizar o classificador; "
+                            + "cache anterior preservado: {0}",
+                    detalheFalha(ex));
+            LOGGER.log(Level.FINE,
+                    "Detalhes da falha de conexao ao atualizar o classificador.", ex);
         } catch (Exception ex) {
             LOGGER.log(Level.WARNING,
                     "Falha ao atualizar classificador de intencao V1; cache anterior preservado.", ex);
@@ -128,6 +133,36 @@ public class ChatIntencaoShadowService {
 
     public Instant getAtualizadoEm() {
         return atualizadoEm;
+    }
+
+    private ResponseEntity<List<ChatIntencaoRuntimeDto>> carregarClassificadorComRetry(
+            HttpHeaders headers) {
+        HttpEntity<Void> requisicao = new HttpEntity<>(headers);
+        try {
+            return consultarClassificador(requisicao);
+        } catch (ResourceAccessException ex) {
+            LOGGER.log(Level.FINE,
+                    "Conexao interrompida ao carregar o classificador; realizando uma nova tentativa.",
+                    ex);
+            return consultarClassificador(requisicao);
+        }
+    }
+
+    private ResponseEntity<List<ChatIntencaoRuntimeDto>> consultarClassificador(
+            HttpEntity<Void> requisicao) {
+        return restTemplate.exchange(
+                urlRuntime(),
+                HttpMethod.GET,
+                requisicao,
+                new ParameterizedTypeReference<List<ChatIntencaoRuntimeDto>>() {});
+    }
+
+    private String detalheFalha(ResourceAccessException ex) {
+        Throwable causa = ex.getMostSpecificCause();
+        String detalhe = causa == null ? ex.getMessage() : causa.getMessage();
+        return detalhe == null || detalhe.isBlank()
+                ? ex.getClass().getSimpleName()
+                : detalhe;
     }
 
     private void enriquecerRecuperacaoMemoria(ChatIntencaoClassificacao resultado,

@@ -9,6 +9,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -81,6 +83,40 @@ class ChatIntencaoShadowServiceTest {
         assertThat(resultado.getStatusRecuperacaoMemoria()).isEqualTo("RECUPERADA");
         assertThat(resultado.getMemoriasRecuperadas()).containsExactly(25);
         assertThat(service.getAtualizadoEm()).isNotNull();
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void falhaTransitoriaAoCarregarClassificadorRealizaNovaTentativa() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        ConfAppService confAppService = mock(ConfAppService.class);
+        ChatIntencaoShadowProperties properties = new ChatIntencaoShadowProperties();
+        properties.setShadowEnabled(true);
+        ChatIntencaoShadowService service = new ChatIntencaoShadowService(
+                restTemplate, confAppService, new ChatIntencaoTermoClassifier(), properties,
+                mock(ChatIntencaoShadowAuditService.class));
+        UrlConfig.URL_CONFIANCA_MANAGER = "http://manager/";
+        ConfAppResp token = new ConfAppResp();
+        token.setToken("token-teste");
+        when(confAppService.token()).thenReturn(token);
+        when(restTemplate.exchange(
+                anyString(),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                any(ParameterizedTypeReference.class)))
+                .thenThrow(new ResourceAccessException("conexao abortada"))
+                .thenReturn(ResponseEntity.ok(List.of(perfilBoleto())));
+
+        service.atualizarCache();
+
+        assertThat(service.classificar("Quero consultar meu boleto").getStatus())
+                .isEqualTo("CLASSIFICADA");
+        assertThat(service.getAtualizadoEm()).isNotNull();
+        verify(restTemplate, times(2)).exchange(
+                anyString(),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                any(ParameterizedTypeReference.class));
     }
 
     @Test

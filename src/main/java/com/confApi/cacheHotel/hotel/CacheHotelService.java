@@ -5,12 +5,17 @@ import com.confApi.cacheHotel.cidade.CacheHotelCidadeAPI;
 import com.confApi.cacheHotel.hotel.DTO.CacheHotelDTO;
 import com.confApi.db.confManager.hotel.model.HotelAcomodacao;
 import com.confApi.db.confManager.hotel.model.HotelResponse;
+import com.confApi.db.confManager.hotel.model.QuartoPesquisa;
 import com.confApi.db.confManager.markup.MarkupService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -68,21 +73,38 @@ public class CacheHotelService {
         dto.setCheckin(hotelResponse.getDataEntrada());
         dto.setCheckout(hotelResponse.getDataSaida());
 
-        //quartoPesquisa > acomodacoes > nomeQuarto e regime
-        HotelAcomodacao acomodacao = hotelResponse.getQuartoPesquisa().stream()
-                .flatMap(q -> q.getAcomodacoes().stream())
-                .findFirst()
-                .orElse(null);
+        List<HotelAcomodacao> acomodacoes = selecionarMelhoresAcomodacoes(hotelResponse);
+        HotelAcomodacao acomodacao = acomodacoes.stream().findFirst().orElse(null);
 
         if (acomodacao != null) {
             dto.setNomeQuarto(acomodacao.getNomeQuarto());
             dto.setRegime(acomodacao.getRegime());
         }
 
+        double totalVenda = acomodacoes.stream()
+                .map(HotelAcomodacao::getTarifaHotel)
+                .mapToDouble(tarifa -> tarifa.getValorTotalEstadiaComMarkupBrl())
+                .sum();
+        double taxas = acomodacoes.stream()
+                .map(HotelAcomodacao::getTarifaHotel)
+                .mapToDouble(tarifa -> valor(tarifa.getValorTaxaServico())
+                        + valor(tarifa.getValorTaxaIss()))
+                .sum();
+        int noites = quantidadeNoites(hotelResponse);
 
-        dto.setTotalDiarias(hotelResponse.getTarifasHotel().getValorTotalEstadiaNet());
-        dto.setTaxas(hotelResponse.getTarifasHotel().getValorTaxaServico());
-        dto.setDiariaMedia(hotelResponse.getTarifasHotel().getMediaDiaria());
+        if (totalVenda <= 0 && hotelResponse.getTarifasHotel() != null) {
+            totalVenda = primeiroPositivo(
+                    hotelResponse.getTarifasHotel().getValorTotalEstadiaComMarkupBrl(),
+                    hotelResponse.getTarifasHotel().getValorTotalEstadiaComMarkup(),
+                    hotelResponse.getTarifasHotel().getValorTotalEstadiaNet()
+            );
+            taxas = valor(hotelResponse.getTarifasHotel().getValorTaxaServico())
+                    + valor(hotelResponse.getTarifasHotel().getValorTaxaIss());
+        }
+
+        dto.setTotalDiarias(totalVenda);
+        dto.setTaxas(taxas);
+        dto.setDiariaMedia(noites > 0 && totalVenda > 0 ? totalVenda / noites : totalVenda);
 
         dto.setLatitude(String.valueOf(hotelResponse.getLatitude()));
         dto.setLongitude(String.valueOf(hotelResponse.getLongitude()));
@@ -94,6 +116,62 @@ public class CacheHotelService {
                         (hotelResponse.getQuantidadeCriancas() != null ? hotelResponse.getQuantidadeCriancas() : 0));
 
         return dto;
+    }
+
+    private List<HotelAcomodacao> selecionarMelhoresAcomodacoes(HotelResponse hotel) {
+        if (hotel == null || hotel.getQuartoPesquisa() == null) {
+            return Collections.emptyList();
+        }
+
+        List<HotelAcomodacao> selecionadas = new ArrayList<>();
+        for (QuartoPesquisa quarto : hotel.getQuartoPesquisa()) {
+            if (quarto == null || quarto.getAcomodacoes() == null) {
+                continue;
+            }
+            quarto.getAcomodacoes().stream()
+                    .filter(this::possuiValorVendaValido)
+                    .min(Comparator.comparing(
+                            acomodacao -> acomodacao.getTarifaHotel().getValorTotalEstadiaComMarkupBrl()
+                    ))
+                    .ifPresent(selecionadas::add);
+        }
+        return selecionadas;
+    }
+
+    private boolean possuiValorVendaValido(HotelAcomodacao acomodacao) {
+        return acomodacao != null
+                && acomodacao.getTarifaHotel() != null
+                && acomodacao.getTarifaHotel().getValorTotalEstadiaComMarkupBrl() != null
+                && acomodacao.getTarifaHotel().getValorTotalEstadiaComMarkupBrl() > 0;
+    }
+
+    private int quantidadeNoites(HotelResponse hotel) {
+        if (hotel.getQuantidadeNoites() != null && hotel.getQuantidadeNoites() > 0) {
+            return hotel.getQuantidadeNoites();
+        }
+        if (hotel.getDataEntrada() == null || hotel.getDataSaida() == null) {
+            return 1;
+        }
+        long noites = ChronoUnit.DAYS.between(
+                hotel.getDataEntrada().toInstant().atZone(ZoneId.systemDefault()).toLocalDate(),
+                hotel.getDataSaida().toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+        );
+        return noites > 0 ? (int) noites : 1;
+    }
+
+    private double primeiroPositivo(Double... valores) {
+        if (valores != null) {
+            for (Double valor : valores) {
+                if (valor != null && !valor.isNaN() && !valor.isInfinite() && valor > 0) {
+                    return valor;
+                }
+            }
+        }
+        return 0.0;
+    }
+
+    private double valor(Double valor) {
+        return valor == null || valor.isNaN() || valor.isInfinite() ? 0.0 : valor;
     }
 
     public List<CacheHotelDTO> aplicarMKPTotalTarifa(List<CacheHotelDTO> lista) {
