@@ -2,6 +2,7 @@ package com.confApi.chatgpt.tools;
 
 import com.confApi.cacheHotel.MelhoresTarifasAereasService;
 import com.confApi.cacheHotel.MelhoresTarifasAereasIdaVoltaService;
+import com.confApi.cacheHotel.PacoteMelhorOfertaService;
 import com.confApi.exception.RegraDeNegocioException;
 import org.springframework.stereotype.Component;
 
@@ -13,11 +14,14 @@ import java.util.Map;
 public class ToolRouter {
     private final MelhoresTarifasAereasService melhoresTarifasAereasService;
     private final MelhoresTarifasAereasIdaVoltaService melhoresTarifasAereasIdaVoltaService;
+    private final PacoteMelhorOfertaService pacoteMelhorOfertaService;
 
     public ToolRouter(MelhoresTarifasAereasService melhoresTarifasAereasService,
-                      MelhoresTarifasAereasIdaVoltaService melhoresTarifasAereasIdaVoltaService) {
+                      MelhoresTarifasAereasIdaVoltaService melhoresTarifasAereasIdaVoltaService,
+                      PacoteMelhorOfertaService pacoteMelhorOfertaService) {
         this.melhoresTarifasAereasService = melhoresTarifasAereasService;
         this.melhoresTarifasAereasIdaVoltaService = melhoresTarifasAereasIdaVoltaService;
+        this.pacoteMelhorOfertaService = pacoteMelhorOfertaService;
     }
 
     public Map<String,Object> execute(String name, Map<String,Object> args) {
@@ -26,8 +30,27 @@ public class ToolRouter {
             case "search_hotels" -> buildHotelResponse(args);
             case "search_cheapest_airfares" -> consultarMelhoresTarifas(args);
             case "search_cheapest_roundtrip_airfares" -> consultarMelhoresTarifasIdaVolta(args);
+            case "search_cheapest_packages" -> consultarMelhoresPacotes(args);
             default -> Map.of("status","ERROR","message","tool not found");
         };
+    }
+
+    private Map<String, Object> consultarMelhoresPacotes(Map<String, Object> args) {
+        try {
+            return pacoteMelhorOfertaService.consultar(args);
+        } catch (IllegalArgumentException | RegraDeNegocioException ex) {
+            return Map.of(
+                    "status", "ERROR",
+                    "tipo", "melhor_oferta_pacote",
+                    "mensagem", ex.getMessage(),
+                    "actions", List.of());
+        } catch (RuntimeException ex) {
+            return Map.of(
+                    "status", "ERROR",
+                    "tipo", "melhor_oferta_pacote",
+                    "mensagem", "Nao foi possivel consultar as oportunidades de pacote agora.",
+                    "actions", List.of());
+        }
     }
 
     private Map<String, Object> consultarMelhoresTarifasIdaVolta(Map<String, Object> args) {

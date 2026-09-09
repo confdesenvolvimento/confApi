@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -155,6 +156,58 @@ class MelhoresTarifasAereasIdaVoltaServiceTest {
                         "pesquisar_voos",
                         "ver_alternativas_tarifas_ida_volta");
         assertThat(actions.get(2).label()).isEqualTo("Ver outras datas");
+    }
+
+    @Test
+    void rioMetropolitanoConsultaGigESduEEscolheMenorTotal() {
+        MelhoresTarifasAereasIdaVoltaClient client =
+                mock(MelhoresTarifasAereasIdaVoltaClient.class);
+        when(client.consultar(any())).thenAnswer(invocation -> {
+            MelhoresTarifasAereasIdaVoltaRequest request = invocation.getArgument(0);
+            MelhoresTarifasAereasIdaVoltaResponse response = respostaBase();
+            response.setMelhorGeral(combinacao(
+                    "GIG".equals(request.getDestino()) ? "1200.00" : "900.00",
+                    "450.00", "450.00", "LA", "LA", "Y"));
+            return response;
+        });
+
+        Map<String, Object> resultado = new MelhoresTarifasAereasIdaVoltaService(client)
+                .consultar(Map.of(
+                        "origem", "CGR",
+                        "destino", "RIO",
+                        "dataIda", "2027-04-05",
+                        "dataVolta", "2027-04-11"));
+
+        ArgumentCaptor<MelhoresTarifasAereasIdaVoltaRequest> captor =
+                ArgumentCaptor.forClass(MelhoresTarifasAereasIdaVoltaRequest.class);
+        verify(client, times(2)).consultar(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(MelhoresTarifasAereasIdaVoltaRequest::getDestino)
+                .containsExactly("GIG", "SDU");
+        assertThat(resultado.get("destino")).isEqualTo("SDU");
+        assertThat(resultado.get("destinoSolicitado")).isEqualTo("RIO");
+        assertThat(resultado.get("aeroportosConsultados"))
+                .isEqualTo(List.of("GIG", "SDU"));
+    }
+
+    @Test
+    void reconheceMenorValorComDatasExpressasPorIndoERetornando() {
+        ChatService service = mock(ChatService.class, CALLS_REAL_METHODS);
+
+        assertThat(service.isConsultaMelhorTarifaAereaIdaVolta(
+                "Preciso do menor valor no trecho de Campo Grande, MS para Rio de Janeiro "
+                        + "indo 05 de abril e retornando 11 de abril"))
+                .isTrue();
+    }
+
+    @Test
+    void reconheceSolicitacaoDeMelhorPacoteSemConfundirComTarifaAerea() {
+        ChatService service = mock(ChatService.class, CALLS_REAL_METHODS);
+        String mensagem = "Monte pacote saindo de Manaus para Fortaleza em janeiro "
+                + "5 dias com melhor preco";
+
+        assertThat(service.isConsultaMelhorPacote(mensagem)).isTrue();
+        assertThat(service.isConsultaMelhorTarifaAerea(mensagem)).isFalse();
     }
 
     @Test
@@ -347,7 +400,7 @@ class MelhoresTarifasAereasIdaVoltaServiceTest {
                 .isEqualTo("search_cheapest_roundtrip_airfares");
         assertThat(ToolSchemas.searchCheapestRoundtripAirfares().jsonSchema().toString())
                 .contains("dataIdaInicio", "dataVoltaInicio", "politicaCompanhia",
-                        "companhias", "duracaoMinimaDias");
+                        "companhias", "duracaoMinimaDias", "proxima ocorrencia futura");
         @SuppressWarnings("unchecked")
         Map<String, Object> propriedades = (Map<String, Object>)
                 ToolSchemas.searchCheapestRoundtripAirfares().jsonSchema()

@@ -407,8 +407,13 @@ public class ChatConfiancaIaService {
                         List.of(ToolSchemas.searchFlights());
                 case ChatConfiancaDecisaoIaService.TOOL_PESQUISAR_HOTEIS ->
                         List.of(ToolSchemas.searchHotels());
+                case ChatConfiancaDecisaoIaService.TOOL_MELHOR_OFERTA_PACOTE ->
+                        List.of(ToolSchemas.searchCheapestPackages());
                 default -> List.of();
             };
+        }
+        if (chatService.isConsultaMelhorPacote(mensagem)) {
+            return List.of(ToolSchemas.searchCheapestPackages());
         }
         if (chatService.isConsultaMelhorTarifaAereaIdaVolta(
                 mensagem, contexto, possuiContextoEstruturadoTarifas,

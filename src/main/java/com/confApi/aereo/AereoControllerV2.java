@@ -25,8 +25,8 @@ public class AereoControllerV2 {
     }
 
     @PostMapping("/pesquisar")
-    public List<PesquisaResponse> pesquisar(@RequestBody PesquisaRequestDTO req) {
-        List<PesquisaResponse> result = aereoClient.pesquisarDisponibilidade(req);
+    public List<PesquisaResponse> pesquisar(@RequestBody PesquisaRequestDTOV2 req) {
+        List<PesquisaResponse> result = aereoClient.pesquisarDisponibilidadeV2(req);
         return result;
     }
 

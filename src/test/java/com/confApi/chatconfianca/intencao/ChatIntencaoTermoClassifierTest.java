@@ -77,6 +77,53 @@ class ChatIntencaoTermoClassifierTest {
         assertThat(resultado.getStatus()).isEqualTo("SEM_EVIDENCIA");
     }
 
+    @Test
+    void classificaMenorValorComIndoERetornandoComoIdaEVolta() {
+        ChatIntencaoRuntimeDto idaVolta = perfil(
+                "aereo.melhor_tarifa_ida_volta",
+                termo("menor valor", "5.000", "POSITIVA"),
+                termo("trecho", "2.000", "POSITIVA"),
+                termo("indo", "2.000", "POSITIVA"),
+                termo("retornando", "6.000", "POSITIVA"));
+
+        ChatIntencaoClassificacao resultado = classifier.classificar(
+                "Preciso do menor valor no trecho de Campo Grande, MS para Rio de Janeiro "
+                        + "indo 05 de abril e retornando 11 de abril",
+                List.of(idaVolta),
+                new BigDecimal("8.000"),
+                new BigDecimal("2.000"));
+
+        assertThat(resultado.getStatus()).isEqualTo("CLASSIFICADA");
+        assertThat(resultado.getCodigo()).isEqualTo("aereo.melhor_tarifa_ida_volta");
+        assertThat(resultado.getScore()).isEqualByComparingTo("15.000");
+    }
+
+    @Test
+    void classificaMelhorPacoteMasNaoCancelamentoDePacote() {
+        ChatIntencaoRuntimeDto pacote = perfil(
+                "pacote.melhor_oferta",
+                termo("monte pacote", "18.000", "POSITIVA"),
+                termo("pacote", "5.000", "POSITIVA"),
+                termo("melhor preco", "5.000", "POSITIVA"),
+                termo("cancelar pacote", "18.000", "NEGATIVA"));
+
+        ChatIntencaoClassificacao oferta = classifier.classificar(
+                "Monte pacote saindo de Manaus para Fortaleza em janeiro 5 dias "
+                        + "com melhor preço",
+                List.of(pacote),
+                new BigDecimal("8.000"),
+                new BigDecimal("2.000"));
+        ChatIntencaoClassificacao cancelamento = classifier.classificar(
+                "Quero cancelar pacote",
+                List.of(pacote),
+                new BigDecimal("8.000"),
+                new BigDecimal("2.000"));
+
+        assertThat(oferta.getStatus()).isEqualTo("CLASSIFICADA");
+        assertThat(oferta.getCodigo()).isEqualTo("pacote.melhor_oferta");
+        assertThat(cancelamento.getStatus()).isEqualTo("SEM_EVIDENCIA");
+    }
+
     private ChatIntencaoRuntimeDto perfil(String codigo, ChatIntencaoRuntimeDto.Termo... termos) {
         ChatIntencaoRuntimeDto perfil = new ChatIntencaoRuntimeDto();
         perfil.setCodigo(codigo);

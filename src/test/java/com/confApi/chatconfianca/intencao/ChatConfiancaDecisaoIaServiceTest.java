@@ -110,6 +110,20 @@ class ChatConfiancaDecisaoIaServiceTest {
     }
 
     @Test
+    void classificacaoDePacoteDeveSelecionarFerramentaDeMelhorOferta() {
+        when(intencaoService.classificar("Monte um pacote", 1, "Cuiaba"))
+                .thenReturn(classificacao("pacote.melhor_oferta", 96));
+
+        ChatConfiancaDecisaoIa decisao = service.decidir(
+                "Monte um pacote", null, List.of(), 1, "Cuiaba");
+
+        assertTrue(decisao.isAplicada());
+        assertEquals(ChatConfiancaDecisaoIaService.TOOL_MELHOR_OFERTA_PACOTE,
+                decisao.getFerramenta());
+        assertNull(decisao.getAcao());
+    }
+
+    @Test
     void departamentoEscolhidoPeloUsuarioDeveTerPrioridade() {
         when(intencaoService.classificar("Consultar faturas", 1, "Cuiaba"))
                 .thenReturn(classificacao("financeiro.faturas", 90));

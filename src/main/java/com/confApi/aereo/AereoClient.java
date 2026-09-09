@@ -167,6 +167,16 @@ public class AereoClient {
         );
     }
 
+    public List<PesquisaResponse> pesquisarDisponibilidadeV2(PesquisaRequestDTOV2 pesquisaRequestDTO) {
+        return post(
+                "Aéreo - Pesquisar Disponibilidade V2",
+                API_AEREO + "/pesquisa",
+                pesquisaRequestDTO,
+                new ParameterizedTypeReference<List<PesquisaResponse>>() {},
+                Collections.emptyList()
+        );
+    }
+
     private <REQ, RES> RES post(
             String operacao,
             String endpoint,

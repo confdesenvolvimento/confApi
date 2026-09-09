@@ -2560,7 +2560,8 @@ Formato esperado:
             if (message != null
                     && "user".equals(message.role())
                     && (isConsultaMelhorTarifaAerea(message.content())
-                    || isConsultaMelhorTarifaAereaIdaVolta(message.content()))) {
+                    || isConsultaMelhorTarifaAereaIdaVolta(message.content())
+                    || isConsultaMelhorPacote(message.content()))) {
                 return true;
             }
         }
@@ -2569,7 +2570,8 @@ Formato esperado:
 
     private boolean isFerramentaMelhoresTarifas(String nome) {
         return "search_cheapest_airfares".equals(nome)
-                || "search_cheapest_roundtrip_airfares".equals(nome);
+                || "search_cheapest_roundtrip_airfares".equals(nome)
+                || "search_cheapest_packages".equals(nome);
     }
 
     private boolean contextoLocalTarifasTemRota(Map<String, Object> metadata) {
@@ -2758,6 +2760,27 @@ Formato esperado:
                 || texto.contains("agora ida") && !texto.contains("volta");
     }
 
+    public boolean isConsultaMelhorPacote(String input) {
+        if (input == null || input.isBlank()) {
+            return false;
+        }
+        String texto = normalizarTarifa(input);
+        boolean mencionaPacote = texto.contains("pacote")
+                || texto.contains("aereo e hotel")
+                || texto.contains("voo e hotel")
+                || texto.contains("passagem e hotel");
+        boolean solicitaOferta = texto.contains("monte")
+                || texto.contains("montar")
+                || texto.contains("melhor preco")
+                || texto.contains("melhor valor")
+                || texto.contains("menor preco")
+                || texto.contains("menor valor")
+                || texto.contains("mais barato")
+                || texto.contains("mais barata")
+                || texto.contains("mais em conta");
+        return mencionaPacote && solicitaOferta && temRotaTarifa(texto);
+    }
+
     public boolean isConsultaMelhorTarifaAereaIdaVolta(String input) {
         if (input == null || input.isBlank() || isSolicitacaoSomenteIda(input)) {
             return false;
@@ -2770,6 +2793,7 @@ Formato esperado:
         boolean perguntaTarifa = texto.contains("mais barato")
                 || texto.contains("mais barata")
                 || texto.contains("menor preco")
+                || texto.contains("menor valor")
                 || texto.contains("menor tarifa")
                 || texto.contains("melhor tarifa")
                 || texto.contains("melhores tarifas")
@@ -2887,6 +2911,8 @@ Formato esperado:
                 || texto.contains("round trip")
                 || texto.contains("bate e volta")
                 || texto.contains("com retorno")
+                || texto.contains("retornando")
+                || texto.matches(".*\\bretorno\\b.*")
                 || texto.matches(".*\\bvolta\\b.*");
     }
 
@@ -2896,7 +2922,8 @@ Formato esperado:
                 || texto.contains("hospedagem")
                 || texto.contains("diaria")
                 || texto.contains("check-in")
-                || texto.contains("checkout");
+                || texto.contains("checkout")
+                || texto.contains("pacote");
     }
 
     private boolean temRotaTarifa(String texto) {
@@ -2927,6 +2954,7 @@ Formato esperado:
         boolean perguntaPreco = texto.contains("mais barato")
                 || texto.contains("mais barata")
                 || texto.contains("menor preco")
+                || texto.contains("menor valor")
                 || texto.contains("menor tarifa")
                 || texto.contains("melhor tarifa")
                 || texto.contains("melhores tarifas")
@@ -2938,7 +2966,8 @@ Formato esperado:
                 || texto.contains("hospedagem")
                 || texto.contains("diaria")
                 || texto.contains("check-in")
-                || texto.contains("checkout");
+                || texto.contains("checkout")
+                || texto.contains("pacote");
         boolean rotaInformada = texto.matches(
                 ".*\\b[a-z]{3}\\b\\s*(?:para|a|x|/|-)\\s*\\b[a-z]{3}\\b.*")
                 || (texto.contains(" para ") && (texto.contains(" de ")

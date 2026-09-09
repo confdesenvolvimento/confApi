@@ -18,6 +18,7 @@ public class ChatConfiancaDecisaoIaService {
     public static final String TOOL_MELHORES_TARIFAS_IDA = "MELHORES_TARIFAS_IDA";
     public static final String TOOL_MELHORES_TARIFAS_IDA_VOLTA = "MELHORES_TARIFAS_IDA_VOLTA";
     public static final String TOOL_PESQUISAR_HOTEIS = "PESQUISAR_HOTEIS";
+    public static final String TOOL_MELHOR_OFERTA_PACOTE = "MELHOR_OFERTA_PACOTE";
 
     private final ChatIntencaoShadowService intencaoService;
     private final ChatService chatService;
@@ -316,6 +317,7 @@ public class ChatConfiancaDecisaoIaService {
             case "aereo.melhor_tarifa_ida" -> TOOL_MELHORES_TARIFAS_IDA;
             case "aereo.melhor_tarifa_ida_volta" -> TOOL_MELHORES_TARIFAS_IDA_VOLTA;
             case "hotel.busca_hospedagem" -> TOOL_PESQUISAR_HOTEIS;
+            case "pacote.melhor_oferta" -> TOOL_MELHOR_OFERTA_PACOTE;
             default -> null;
         };
     }
