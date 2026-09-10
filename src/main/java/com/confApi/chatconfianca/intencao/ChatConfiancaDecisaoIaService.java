@@ -81,6 +81,40 @@ public class ChatConfiancaDecisaoIaService {
         return decisao;
     }
 
+    public ChatConfiancaDecisaoIa decidirV2(
+            com.confApi.chatconfianca.v2.ChatV2Plan plano, String mensagem,
+            Long departamentoExplicitoId, List<DepartamentoUnidade> departamentos,
+            Integer codgUnidade, String baseAtual) {
+        if (plano.isLegado()) {
+            ChatConfiancaDecisaoIa fallback = decidir(mensagem, departamentoExplicitoId, departamentos, codgUnidade, baseAtual);
+            fallback.setAplicada(false);
+            fallback.setModo("LEGADO_FALLBACK");
+            fallback.setFonte(plano.getFonte());
+            fallback.setVersao("decisor-v2.0");
+            fallback.setMotivo("Retorno ao legado decidido explicitamente pela V2: " + Objects.toString(plano.getErro(), "escopo controlado"));
+            return fallback;
+        }
+        ChatConfiancaDecisaoIa d = new ChatConfiancaDecisaoIa();
+        d.setUnificadaHabilitada(true); d.setCanarioHabilitado(true); d.setCanarioElegivel(true);
+        d.setEscopoCanario(List.of(plano.getIntencao())); d.setAplicada(true); d.setModo("UNIFICADA");
+        d.setStatus("PLANEJADA_V2"); d.setFonte(plano.getFonte()); d.setVersao("decisor-v2.0");
+        d.setErroCodigo(plano.getErro());
+        d.setMotivo("Capacidade selecionada pela coordenacao V2; executor fechado e parametros validados antes da consulta.");
+        d.setIntencao(plano.getIntencao()); d.setIntencaoLegada("NAO_EXECUTADA");
+        d.setAcao(plano.capability().action); d.setFerramenta(plano.capability().tool);
+        d.setTopicos(topicosDaIntencao(plano.getIntencao()));
+        d.setClassificacaoCatalogo(intencaoService.classificar(mensagem, codgUnidade, baseAtual));
+        String memoryCode = plano.capability().memoryCode();
+        if (plano.capability() == com.confApi.chatconfianca.v2.ChatV2Capability.CONTATOS
+                && "ti".equals(plano.getParametros().get("setor"))) memoryCode = "institucional.suporte_ti";
+        d.setMemorias(intencaoService.memoriasPorIntencao(memoryCode, codgUnidade, baseAtual));
+        String assuntoRoteamento = plano.capability() == com.confApi.chatconfianca.v2.ChatV2Capability.HUMANO
+                && com.confApi.chatconfianca.v2.ChatV2Capability.from(plano.getAssuntoHandoff()) != null
+                ? plano.getAssuntoHandoff() : plano.getIntencao();
+        rotearPorIntencao(d, departamentoExplicitoId, departamentos, assuntoRoteamento);
+        return d;
+    }
+
     private void preencherDecisaoUnificada(ChatConfiancaDecisaoIa decisao,
                                             String mensagem,
                                             String keywordDeterministica,
@@ -164,6 +198,13 @@ public class ChatConfiancaDecisaoIaService {
     private void rotearPorIntencao(ChatConfiancaDecisaoIa decisao,
                                    Long departamentoExplicitoId,
                                    List<DepartamentoUnidade> departamentos) {
+        rotearPorIntencao(decisao,departamentoExplicitoId,departamentos,decisao.getIntencao());
+    }
+
+    private void rotearPorIntencao(ChatConfiancaDecisaoIa decisao,
+                                   Long departamentoExplicitoId,
+                                   List<DepartamentoUnidade> departamentos,
+                                   String assuntoRoteamento) {
         List<DepartamentoUnidade> disponiveis = departamentosOuVazio(departamentos);
         DepartamentoUnidade explicito = departamentoExplicito(
                 departamentoExplicitoId, disponiveis);
@@ -173,7 +214,7 @@ public class ChatConfiancaDecisaoIaService {
             decisao.setMotivo("Equipe escolhida explicitamente pelo usuario.");
             return;
         }
-        List<String> aliases = aliasesDepartamento(decisao.getIntencao());
+        List<String> aliases = aliasesDepartamento(assuntoRoteamento);
         if (aliases.isEmpty() || disponiveis.isEmpty()) {
             return;
         }

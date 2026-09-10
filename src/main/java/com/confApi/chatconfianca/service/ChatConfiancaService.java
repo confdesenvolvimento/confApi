@@ -135,7 +135,7 @@ public class ChatConfiancaService {
         if (usuario.getCodgAgencia() != null) {
             if (codgAgenciaSessao != null
                     && !Objects.equals(usuario.getCodgAgencia(), codgAgenciaSessao)) {
-              //  throw regra(403, "A agencia informada nao pertence ao usuario.");
+                throw regra(403, "A agencia informada nao pertence ao usuario.");
             }
             agencia = buscarOuSincronizarAgencia(usuario.getCodgAgencia());
             validarAgenciaAtiva(agencia, usuario.getCodgAgencia(), 403);
@@ -3049,7 +3049,7 @@ public class ChatConfiancaService {
                 usuario.getCodgUsuario(), agencia.getCodgUnidade())) {
             return;
         }
-       // throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
+        throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
     }
 
     private void validarTextoObrigatorio(String valor, String mensagem) {

@@ -33,6 +33,7 @@ public class ChatConfiancaDecisaoIa {
     private ChatIntencaoClassificacao classificacaoCatalogo;
     private String statusResultado = "FALLBACK";
     private String erroCodigo;
+    private String versao;
 
     public boolean possuiAcao() {
         return acao != null && !acao.isBlank();

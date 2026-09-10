@@ -155,7 +155,7 @@ public class ChatIaDecisaoAuditService {
         request.setStatusResultado(decisao.getStatusResultado());
         request.setDuracaoTotalMs(Math.max(0L, duracaoTotalMs));
         request.setErroCodigo(decisao.getErroCodigo());
-        request.setVersaoDecisor(properties.getVersaoDecisor());
+        request.setVersaoDecisor(decisao.getVersao() == null ? properties.getVersaoDecisor() : decisao.getVersao());
         return request;
     }
 

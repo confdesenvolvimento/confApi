@@ -101,6 +101,28 @@ class ChatServiceRemarcacaoActionTest {
     }
 
     @Test
+    void v2NaoConfundeFalhaDeFaturasComListaVazia() {
+        when(faturasService.faturaSica(any())).thenThrow(new IllegalStateException("API indisponivel"));
+        ConversationRequestDTO req=new ConversationRequestDTO("confia","Confianca","ERP-321",321L,101L,
+                "faturas",new ArrayList<>(),null,false,new ArrayList<>());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                ()->service.actionApis(new ArrayList<>(),req,"faturas",true));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                ()->service.actionApis(new ArrayList<>(),req,"boletos",true));
+        verifyNoInteractions(openAiClient);
+    }
+
+    @Test
+    void boletosAceitaListaVaziaImutavelDoServico() {
+        when(faturasService.faturaSica(any())).thenReturn(List.of());
+        ConversationRequestDTO req=new ConversationRequestDTO("confia","Confianca","ERP-321",321L,101L,
+                "boletos",new ArrayList<>(),null,false,new ArrayList<>());
+        List<ChatMessageDTO> messages=new ArrayList<>();
+        service.actionApis(messages,req,"boletos",true);
+        assertTrue(messages.get(0).content().contains("\"faturas\":[]"));
+    }
+
+    @Test
     void consultaFinanceiraSemAgenciaNaoDeveReutilizarErpRecebido() {
         List<ChatMessageDTO> messages = new ArrayList<>();
         ConversationRequestDTO semAgencia = new ConversationRequestDTO(

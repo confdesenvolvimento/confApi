@@ -135,6 +135,15 @@ public class ChatIntencaoShadowService {
         return atualizadoEm;
     }
 
+    /** Uses the same published, scoped runtime snapshot; never falls back to all memories. */
+    public List<ChatIntencaoRuntimeDto.Memoria> memoriasPorIntencao(
+            String codigo, Integer codgUnidade, String baseAtual) {
+        if (!cacheInicializado) return List.of();
+        return perfis.stream().filter(p -> Objects.equals(p.getCodigo(), codigo))
+                .filter(p -> p.getMemorias() != null).flatMap(p -> p.getMemorias().stream())
+                .filter(m -> memoriaCompativelComEscopo(m, codgUnidade, baseAtual)).toList();
+    }
+
     private ResponseEntity<List<ChatIntencaoRuntimeDto>> carregarClassificadorComRetry(
             HttpHeaders headers) {
         HttpEntity<Void> requisicao = new HttpEntity<>(headers);

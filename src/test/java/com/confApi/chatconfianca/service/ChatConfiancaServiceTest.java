@@ -365,6 +365,8 @@ class ChatConfiancaServiceTest {
 
         assertEquals(403, erro.getStatus());
         assertEquals("A agencia informada nao pertence ao usuario.", erro.getMessage());
+        verify(manager, never()).get("chat-confianca/consultas/agencias/999", RefAgencia.class);
+        verify(configService, never()).sincronizarAgenciaReferencia(999);
     }
 
     @Test
@@ -384,6 +386,10 @@ class ChatConfiancaServiceTest {
 
         assertEquals(403, erro.getStatus());
         assertEquals("A agencia informada nao pertence a unidade do usuario.", erro.getMessage());
+        // Agency reference integrity is checked before authorization; session profiles must not be loaded.
+        verify(manager, never()).getList(
+                eq("chat-confianca/consultas/usuarios/" + ATENDENTE + "/perfis?codgUnidade=2"),
+                any(ParameterizedTypeReference.class));
     }
 
     @Test
@@ -417,6 +423,83 @@ class ChatConfiancaServiceTest {
         assertTrue(sessao.isAtendente());
         assertEquals(999, sessao.getAgencia().getCodgAgencia());
         assertEquals(2, sessao.getUnidade().getCodgUnidade());
+    }
+
+    @Test
+    void usuarioPodeAbrirSessaoDaPropriaAgenciaComOuSemParametro() {
+        assertEquals(CODG_AGENCIA, service.montarSessao(SOLICITANTE).getAgencia().getCodgAgencia());
+        assertEquals(CODG_AGENCIA,
+                service.montarSessao(SOLICITANTE, CODG_AGENCIA).getAgencia().getCodgAgencia());
+    }
+
+    @Test
+    void usuarioInternoPodeSelecionarAgenciaDaMesmaUnidade() {
+        var sessao = service.montarSessao(ATENDENTE, CODG_AGENCIA);
+        assertEquals(CODG_AGENCIA, sessao.getAgencia().getCodgAgencia());
+        assertEquals(CODG_UNIDADE, sessao.getUnidade().getCodgUnidade());
+    }
+
+    @Test
+    void administradorGlobalSemAgenciaPodeSelecionarOutraUnidade() {
+        prepararOutraUnidadeParaSessao();
+        for (String perfil : List.of("ADMIN", "ADMIN_CHAT")) {
+            fixture.perfisAtendente.clear();
+            fixture.perfisAtendente.add(perfil);
+            var sessao = service.montarSessao(ATENDENTE, 999);
+            assertTrue(sessao.isAdmin());
+            assertEquals(999, sessao.getAgencia().getCodgAgencia());
+            assertEquals(2, sessao.getUnidade().getCodgUnidade());
+        }
+    }
+
+    @Test
+    void vinculoInativoNaoAutorizaSelecionarAgenciaDeOutraUnidade() {
+        prepararOutraUnidadeParaSessao();
+        DepartamentoUnidade departamento = departamentoUnidade();
+        departamento.setId(999L);
+        departamento.setCodgUnidade(2);
+        fixture.vinculoAtendente.setDepartamentoUnidadeId(999L);
+        fixture.vinculoAtendente.setAtivo(false);
+        when(configService.listarDepartamentoUnidadesPorUnidade(2))
+                .thenReturn(Collections.singletonList(departamento));
+
+        var erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.montarSessao(ATENDENTE, 999));
+        assertEquals(403, erro.getStatus());
+        // Agency reference integrity is checked before authorization; session profiles must not be loaded.
+        verify(manager, never()).getList(
+                eq("chat-confianca/consultas/usuarios/" + ATENDENTE + "/perfis?codgUnidade=2"),
+                any(ParameterizedTypeReference.class));
+    }
+
+    @Test
+    void falhaAoConsultarVinculoNaoAutorizaAgenciaDeOutraUnidade() {
+        prepararOutraUnidadeParaSessao();
+        when(manager.getList(eq("chat-confianca/consultas/atendentes/" + ATENDENTE + "/departamentos"),
+                any(ParameterizedTypeReference.class))).thenThrow(new IllegalStateException("Indisponivel"));
+
+        var erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.montarSessao(ATENDENTE, 999));
+        assertEquals(403, erro.getStatus());
+        // Agency reference integrity is checked before authorization; session profiles must not be loaded.
+        verify(manager, never()).getList(
+                eq("chat-confianca/consultas/usuarios/" + ATENDENTE + "/perfis?codgUnidade=2"),
+                any(ParameterizedTypeReference.class));
+    }
+
+    private void prepararOutraUnidadeParaSessao() {
+        RefAgencia agencia = new RefAgencia();
+        agencia.setCodgAgencia(999);
+        agencia.setCodgUnidade(2);
+        agencia.setAtivoChat(true);
+        agencia.setStatus(1);
+        RefUnidade unidade = new RefUnidade();
+        unidade.setCodgUnidade(2);
+        unidade.setNomeUnidade("Outra Unidade");
+        unidade.setAtivoChat(true);
+        unidade.setStatus(1);
+        when(manager.get("chat-confianca/consultas/agencias/999", RefAgencia.class)).thenReturn(agencia);
+        when(manager.get("chat-confianca/consultas/unidades/2", RefUnidade.class)).thenReturn(unidade);
     }
 
     @Test

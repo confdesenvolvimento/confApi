@@ -96,6 +96,17 @@ public class ChatService {
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
 
     public ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords, List<ChatMessageDTO> history) throws IOException {
+        return chat(req, keywords, history, false);
+    }
+
+    /** Dedicated TI generation: one text-only call; no action router or history from other topics. */
+    public ChatResponseDTO responderTiSomenteTexto(List<ChatMessageDTO> messages) throws IOException {
+        return chat(new ChatRequestDTO(messages, null, false, List.of(), Map.of()),
+                List.of(), null, true);
+    }
+
+    private ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords, List<ChatMessageDTO> history,
+            boolean somenteTextoTi) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
         ObjectMapper om = new ObjectMapper().findAndRegisterModules();
 
@@ -148,6 +159,10 @@ public class ChatService {
             Map<String, Object> payload = new HashMap<>();
             payload.put("model", model);
             payload.put("messages", workingMessages);
+            if (somenteTextoTi) {
+                payload.put("max_completion_tokens", 1200);
+                payload.put("store", false);
+            }
             if (toolsSpec != null) {
                 payload.put("tools", toolsSpec);
                 if (forcarConsultaMelhoresTarifas) {
@@ -167,18 +182,27 @@ public class ChatService {
                             om.writeValueAsBytes(payload)))
                     .build();
 
-            try (Response r = client.newCall(request).execute()) {
+            OkHttpClient clienteTurno = somenteTextoTi ? client.newBuilder()
+                    .callTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .retryOnConnectionFailure(false).build() : client;
+            try (Response r = clienteTurno.newCall(request).execute()) {
+                if (somenteTextoTi && !r.isSuccessful()) throw new IOException("TI_GERACAO_INDISPONIVEL");
                 String json = Objects.requireNonNull(r.body()).string();
                 JsonNode root = om.readTree(json);
                 completionId = root.path("id").asText();
 
                 JsonNode choice = root.path("choices").get(0);
+                if (somenteTextoTi && (choice == null || !"stop".equals(choice.path("finish_reason").asText())))
+                    throw new IOException("TI_RESPOSTA_INCOMPLETA");
                 JsonNode msgNode = choice.path("message");
                 String assistantContent = msgNode.path("content").asText(null);
 
                 // Verifica tool_calls
                 JsonNode tc = msgNode.path("tool_calls");
                 boolean hasToolCalls = tc.isArray() && tc.size() > 0;
+                if (somenteTextoTi && (hasToolCalls || msgNode.hasNonNull("function_call")
+                        || msgNode.hasNonNull("audio") || msgNode.hasNonNull("refusal")))
+                    throw new IOException("TI_RESPOSTA_NAO_TEXTUAL");
 
                 if (hasToolCalls) {
                     boolean executouMelhoresTarifas = false;
@@ -198,6 +222,10 @@ public class ChatService {
                     // Para cada tool_call: executa e devolve role:"tool"
                     for (JsonNode n : tc) {
                         String name = n.path("function").path("name").asText();
+                        if (req.metadata() != null && Boolean.TRUE.equals(req.metadata().get("coordenadorV2"))
+                                && (req.tools() == null || req.tools().stream().noneMatch(t -> t.name().equals(name)))) {
+                            throw new IOException("Ferramenta nao autorizada pelo coordenador V2");
+                        }
                         String argsStr = n.path("function").path("arguments").asText("{}");
                         String toolCallId = n.path("id").asText(); // alguns providers retornam
 
@@ -339,6 +367,14 @@ public class ChatService {
     public List<String> actionApis(List<ChatMessageDTO> messages,
                                    ConversationRequestDTO req,
                                    String keywordDecidida) {
+        return actionApis(messages,req,keywordDecidida,false);
+    }
+
+    /** V2 can surface upstream failures; existing V1 callers retain their compatibility behavior. */
+    public List<String> actionApis(List<ChatMessageDTO> messages,
+                                   ConversationRequestDTO req,
+                                   String keywordDecidida,
+                                   boolean resultadoEstrito) {
         String keyword = keywordDecidida == null || keywordDecidida.isBlank()
                 ? inferirKeywordOperacional(req.input())
                 : keywordDecidida.trim();
@@ -414,12 +450,12 @@ public class ChatService {
         if (keyword.equals("faturas") && !keywords.contains(keyword) && !consultaFinanceiraBloqueada) {
             /* Consultar Faturas*/
             // montarMensagemFaturas(req);
-            messages.add(montarMensagemFaturas(req));
+            messages.add(montarMensagemFaturas(req,resultadoEstrito));
         }
 
         if (keyword.equals("boletos") && !keywords.contains(keyword) && !consultaFinanceiraBloqueada) {
             /* Consultar Boletos*/
-            messages.add(montarMensagemFaturasBoleto(req));
+            messages.add(montarMensagemFaturasBoleto(req,resultadoEstrito));
             // montarMensagemFaturasBoleto(req);
         }
         if (keyword.equals("checkin") && !keywords.contains(keyword)) {
@@ -2184,6 +2220,10 @@ public class ChatService {
     }
 
     public ChatMessageDTO montarMensagemFaturas(ConversationRequestDTO req) {
+        return montarMensagemFaturas(req,false);
+    }
+
+    private ChatMessageDTO montarMensagemFaturas(ConversationRequestDTO req,boolean resultadoEstrito) {
         // 1) Monta o request
         FaturaSicaRQ faturaSicaRQ = new FaturaSicaRQ();
         faturaSicaRQ.setInvoiceType("TODOS");
@@ -2200,6 +2240,7 @@ public class ChatService {
             faturas = Optional.ofNullable(faturasService.faturaSica(faturaSicaRQ))
                     .orElse(Collections.emptyList());
         } catch (Exception e) {
+            if(resultadoEstrito)throw new IllegalStateException("Consulta de faturas indisponivel",e);
             System.out.println("Erro ao consultar faturas no faturasService " + e);
         }
 
@@ -2241,6 +2282,7 @@ public class ChatService {
         try {
             resultadoJson = mapper.writeValueAsString(fResponse);
         } catch (JsonProcessingException e) {
+            if(resultadoEstrito)throw new IllegalStateException("Resposta de faturas invalida",e);
             System.out.println("Erro serializando FaturaResponseIA " + e);
 
             // fallback mínimo para não quebrar o fluxo
@@ -2252,6 +2294,10 @@ public class ChatService {
     }
 
     public ChatMessageDTO montarMensagemFaturasBoleto(ConversationRequestDTO req) {
+        return montarMensagemFaturasBoleto(req,false);
+    }
+
+    private ChatMessageDTO montarMensagemFaturasBoleto(ConversationRequestDTO req,boolean resultadoEstrito) {
         // 1) Monta o request
         FaturaSicaRQ rq = new FaturaSicaRQ();
         rq.setInvoiceType("TODOS");
@@ -2268,6 +2314,7 @@ public class ChatService {
             faturas = Optional.ofNullable(faturasService.faturaSica(rq))
                     .orElse(Collections.emptyList());
         } catch (Exception e) {
+            if(resultadoEstrito)throw new IllegalStateException("Consulta de boletos indisponivel",e);
             System.out.println("Erro ao consultar faturas (boletos) " + e);
 
         }
@@ -2293,6 +2340,7 @@ public class ChatService {
                 "Faturada Crédito",
                 "À Faturar"
         );
+        faturas = new ArrayList<>(faturas);
         faturas.removeIf(f -> {
             String s = Optional.ofNullable(f.getSituacao()).orElse("").trim();
             // compara ignorando acentuação? Aqui, apenas case-insensitive:
@@ -2319,6 +2367,7 @@ public class ChatService {
         try {
             json = mapper.writeValueAsString(resp);
         } catch (JsonProcessingException e) {
+            if(resultadoEstrito)throw new IllegalStateException("Resposta de boletos invalida",e);
             System.out.println("Erro serializando FaturaResponseIA (boletos):  " + e);
             json = "{\"faturas\":[]}";
         }

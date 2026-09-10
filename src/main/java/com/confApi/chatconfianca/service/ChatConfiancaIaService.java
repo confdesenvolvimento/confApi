@@ -2,6 +2,7 @@ package com.confApi.chatconfianca.service;
 
 import com.confApi.chatconfianca.dto.enums.PrioridadeConversa;
 import com.confApi.chatconfianca.dto.enums.RemetenteTipo;
+import com.confApi.chatconfianca.dto.enums.StatusConversa;
 import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.model.DepartamentoUnidade;
 import com.confApi.chatconfianca.dto.model.Mensagem;
@@ -30,6 +31,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.confApi.chatconfianca.v2.ChatV2Planner;
+import com.confApi.chatconfianca.v2.ChatV2Executor;
+import com.confApi.chatconfianca.v2.ChatV2Plan;
+import com.confApi.chatconfianca.configuracao.ti.ChatIaTiRespostaService;
 
 import java.io.IOException;
 import java.text.Normalizer;
@@ -55,6 +61,18 @@ public class ChatConfiancaIaService {
     private final ChatConfiancaDecisaoIaService decisaoIaService;
     private final ChatMemoriaRecuperacaoShadowAuditService chatMemoriaRecuperacaoAuditService;
     private final ChatIaDecisaoAuditService chatIaDecisaoAuditService;
+    private ChatV2Planner v2Planner;
+    private ChatV2Executor v2Executor;
+    private com.confApi.chatconfianca.configuracao.ChatIaConfiguracaoShadowService configuracaoShadow;
+    private ChatIaTiRespostaService respostaTi;
+
+    @Autowired(required = false)
+    public void setRespostaTi(ChatIaTiRespostaService service) { this.respostaTi = service; }
+
+    @Autowired(required = false)
+    public void setConfiguracaoShadow(com.confApi.chatconfianca.configuracao.ChatIaConfiguracaoShadowService shadow) {
+        this.configuracaoShadow = shadow;
+    }
 
     private record SugestaoRoteamento(DepartamentoUnidade departamento,
                                       int confianca,
@@ -81,6 +99,15 @@ public class ChatConfiancaIaService {
         this.chatIaDecisaoAuditService = chatIaDecisaoAuditService;
     }
 
+    @Autowired
+    public ChatConfiancaIaService(ChatConfiancaService service, ChatService chat, ProfilePromptRegistry profiles,
+            ObjectMapper mapper, ChatIntencaoShadowService shadow, ChatConfiancaDecisaoIaService decision,
+            ChatMemoriaRecuperacaoShadowAuditService recoveryAudit, ChatIaDecisaoAuditService decisionAudit,
+            ChatV2Planner v2Planner, ChatV2Executor v2Executor) {
+        this(service, chat, profiles, mapper, shadow, decision, recoveryAudit, decisionAudit);
+        this.v2Planner = v2Planner; this.v2Executor = v2Executor;
+    }
+
     public ChatConfiancaIaResponse perguntar(PerguntarConfiaRequest request) {
         long inicioTurno = System.nanoTime();
         validarPergunta(request);
@@ -92,17 +119,21 @@ public class ChatConfiancaIaService {
         List<DepartamentoUnidade> departamentosRoteamento =
                 chatConfiancaService.listarDepartamentosRoteamentoPorUsuario(
                         request.getCodgUsuario(), request.getCodgAgenciaSessao());
-        ChatConfiancaDecisaoIa decisao = decisaoIaService.decidir(
+        List<Mensagem> historico = conversa == null
+                ? new ArrayList<>()
+                : chatConfiancaService.listarMensagens(conversa.getId(), request.getCodgUsuario(), false, false);
+        Integer agenciaV2 = sessao.getAgencia() == null ? null : sessao.getAgencia().getCodgAgencia();
+        ChatV2Plan planoV2 = v2Planner == null ? null : v2Planner.planejar(
+                request.getMensagem(), conversa, historico, agenciaV2, request.getCodgUsuario());
+        ChatConfiancaDecisaoIa decisao = planoV2 != null ? decisaoIaService.decidirV2(
+                planoV2, request.getMensagem(), request.getDepartamentoUnidadeId(), departamentosRoteamento,
+                codgUnidadeMemoria(sessao, conversa), baseMemoria(sessao)) : decisaoIaService.decidir(
                 request.getMensagem(),
                 request.getDepartamentoUnidadeId(),
                 departamentosRoteamento,
                 codgUnidadeMemoria(sessao, conversa),
                 baseMemoria(sessao));
         ChatIntencaoClassificacao classificacaoSombra = decisao.getClassificacaoCatalogo();
-        List<Mensagem> historico = conversa == null
-                ? new ArrayList<>()
-                : chatConfiancaService.listarMensagens(conversa.getId(), request.getCodgUsuario(), false, false);
-
         SugestaoRoteamento roteamento = roteamentoDaDecisao(decisao);
         if (conversa == null) {
             conversa = chatConfiancaService.iniciarConversaAssistida(
@@ -131,7 +162,19 @@ public class ChatConfiancaIaService {
         response.setIntencao(roteamento.intencao());
         response.getTopicos().addAll(roteamento.topicos());
 
-        ChatResponseDTO respostaConfia = chamarConfia(request, sessao, historico, decisao);
+        ChatIaTiRespostaService.Resultado pilotoTi = respostaTi == null ? null : respostaTi.tentar(
+                conversa, mensagemUsuario == null ? null : mensagemUsuario.getId(), request, sessao, decisao, planoV2,
+                1L + historico.stream().filter(m -> m != null && m.getRemetenteTipo() == RemetenteTipo.USUARIO
+                        && Objects.equals(m.getRemetenteCodgUsuario(), request.getCodgUsuario())).count());
+        boolean tiAplicada = pilotoTi != null && pilotoTi.aplicada();
+        ChatResponseDTO respostaConfia = tiAplicada ? pilotoTi.resposta()
+                : chamarConfia(request, sessao, historico, decisao, planoV2);
+        if (tiAplicada) {
+            roteamento = roteamentoDaDecisao(decisao);
+            response.setDepartamentoSugerido(null);
+            response.setDepartamentoSugeridoConfianca(null);
+        }
+        if (!tiAplicada && planoV2 != null && planoV2.isLegado()) planoV2.setResultado("FALLBACK_LEGADO");
         List<String> topicosAtualizados = mesclarTopicos(
                 roteamento.topicos(),
                 respostaConfia == null ? null : respostaConfia.keywords());
@@ -149,6 +192,8 @@ public class ChatConfiancaIaService {
         metadadosAtualizados = metadadosClassificacaoSombra(
                 metadadosAtualizados, intencaoAtualizada, classificacaoSombra);
         metadadosAtualizados = metadadosDecisaoIa(metadadosAtualizados, decisao);
+        metadadosAtualizados = metadadosV2(metadadosAtualizados, planoV2);
+        metadadosAtualizados = metadadosPilotoTi(metadadosAtualizados, pilotoTi);
         Conversa conversaAtualizada = chatConfiancaService.atualizarMetadadosConversaAssistida(
                 conversa.getId(), metadadosAtualizados);
         if (conversaAtualizada != null) {
@@ -179,10 +224,22 @@ public class ChatConfiancaIaService {
                 ? fallbackConfia()
                 : respostaConfia.content());
 
-        String jsonPesquisaAereo = extrairJsonPesquisaViagem(resposta);
+        String jsonPesquisaAereo = tiAplicada ? null : extrairJsonPesquisaViagem(resposta);
         if (jsonPesquisaAereo != null) {
             response.setResposta(jsonPesquisaAereo);
             response.setSugerirAtendente(false);
+            if (planoV2 != null) {
+                ObjectNode payloadPesquisa = objectMapper.createObjectNode();
+                payloadPesquisa.put("schema", "chat.pesquisa-viagem.v2");
+                payloadPesquisa.set("confiaV2", objectMapper.valueToTree(planoV2));
+                try { payloadPesquisa.set("pesquisa", objectMapper.readTree(jsonPesquisaAereo)); }
+                catch (JsonProcessingException ex) { throw new IllegalStateException("Pesquisa V2 invalida", ex); }
+                response.setMensagemBot(chatConfiancaService.registrarMensagemBot(
+                        conversa.getId(), "Pesquisa preparada para abertura no portal. Nenhuma reserva foi efetuada.",
+                        payloadPesquisa.toString()));
+            }
+            if (respostaTi != null) respostaTi.registrar(pilotoTi);
+            compararConfiguracao(conversa, mensagemUsuario, sessao, decisao, planoV2, request, departamentosRoteamento);
             registrarAuditoriaDecisao(
                     conversa, mensagemUsuario, sessao, decisao,
                     request, response, inicioTurno);
@@ -200,15 +257,16 @@ public class ChatConfiancaIaService {
                 .anyMatch(action -> acaoSolicitada.equals(action.code()))) {
             response.setAcaoSolicitada(acaoSolicitada);
         }
-        response.setSugerirAtendente(deveSugerirAtendente(request.getMensagem(), resposta));
+        response.setSugerirAtendente((tiAplicada && pilotoTi.sugerirAtendente())
+                || deveSugerirAtendente(request.getMensagem(), resposta));
 
         Mensagem mensagemBot = chatConfiancaService.registrarMensagemBot(
                 conversa.getId(),
                 resposta,
-                metadadosRespostaConfia(
+                metadadosPilotoTi(metadadosV2(metadadosRespostaConfia(
                         response,
                         payloadReservasRecentes,
-                        payloadMelhoresTarifasAereas)
+                        payloadMelhoresTarifasAereas), planoV2), pilotoTi)
         );
         response.setMensagemBot(mensagemBot);
 
@@ -224,6 +282,8 @@ public class ChatConfiancaIaService {
             response.setMensagemAtendente("Encaminhei seu atendimento para a equipe humana.");
         }
 
+        if (respostaTi != null) respostaTi.registrar(pilotoTi);
+        compararConfiguracao(conversa, mensagemUsuario, sessao, decisao, planoV2, request, departamentosRoteamento);
         registrarAuditoriaDecisao(
                 conversa, mensagemUsuario, sessao, decisao,
                 request, response, inicioTurno);
@@ -284,7 +344,7 @@ public class ChatConfiancaIaService {
     private ChatResponseDTO chamarConfia(PerguntarConfiaRequest request,
                                          SessaoChatResponse sessao,
                                          List<Mensagem> historico,
-                                         ChatConfiancaDecisaoIa decisao) {
+                                         ChatConfiancaDecisaoIa decisao, ChatV2Plan planoV2) {
         List<ChatMessageDTO> messages = new ArrayList<>();
         try {
             Long codgAgencia = sessao.getAgencia() == null || sessao.getAgencia().getCodgAgencia() == null
@@ -302,6 +362,11 @@ public class ChatConfiancaIaService {
                     false,
                     new ArrayList<>()
             );
+
+            if ((decisao.isAplicada()
+                    && planoV2 != null && !planoV2.isLegado())) {
+                return v2Executor.executar(planoV2, conversation, decisao);
+            }
 
             if ((decisao.isAplicada()
                     && "ultimas_reservas_aereas".equals(decisao.getAcao()))
@@ -462,6 +527,27 @@ public class ChatConfiancaIaService {
                         || (resposta.keywords() != null && !resposta.keywords().isEmpty()));
         decisao.setStatusResultado(possuiResultado ? "SUCESSO" : "FALLBACK");
         decisao.setErroCodigo(null);
+    }
+
+    private void compararConfiguracao(Conversa conversa, Mensagem mensagem, SessaoChatResponse sessao,
+            ChatConfiancaDecisaoIa decisao, ChatV2Plan plano, PerguntarConfiaRequest request,
+            List<DepartamentoUnidade> departamentos) {
+        if (configuracaoShadow == null) return;
+        try {
+            configuracaoShadow.observar(conversa == null ? null : conversa.getId(),
+                    mensagem == null ? null : mensagem.getId(), baseMemoria(sessao),
+                    codgUnidadeMemoria(sessao, conversa), decisao, plano,
+                    Boolean.TRUE.equals(request.getEncaminharAtendente()), departamentos,
+                    request.getCodgUsuario(),
+                    sessao.getAgencia() == null ? null : sessao.getAgencia().getCodgAgencia(),
+                    // ConfIA Geral is a persistence linkage, not evidence of a human handoff.
+                    request.getMensagem(), conversa != null && conversa.getAtendenteResponsavelCodgUsuario() == null
+                            && (conversa.getStatus() == StatusConversa.NOVA
+                            || conversa.getStatus() == StatusConversa.AGUARDANDO_SOLICITANTE));
+        } catch (RuntimeException ex) {
+            java.util.logging.Logger.getLogger(ChatConfiancaIaService.class.getName())
+                    .warning("IA_CONFIG_SHADOW_DESCARTADO: resposta atual preservada.");
+        }
     }
 
     private void registrarAuditoriaDecisao(
@@ -753,6 +839,30 @@ public class ChatConfiancaIaService {
         }
     }
 
+    private String metadadosPilotoTi(String existente, ChatIaTiRespostaService.Resultado resultado) {
+        // Replace the previous turn's state even outside the pilot, avoiding stale applied=true.
+        if (resultado == null && (existente == null || !existente.contains("confiaTiResposta"))) return existente;
+        try {
+            JsonNode parsed = isBlank(existente) ? objectMapper.createObjectNode() : objectMapper.readTree(existente);
+            ObjectNode dados = parsed.isObject() ? (ObjectNode) parsed : objectMapper.createObjectNode();
+            if (resultado == null) dados.remove("confiaTiResposta");
+            else dados.set("confiaTiResposta", objectMapper.valueToTree(resultado.auditoria()));
+            return objectMapper.writeValueAsString(dados);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Nao foi possivel registrar o estado do piloto TI", ex);
+        }
+    }
+
+    private String metadadosV2(String existente, ChatV2Plan plano) {
+        if (plano == null) return existente;
+        try {
+            JsonNode parsed = isBlank(existente) ? objectMapper.createObjectNode() : objectMapper.readTree(existente);
+            ObjectNode dados = parsed.isObject() ? (ObjectNode) parsed : objectMapper.createObjectNode();
+            dados.set("confiaV2", objectMapper.valueToTree(plano));
+            return objectMapper.writeValueAsString(dados);
+        } catch (JsonProcessingException ex) { throw new IllegalStateException("Nao foi possivel persistir o contexto V2", ex); }
+    }
+
     private String metadadosClassificacaoSombra(String metadadosAtuais,
                                                 String intencaoAtual,
                                                 ChatIntencaoClassificacao sombra) {
@@ -832,6 +942,7 @@ public class ChatConfiancaIaService {
             node.put("modo", decisao.getModo());
             node.put("status", decisao.getStatus());
             node.put("fonte", decisao.getFonte());
+            if(decisao.getVersao()!=null)node.put("versao",decisao.getVersao());
             node.put("intencao", decisao.getIntencao());
             node.put("intencaoLegada", decisao.getIntencaoLegada());
             if (decisao.getAcao() == null) {
