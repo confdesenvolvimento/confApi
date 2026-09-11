@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/v1/chat-confianca/admin/ia")
 public class ChatIaCatalogoController {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.confApi.chatconfianca.hotel.ChatIaHotelService hotel;
     @GetMapping("/catalogo")
     public Map<String,Object> catalogo() {
         List<Map<String,Object>> itens=new ArrayList<>();
@@ -24,11 +26,16 @@ public class ChatIaCatalogoController {
             item.put("executor",destino[0]);
             item.put("metodo",destino[1]);
             item.put("tipo",tipo(c));
-            item.put("disponivel",true);
+            item.put("disponivel",true); // technical implementation; not a runtime permission
+            if(c==ChatV2Capability.HOTEL_DADOS) {
+                item.put("cadastroAplicavel",true);
+                item.put("estadoCadastro",hotel==null?"IMPLEMENTADO_DESABILITADO":hotel.estadoCadastro());
+                item.put("observacaoConfiguracao","Requer V2 e hotel-dados habilitados + cadeia ativa no Manager. Perfil GERAL/hotel. Aplica orientações/restrições, objetivo, pergunta, limite de resultados/sugestões e oferta por interações. SQL até 2s; HTTP até 8s; geração até 15s. Confiança mínima não se aplica ao planejador semântico desta entrega. Departamento somente no handoff existente. Não executa fluxos arbitrários.");
+            }
             item.put("exigeConfirmacao",c.exigeConfirmacao());
             item.put("permissao","Autenticacao e validacoes do executor atual; agencia/unidade/usuario sempre obtidos da sessao. O cadastro nao concede permissoes.");
             var ferramenta=ChatV2Arguments.tool(c);
-            item.put("parametros",ferramenta==null?Map.of():ferramenta.jsonSchema());
+            item.put("parametros",c==ChatV2Capability.HOTEL_DADOS?com.confApi.chatconfianca.hotel.ChatIaHotelService.schema():ferramenta==null?Map.of():ferramenta.jsonSchema());
             itens.add(item);
         }
         return Map.of("versao","catalogo-ia-v1","cadastrosAplicadosAoChat",false,"acoes",itens);
@@ -54,6 +61,7 @@ public class ChatIaCatalogoController {
             case ALERTAS -> new String[]{"AlertaTarifaService","listarPorUsuario"};
             case FAMILIAS -> new String[]{"ChatService","listarFamilias"};
             case VOOS, HOTEL -> new String[]{"ToolRouter","execute"};
+            case HOTEL_DADOS -> new String[]{"ChatIaHotelService","consultarHotel"};
             case TARIFA_IDA -> new String[]{"MelhoresTarifasAereasService","consultar"};
             case TARIFA_VOLTA -> new String[]{"MelhoresTarifasAereasIdaVoltaService","consultar"};
             case PACOTE -> new String[]{"PacoteMelhorOfertaService","consultar"};

@@ -72,7 +72,7 @@ class ChatV2CasosLocaisRegressionTest {
     @Test void checkinDeHotelNaoViraConsultaAerea() {
         properties.setSemanticEnabled(false);
         var p=planner.planejar("Qual o check-in do hotel?",null,List.of(),10,20);
-        assertEquals(ChatV2Capability.HOTEL,p.capability());
+        assertEquals(ChatV2Capability.HOTEL_DADOS,p.capability());
     }
     @Test void setorFinanceiroExplicitoNaoSePerdeNaSemantica()throws Exception {
         when(semantic.decidir(anyString(),any(),any())).thenReturn(ChatV2Plan.of(ChatV2Capability.CONTATOS));

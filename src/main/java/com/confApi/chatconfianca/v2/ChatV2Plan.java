@@ -8,6 +8,11 @@ import java.util.Map;
 @Data
 public class ChatV2Plan {
     private String intencao;
+    // Server-owned IDs: excluded from the semantic schema and never accepted from user parameters.
+    private Map<String,Integer> hotelOpcoes = new LinkedHashMap<>();
+    private Integer hotelSelecionado;
+    private int hotelInteracoes;
+    private String hotelConfiguracaoRevisao;
     private boolean continuar;
     private String pergunta;
     private String assuntoHandoff;

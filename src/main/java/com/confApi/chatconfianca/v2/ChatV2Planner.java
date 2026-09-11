@@ -26,7 +26,8 @@ public class ChatV2Planner {
         if(!properties.participa(agencia,usuario))return null;
         ChatV2Plan anterior=contexto(conversa,agencia,usuario);
         String t=normalizar(mensagem);
-        ChatV2Plan p=acaoPersistida(mensagem,historico,anterior);
+        ChatV2Plan p=com.confApi.chatconfianca.hotel.ChatIaHotelContexto.escolher(mensagem,anterior);
+        if(p==null)p=acaoPersistida(mensagem,historico,anterior);
         if(p==null) {
             ChatV2Capability c=identificar(t);
             boolean continua=anterior!=null && (c==anterior.capability() || (c==null&&continuacao(t,anterior)));
@@ -58,6 +59,12 @@ public class ChatV2Planner {
         if(p.capability()==ChatV2Capability.HUMANO&&anterior!=null) {
             p.setAssuntoHandoff(anterior.capability()==ChatV2Capability.HUMANO?anterior.getAssuntoHandoff():anterior.getIntencao());
         }
+        if(t.matches(".*\\b(hotel|hoteis|hospedagem)\\b.*")
+                && t.matches(".*\\b(reserva|reservas|localizador|voucher|cancelar|reembolsar)\\b.*")
+                && p.capability()!=ChatV2Capability.HUMANO) {
+            p=ChatV2Plan.of(ChatV2Capability.AJUDA);
+            p.setPergunta("A consulta de reservas de hotel ainda não está disponível neste chat. Posso ajudar com dados do estabelecimento, pesquisa de hospedagem ou atendimento humano. Qual prefere?");
+        }
         if(!properties.permite(p.getIntencao())) { p.setLegado(true);p.setFonte("V2_FORA_ESCOPO"); }
         // Origin may never be inferred from agency/base. Require evidence in the request or retained state.
         if(p.capability()!=null && p.capability().tool!=null && p.capability()!=ChatV2Capability.HOTEL
@@ -67,6 +74,7 @@ public class ChatV2Planner {
             p.getParametros().remove("origem");
         }
         restringirParametrosAoAssunto(p,mensagem);
+        com.confApi.chatconfianca.hotel.ChatIaHotelContexto.restaurar(p,anterior);
         p.setAgencia(agencia);p.setUsuario(usuario);p.setAtualizadoEm(System.currentTimeMillis());
         return p;
     }
@@ -86,6 +94,9 @@ public class ChatV2Planner {
     static ChatV2Capability identificar(String t) {
         if(t.matches(".*\\b(atendente|falar com alguem|atendimento humano)\\b.*"))return ChatV2Capability.HUMANO;
         if(t.matches("(oi|ola|bom dia|boa tarde|boa noite)( tudo bem)?[!?., ]*"))return ChatV2Capability.SAUDACAO;
+        boolean hotel=t.matches(".*\\b(hotel|hoteis|hospedagem)\\b.*");
+        if(hotel&&t.matches(".*\\b(reserva|reservas|localizador|voucher|cancelar|reembolsar)\\b.*"))return ChatV2Capability.AJUDA;
+        if(hotel&&t.matches(".*\\b(informacoes|informacao|dados|detalhes|descricao|endereco|telefone|contato|piscina|estacionamento|wifi|wi fi|academia|cafe|servicos|horario|check[ -]?in|check[ -]?out)\\b.*"))return ChatV2Capability.HOTEL_DADOS;
         if(t.matches(".*\\bbsp\\b.*"))return ChatV2Capability.BSP;
         if(t.matches(".*\\b(pacote|pacotes)\\b.*"))return ChatV2Capability.PACOTE;
         if(t.matches(".*\\b(reemissao|remarcar|remarcacao)\\b.*")&&!t.matches(".*\\b(regra|regras|multa|multas)\\b.*"))return ChatV2Capability.REMARCACAO;
@@ -136,6 +147,12 @@ public class ChatV2Planner {
         if(p==null || p.capability()==null)return;
         Map<String,String> params=new LinkedHashMap<>(p.getParametros()==null?Map.of():p.getParametros());
         if(!p.capability().usaLocalizador())params.remove("localizador");
+        if(p.capability()==ChatV2Capability.HOTEL_DADOS) {
+            params.keySet().retainAll(Set.of("hotelNome","hotelCidade","hotelPais","hotelOpcao"));
+        } else {
+            for(String key:List.of("hotelNome","hotelCidade","hotelPais","hotelOpcao"))params.remove(key);
+            p.setHotelSelecionado(null);p.getHotelOpcoes().clear();p.setHotelConfiguracaoRevisao(null);
+        }
         if(p.capability()==ChatV2Capability.CONTATOS) {
             String t=normalizar(mensagem);
             List<String> setores=new ArrayList<>();

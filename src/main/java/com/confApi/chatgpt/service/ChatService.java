@@ -99,6 +99,11 @@ public class ChatService {
         return chat(req, keywords, history, false);
     }
 
+    /** Establishment answer uses the same bounded, no-tools text transport as the TI pilot. */
+    public ChatResponseDTO responderHotelSomenteTexto(List<ChatMessageDTO> messages) throws IOException {
+        return chat(new ChatRequestDTO(messages, null, false, List.of(), Map.of()), List.of(), null, true);
+    }
+
     /** Dedicated TI generation: one text-only call; no action router or history from other topics. */
     public ChatResponseDTO responderTiSomenteTexto(List<ChatMessageDTO> messages) throws IOException {
         return chat(new ChatRequestDTO(messages, null, false, List.of(), Map.of()),

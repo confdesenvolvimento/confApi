@@ -120,5 +120,5 @@ class ChatV2PlannerTest {
     @Test void palavraComSeisLetrasNaoReaproveitaFinanceiro()throws Exception {
         assertEquals(ChatV2Capability.AJUDA,plan("vendas",conversation(ChatV2Capability.LIMITES,Map.of())).capability());
     }
-    @Test void catalogoTemCodigosUnicosEExecutoresFechados(){assertEquals(25,ChatV2Capability.codes().size());assertEquals(25,new HashSet<>(ChatV2Capability.codes()).size());for(var c:ChatV2Capability.values())if(c.tool!=null)assertEquals(c.tool,ChatV2Arguments.tool(c).name());}
+    @Test void catalogoTemCodigosUnicosEExecutoresFechados(){assertEquals(26,ChatV2Capability.codes().size());assertEquals(26,new HashSet<>(ChatV2Capability.codes()).size());for(var c:ChatV2Capability.values())if(c.tool!=null)assertEquals(c.tool,ChatV2Arguments.tool(c).name());}
 }

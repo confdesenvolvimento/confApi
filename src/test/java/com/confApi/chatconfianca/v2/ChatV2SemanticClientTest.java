@@ -48,7 +48,7 @@ class ChatV2SemanticClientTest {
         JsonNode format=sent.get().path("response_format").path("json_schema");
         assertTrue(format.path("strict").asBoolean());
         assertFalse(format.path("schema").path("additionalProperties").asBoolean());
-        assertEquals(25,format.path("schema").path("properties").path("intencao").path("enum").size());
+        assertEquals(26,format.path("schema").path("properties").path("intencao").path("enum").size());
         assertFalse(sent.get().has("tools"));
         assertFalse(sent.get().toString().contains("123456"));assertFalse(sent.get().toString().contains("654321"));
     }

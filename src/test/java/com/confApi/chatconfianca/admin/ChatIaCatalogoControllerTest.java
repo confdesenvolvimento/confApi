@@ -17,6 +17,7 @@ class ChatIaCatalogoControllerTest {
         Map<String,String> classes=Map.ofEntries(
                 Map.entry("LimitesService","com.confApi.hub.limites.LimitesService"),
                 Map.entry("ChatService","com.confApi.chatgpt.service.ChatService"),
+                Map.entry("ChatIaHotelService","com.confApi.chatconfianca.hotel.ChatIaHotelService"),
                 Map.entry("AlertaTarifaService","com.confApi.db.confManager.alertaTarifa.AlertaTarifaService"),
                 Map.entry("ToolRouter","com.confApi.chatgpt.tools.ToolRouter"),
                 Map.entry("MelhoresTarifasAereasService","com.confApi.cacheHotel.MelhoresTarifasAereasService"),

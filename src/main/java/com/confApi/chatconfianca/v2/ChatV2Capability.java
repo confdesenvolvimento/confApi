@@ -22,6 +22,7 @@ public enum ChatV2Capability {
     TARIFA_IDA("aereo.melhor_tarifa_ida", null, "search_cheapest_airfares", "Consultar cache de melhores tarifas somente ida"),
     TARIFA_VOLTA("aereo.melhor_tarifa_ida_volta", null, "search_cheapest_roundtrip_airfares", "Consultar cache ida e volta; periodo/mes sao aceitos"),
     HOTEL("hotel.busca_hospedagem", null, "search_hotels", "Abrir pesquisa de hotel no portal"),
+    HOTEL_DADOS("hotel.dados_hotel", "dados_hotel", null, "Consultar descricao, endereco, contatos, servicos e horarios de um estabelecimento por nome e cidade; nao consulta reserva, disponibilidade ou precos"),
     PACOTE("pacote.melhor_oferta", null, "search_cheapest_packages", "Consultar cache de pacotes com aereo e hotel"),
     CONTATOS("institucional.contatos_departamentos", null, null, "Consultar contatos, inclusive TI e Grupos, pela fonte publicada"),
     HORARIO("institucional.horario_atendimento", null, null, "Consultar horario regular, distinguindo plantao"),

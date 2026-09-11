@@ -18,8 +18,11 @@ public class ChatV2Executor {
     private final ChatService chat;
     private final ToolRouter tools;
     private final ObjectMapper mapper;
-    public ChatV2Executor(ChatService chat,ToolRouter tools,ObjectMapper mapper) {
-        this.chat=chat;this.tools=tools;this.mapper=mapper;
+    private final com.confApi.chatconfianca.hotel.ChatIaHotelService hotel;
+    public ChatV2Executor(ChatService chat,ToolRouter tools,ObjectMapper mapper) { this(chat,tools,mapper,null); }
+    @org.springframework.beans.factory.annotation.Autowired
+    public ChatV2Executor(ChatService chat,ToolRouter tools,ObjectMapper mapper,com.confApi.chatconfianca.hotel.ChatIaHotelService hotel) {
+        this.chat=chat;this.tools=tools;this.mapper=mapper;this.hotel=hotel;
     }
     public ChatResponseDTO executar(ChatV2Plan p,ConversationRequestDTO session,ChatConfiancaDecisaoIa d) {
         try {
@@ -30,6 +33,12 @@ public class ChatV2Executor {
             if(c==ChatV2Capability.SAUDACAO)return finish(p,d,"SAUDACAO","Ola! Posso ajudar com financeiro, reservas, voos, hoteis ou contatos da Confianca. O que voce precisa?");
             if(c==ChatV2Capability.AJUDA)return finish(p,d,"AGUARDANDO_DADOS","Posso consultar limites, faturas, boletos, reservas, regras, voos e hoteis, ou orientar sobre atendimento. Qual assunto deseja consultar?");
             if(c==ChatV2Capability.HUMANO)return finish(p,d,"HANDOFF_SUGERIDO","Posso encaminhar para um atendente humano. Use Falar com atendente e confirme ou escolha o departamento desejado.");
+            if(c==ChatV2Capability.HOTEL_DADOS) {
+                if(hotel==null)return finish(p,d,"CAPACIDADE_INDISPONIVEL","A consulta de dados do hotel não está habilitada.");
+                var result=hotel.consultarHotel(p,session);
+                d.setMemorias(List.of());
+                return finish(p,d,result.status(),result.texto());
+            }
             if(c.tool!=null)return consultarTool(p,d);
             if(c.action!=null)return consultarApi(p,session,d);
             return conhecimento(p,d);

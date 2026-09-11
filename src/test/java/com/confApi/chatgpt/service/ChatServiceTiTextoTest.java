@@ -73,6 +73,16 @@ class ChatServiceTiTextoTest {
         assertThrows(IOException.class,()->service("{\"erro\":\"PRIVADO\"}",503).responderTiSomenteTexto(messages()));
         assertEquals(4,calls.get());verifyNoInteractions(router);
     }
+    @Test void hotelTambemGeraSomenteTextoSemFerramentas() throws Exception {
+        var s=service("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"Hotel cadastrado.\"}}]}",200);
+        assertEquals("Hotel cadastrado.",s.responderHotelSomenteTexto(messages()).content());
+        var json=new ObjectMapper().readTree(payloads.get(0));assertFalse(json.has("tools"));
+        assertFalse(json.path("store").asBoolean(true));assertEquals(15_000_000_000L,timeoutNanos.get());verifyNoInteractions(router);
+    }
+    @Test void hotelNaoExecutaToolSolicitadaPeloModelo() {
+        var s=service("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":null,\"tool_calls\":[{\"id\":\"1\",\"function\":{\"name\":\"search_hotels\",\"arguments\":\"{}\"}}]}}]}",200);
+        assertThrows(IOException.class,()->s.responderHotelSomenteTexto(messages()));verifyNoInteractions(router);
+    }
     @Test void caminhoAtualNaoRecebeParametrosDoPiloto() throws Exception {
         var s=service("{\"choices\":[{\"message\":{\"content\":\"Resposta atual\"}}]}",200);
         s.chat(new ChatRequestDTO(messages(),null,false,List.of(),Map.of()),List.of(),null);

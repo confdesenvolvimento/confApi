@@ -19,7 +19,7 @@ public class ChatV2SemanticClient {
         "dataInicio","dataFim","dataIdaInicio","dataIdaFim","dataVoltaInicio","dataVoltaFim",
         "duracaoMinimaDias","duracaoMaximaDias","duracaoDias","duracaoNoites","cabine","adt",
         "modoResposta","politicaCompanhia","limiteAlternativas","limite","adultos","quartos",
-        "quartosJson","destinoId","checkin","checkout","diarias","totalHospedes","setor");
+"quartosJson","destinoId","checkin","checkout","diarias","totalHospedes","setor","hotelNome","hotelCidade","hotelPais","hotelOpcao");
     private final OkHttpClient client;
     private final OpenAIProperties openAI;
     private final ChatV2Properties properties;
@@ -33,6 +33,7 @@ public class ChatV2SemanticClient {
                 .reduce("",(a,b)->a+"\n"+b);
         Map<String,Object> contratos=new LinkedHashMap<>();
         for(ChatV2Capability c:ChatV2Capability.values())if(c.tool!=null)contratos.put(c.code,ChatV2Arguments.tool(c).jsonSchema());
+        contratos.put("hotel.dados_hotel",com.confApi.chatconfianca.hotel.ChatIaHotelService.schema());
         String prompt="""
             Voce planeja um atendimento da Confianca. Escolha somente uma capacidade do catalogo.
             Nao execute acoes nem responda com dados financeiros, datas de vencimento ou contatos.
@@ -54,6 +55,14 @@ public class ChatV2SemanticClient {
             Datas ISO. Ano de viagem omitido: proxima ocorrencia futura; BSP usa o ano informado ou atual.
             Data exata nao deve produzir intervalos contraditorios. Duracao informada vale para ida e volta.
             Para hotel, quartosJson e array JSON de quartos {adultos,criancas,idadesCriancas}; nao invente idades.
+            Dados do estabelecimento (endereco, piscina, estacionamento, cafe, horario) usam hotel.dados_hotel.
+            Nessa consulta use hotelNome e hotelCidade com nomes escritos, nunca IATA ou IDs; hotelPais e opcional.
+            Nao exija datas ou ocupacao para dados cadastrais. Nao invente cidade a partir da base do usuario.
+            Se faltar nome/cidade, preserve o que foi informado e pergunte apenas o necessario.
+            hotelOpcao e somente o numero explicitamente escolhido na ultima lista; nunca invente uma selecao.
+            Perguntas de continuacao sobre o mesmo hotel preservam seu nome/cidade/pais. Outro hotel limpa a selecao anterior.
+            Reserva de hotel, voucher, cancelamento e regras da tarifa reservada ainda nao estao implementados: orientacao_geral, nunca acao aerea.
+            Buscar disponibilidade ou valores continua hotel.busca_hospedagem, nao hotel.dados_hotel.
             Para pacote, quartos e quantidade; nao use quartosJson. Nao invente ocupacao se nao informada.
             Reembolso pode ser regra ou acompanhamento: esclareca se o pedido nao especificar.
             Preparar emissao/cancelamento nunca significa autorizar conclusao. Use aereo.acoes_reserva.
