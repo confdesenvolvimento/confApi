@@ -18,6 +18,8 @@ class ChatIaCatalogoControllerTest {
                 Map.entry("LimitesService","com.confApi.hub.limites.LimitesService"),
                 Map.entry("ChatService","com.confApi.chatgpt.service.ChatService"),
                 Map.entry("ChatIaHotelService","com.confApi.chatconfianca.hotel.ChatIaHotelService"),
+                Map.entry("ChatIaHotelReservaService","com.confApi.chatconfianca.hotel.ChatIaHotelReservaService"),
+                Map.entry("ChatIaHotelListaService","com.confApi.chatconfianca.hotel.ChatIaHotelListaService"),
                 Map.entry("AlertaTarifaService","com.confApi.db.confManager.alertaTarifa.AlertaTarifaService"),
                 Map.entry("ToolRouter","com.confApi.chatgpt.tools.ToolRouter"),
                 Map.entry("MelhoresTarifasAereasService","com.confApi.cacheHotel.MelhoresTarifasAereasService"),

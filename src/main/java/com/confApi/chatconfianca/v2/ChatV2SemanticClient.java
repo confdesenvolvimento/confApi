@@ -19,7 +19,7 @@ public class ChatV2SemanticClient {
         "dataInicio","dataFim","dataIdaInicio","dataIdaFim","dataVoltaInicio","dataVoltaFim",
         "duracaoMinimaDias","duracaoMaximaDias","duracaoDias","duracaoNoites","cabine","adt",
         "modoResposta","politicaCompanhia","limiteAlternativas","limite","adultos","quartos",
-"quartosJson","destinoId","checkin","checkout","diarias","totalHospedes","setor","hotelNome","hotelCidade","hotelPais","hotelOpcao");
+"quartosJson","destinoId","checkin","checkout","diarias","totalHospedes","setor","hotelNome","hotelCidade","hotelPais","hotelOpcao","reservaHotelLocalizador","reservaHotelHospede","reservaHotelNome","reservaHotelCidade","reservaHotelOpcao","listaHotelHospede","listaHotelNome","listaHotelCidade","listaHotelTipoData","listaHotelInicio","listaHotelFim","listaHotelComando","listaHotelOpcao");
     private final OkHttpClient client;
     private final OpenAIProperties openAI;
     private final ChatV2Properties properties;
@@ -34,6 +34,8 @@ public class ChatV2SemanticClient {
         Map<String,Object> contratos=new LinkedHashMap<>();
         for(ChatV2Capability c:ChatV2Capability.values())if(c.tool!=null)contratos.put(c.code,ChatV2Arguments.tool(c).jsonSchema());
         contratos.put("hotel.dados_hotel",com.confApi.chatconfianca.hotel.ChatIaHotelService.schema());
+        contratos.put("hotel.reserva_detalhes",com.confApi.chatconfianca.hotel.ChatIaHotelReservaService.schema());
+        contratos.put("hotel.reservas_recentes",com.confApi.chatconfianca.hotel.ChatIaHotelListaService.schema());
         String prompt="""
             Voce planeja um atendimento da Confianca. Escolha somente uma capacidade do catalogo.
             Nao execute acoes nem responda com dados financeiros, datas de vencimento ou contatos.
@@ -41,7 +43,7 @@ public class ChatV2SemanticClient {
             Nao invente origem, localizador, datas, unidade, credenciais ou identificadores de hotel.
             Campos ausentes sao null. Se houver ambiguidade, escreva uma pergunta curta, nao uma promessa de pesquisar.
             continuar=true somente se o pedido continua o mesmo assunto. Em mudanca de assunto, false.
-            Preserve parametros do contexto apenas em continuacoes. Localizador isolado completa reserva/regras.
+            Preserve parametros do contexto apenas em continuacoes. Localizador isolado completa reserva/regras. Localizadores aereos podem ter de 5 a 13 caracteres alfanumericos; preserve o codigo completo, sem truncar.
             Retorne o estado COMPLETO dos parametros que continuam validos. null remove um parametro antigo.
             Ao trocar ida e volta por somente ida, remova a volta. Ao trocar data exata por mes, remova a data exata.
             Ao abrir pesquisa convencional depois do cache, preserve rota mas peca datas exatas quando faltarem.
@@ -61,7 +63,22 @@ public class ChatV2SemanticClient {
             Se faltar nome/cidade, preserve o que foi informado e pergunte apenas o necessario.
             hotelOpcao e somente o numero explicitamente escolhido na ultima lista; nunca invente uma selecao.
             Perguntas de continuacao sobre o mesmo hotel preservam seu nome/cidade/pais. Outro hotel limpa a selecao anterior.
-            Reserva de hotel, voucher, cancelamento e regras da tarifa reservada ainda nao estao implementados: orientacao_geral, nunca acao aerea.
+            Reserva de hotel JA CRIADA usa hotel.reserva_detalhes: informe reservaHotelLocalizador OU reservaHotelHospede OU reservaHotelNome; reservaHotelCidade apenas refina.
+            Esses parametros sao EXCLUSIVOS de reserva de hotel. Nunca reutilize localizador aereo, hotelNome publico ou IDs de outra consulta.
+            Nao invente localizador nem nome de hospede. Nao solicite documento, senha ou cartao.
+            Se falta filtro, pergunte localizador, hospede ou hotel. Nao e listagem geral de reservas recentes nem busca de nova hospedagem.
+            reservaHotelOpcao e somente o numero escolhido na ultima lista de reservas. Nunca escolha automaticamente.
+            Ao continuar na mesma reserva, preserve os filtros de reservaHotel. Ao trocar hospede, hotel ou localizador, remova os filtros anteriores nao reafirmados.
+            Voucher, alteracao, cancelamento, reembolso e regras da tarifa reservada de HOTEL ainda nao estao implementados: orientacao_geral, nunca acao aerea.
+            Listar reservas recentes, por hospede/hotel/cidade/periodo usa hotel.reservas_recentes. Nao exigir localizador.
+            Use somente listaHotelHospede, listaHotelNome, listaHotelCidade (nome, nao IATA), listaHotelTipoData, listaHotelInicio, listaHotelFim, listaHotelComando, listaHotelOpcao.
+            TipoData CRIACAO para reservas criadas/vendidas; ENTRADA para hospedagens/check-ins/entrada; SAIDA para check-outs/saida. Periodo ambiguo: pergunte qual tipo de data.
+            Inicio/fim ISO inclusivos, periodo maximo 366 dias. Sem periodo deixe tipo/inicio/fim null: o servidor aplica e informa 30 dias de criacao, mesmo com filtro por cidade/hospede/hotel.
+            Ao mudar filtros inicie LISTAR; nao reutilize cursor/opcao. Em continuacao da mesma listagem mantenha os filtros validos COMPLETOS, incluindo periodo ja aplicado.
+            Mostre mais usa MAIS apenas na mesma listagem. Abra a segunda usa ABRIR e listaHotelOpcao=2 da ultima pagina. Nao invente IDs, cursores ou paginas.
+            Abertura de opcao da lista permanece hotel.reservas_recentes, nao acao aerea nem busca de hotel. Repetir detalhes do item aberto pode usar ABRIR com a opcao selecionada informada no contexto.
+            Localizador explicito usa hotel.reserva_detalhes. Nao copie filtros ou localizadores entre lista, consulta individual, aereo e dados publicos do hotel.
+            Nao ofereca filtro por status confirmado/cancelado/pendente nem totais de vendas: nao sao suportados pela listagem.
             Buscar disponibilidade ou valores continua hotel.busca_hospedagem, nao hotel.dados_hotel.
             Para pacote, quartos e quantidade; nao use quartosJson. Nao invente ocupacao se nao informada.
             Reembolso pode ser regra ou acompanhamento: esclareca se o pedido nao especificar.
@@ -72,6 +89,10 @@ public class ChatV2SemanticClient {
         if(contexto!=null) {
             ctx.put("intencao",contexto.getIntencao()); ctx.put("parametros",contexto.getParametros());
             ctx.put("perguntaPendente",contexto.getPergunta()); ctx.put("resultadoAnterior",contexto.getResultado());
+            if(contexto.capability()==ChatV2Capability.HOTEL_LISTA&&contexto.getListaHotelEstado()!=null){
+                var lista=contexto.getListaHotelEstado();
+                ctx.put("listaHotel",Map.of("pagina",lista.getPagina(),"temMais",lista.isTemMais(),"quantidadeOpcoes",lista.getOpcoes().size(),"opcaoSelecionada",Objects.toString(lista.getOpcaoSelecionada(),"")));
+            }
         }
         Map<String,Object> payload=new LinkedHashMap<>();
         payload.put("model",openAI.getChatModel());

@@ -19,7 +19,7 @@ class ChatIaHotelContextoTest {
         var semantic=mock(ChatV2SemanticClient.class);
         when(semantic.decidir(anyString(),any(),any())).thenReturn(ChatV2Plan.of(ChatV2Capability.RESERVA));
         var p=new ChatV2Planner(props,semantic,new ObjectMapper()).planejar("Mostre minha reserva de hotel H12345",null,List.of(),10,20);
-        assertEquals(ChatV2Capability.AJUDA,p.capability());assertNotNull(p.getPergunta());
+        assertEquals(ChatV2Capability.HOTEL_RESERVA,p.capability());assertNotNull(p.getPergunta());
     }
     @Test void escolhaDeOutraAgenciaNaoReaproveitaContexto()throws Exception{
         var mapper=new ObjectMapper();var props=new ChatV2Properties();props.setEnabled(true);props.setTrafficPercent(100);props.setSemanticEnabled(false);

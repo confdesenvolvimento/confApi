@@ -1,5 +1,7 @@
 package com.confApi.chatgpt.service;
 
+import com.confApi.chatgpt.util.LocalizadorAereo;
+
 
 import com.confApi.aereo.AereoClient;
 import com.confApi.aereo.AereoRegrasReservaService;
@@ -50,6 +52,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.util.StdDateFormat;
 import lombok.RequiredArgsConstructor;
 import okhttp3.*;
 import okio.BufferedSource;
@@ -69,6 +72,18 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class ChatService {
     private static final int LIMITE_ULTIMAS_RESERVAS_AEREAS = 10;
+    // Codigo de turReservasAereas.Status na Wooba; difere do cadastro proprio do Manager.
+    private static final int STATUS_RESERVA_WOOBA_EMITIDA = 2;
+    private static final String ORIENTACAO_DATAS_RESERVA =
+            "As datas de criacao e emissao da reserva e dos bilhetes ja estao no formato dd/MM/yyyy HH:mm, "
+            + "no fuso America/Sao_Paulo, o mesmo da tela da reserva. Preserve o dia, mes, ano e horario informados; "
+            + "nao recalcule o fuso nem substitua essas datas por hoje ou pela data da conversa. "
+            + "O prazo de emissao tambem ja esta formatado no horario de Brasilia; preserve a data e a hora, "
+            + "sem aplicar outra conversao. Quando houver somente a data do prazo, nao invente um horario. "
+            + "As datas de partida e chegada dos voos ja estao em dd/MM/yyyy, iguais as datas da tela da reserva. "
+            + "Apresente cada data com seu respectivo horario dos campos horaPartida e horaChegada, sem recalcular esses horarios. "
+            + "Nao deduza a chegada pela duracao do voo nem copie a data de partida para a chegada. "
+            + "Quando uma data ou horario estiver ausente, informe nao informado, sem deduzir de outro campo. ";
     private static final int LIMITE_PASSAGEIROS_RESUMO = 5;
     private static final int LIMITE_TRECHOS_RESUMO = 4;
     private static final int LIMITE_VOOS_RESUMO = 8;
@@ -463,9 +478,9 @@ public class ChatService {
             messages.add(montarMensagemFaturasBoleto(req,resultadoEstrito));
             // montarMensagemFaturasBoleto(req);
         }
-        if (keyword.equals("checkin") && !keywords.contains(keyword)) {
+        if (keyword.equals("checkin")) {
 
-            /*Consultar Checkin proximos 72 horas*/
+            // Reconsulta o status atual: uma reserva pode ter sido cancelada desde o ultimo turno.
             messages.add(buscarCheckinsProximos(req));
         }
         if ((keyword.equals("ultimas_reservas_aereas") || keyword.equals("ultimas_vendas")) && !keywords.contains(keyword)) {
@@ -941,6 +956,7 @@ public class ChatService {
             Map<String, Object> resumo = resumirReservaAereaComRegras(localizador, response);
             return new ChatMessageDTO("system",
                     "Dado do sistema (reserva_aerea_regras): " + mapper.writeValueAsString(resumo) +
+                            "\n" + ORIENTACAO_DATAS_RESERVA +
                             "\nResponda em texto claro. Traga os dados da reserva e informe regras de cancelamento, reembolso e alteracao/remarcacao quando os dados existirem. " +
                             "Se a consulta falhar ou faltarem dados, explique a limitacao e solicite o dado faltante. " +
                             "Nao confirme cancelamento, reembolso ou remarcacao executados. Para cancelamento, apenas prepare a solicitacao, " +
@@ -969,6 +985,7 @@ public class ChatService {
             Map<String, Object> resumo = resumirReservaAereaDados(localizador, response);
             return new ChatMessageDTO("system",
                     "Dado do sistema (reserva_aerea_detalhes): " + mapper.writeValueAsString(resumo) +
+                            "\n" + ORIENTACAO_DATAS_RESERVA +
                             "\nResponda em texto claro trazendo somente os dados da reserva encontrada: localizador, status, sistema, datas, prazo, passageiros, trechos/voos, bagagem, bilhetes e valores quando existirem. " +
                             "Quando existirem acoesDisponiveis ou alertasOperacionais, use esses dados para sugerir os proximos passos. " +
                             "Nao fale de regras, multa, reembolso, cancelamento ou remarcacao se estes dados nao foram solicitados nesta mensagem; nesse caso, ofereca apenas consultar as regras. " +
@@ -1047,53 +1064,11 @@ public class ChatService {
     }
 
     private String extrairLocalizadorDeterministico(String input) {
-        if (input == null || input.isBlank()) {
-            return null;
-        }
-        String texto = normalizarTexto(input).toUpperCase(Locale.ROOT);
-        Matcher explicito = Pattern.compile(
-                "\\b(?:LOCALIZADOR|RESERVA|PNR)\\s*(?:N(?:O|RO)?\\.?\\s*)?[:#-]?\\s*([A-Z0-9]{5,8})\\b",
-                Pattern.CASE_INSENSITIVE)
-                .matcher(texto);
-        if (explicito.find()) {
-            String candidato = explicito.group(1).toUpperCase(Locale.ROOT);
-            if (!isPalavraComumLocalizador(candidato)) {
-                return candidato;
-            }
-        }
-
-        Matcher contextoOperacional = Pattern.compile(
-                "\\b(?:ABRIR|ABRA|CANCELAR|CANCELE|REGRA|REGRAS|REMARCAR|REMARCACAO|SIMULAR)\\b"
-                        + "(?:\\s+[A-Z]+){0,4}\\s+([A-Z0-9]{5,8})\\s*[?.!]*$")
-                .matcher(texto);
-        if (contextoOperacional.find()) {
-            String candidato = contextoOperacional.group(1).toUpperCase(Locale.ROOT);
-            if (!isPalavraComumLocalizador(candidato)) {
-                return candidato;
-            }
-        }
-
-        Matcher alfanumerico = Pattern.compile("\\b(?=[A-Z0-9]{5,8}\\b)(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*[0-9])[A-Z0-9]+\\b")
-                .matcher(texto);
-        while (alfanumerico.find()) {
-            String candidato = alfanumerico.group();
-            if (!isPalavraComumLocalizador(candidato)) {
-                return candidato;
-            }
-        }
-        return null;
+        return LocalizadorAereo.extrair(input);
     }
 
     private boolean isPalavraComumLocalizador(String candidato) {
-        return candidato == null || Set.of(
-                "QUERO", "REGRA", "REGRAS", "MULTA", "AEREO", "AEREA", "VOOS", "VOO",
-                "LOCALIZADOR", "RESERVA", "REEMBOLSO", "ALTERACAO", "REMARCACAO", "REMARCAR",
-                "SIMULAR", "BILHETE", "PASSAGEM", "CANCELAMENTO", "POSSUI", "TENHO", "SABER",
-                "DESEJO", "PRECISO", "GOSTARIA", "ALTERAR", "EMITIDA", "EMITIDO", "RECENTE",
-                "RECENTES", "DESEJADA", "DESEJADO", "CANCELAR", "CANCELE", "ABRIR", "ABRA",
-                "MOSTRAR", "MOSTRE", "VISUALIZAR", "ULTIMA", "ULTIMAS", "RESERVAS", "LISTAR",
-                "MINHA", "MINHAS", "CONSULTAR", "EMITIR", "AGORA"
-        ).contains(candidato);
+        return LocalizadorAereo.isPalavraComum(candidato);
     }
 
     private String extrairLocalizador(String input) {
@@ -1130,7 +1105,7 @@ public class ChatService {
 
                 Regras:
                 - Responda apenas com o codigo do localizador, sem frases, sem JSON, sem markdown e sem pontuacao.
-                - O localizador costuma ter de 5 a 8 caracteres alfanumericos.
+                - O localizador pode ter de 5 a 13 caracteres alfanumericos. Preserve o codigo completo, sem truncar.
                 - Converta letras para maiusculas.
                 - Ignore palavras comuns como reserva, localizador, multa, regra, reembolso, alteracao, remarcacao, passagem e bilhete.
                 - Se nao houver localizador claro, retorne vazio.
@@ -1158,7 +1133,7 @@ public class ChatService {
             return null;
         }
 
-        Matcher matcher = Pattern.compile("\\b[A-Z0-9]{5,8}\\b").matcher(normalizado);
+        Matcher matcher = Pattern.compile("\\b[A-Z0-9]{5,13}\\b").matcher(normalizado);
         return matcher.find() ? matcher.group() : null;
     }
 
@@ -1167,7 +1142,7 @@ public class ChatService {
             return null;
         }
 
-        Matcher matcher = Pattern.compile("\\b[A-Z0-9]{5,8}\\b").matcher(input.toUpperCase(Locale.ROOT));
+        Matcher matcher = Pattern.compile("\\b[A-Z0-9]{5,13}\\b").matcher(input.toUpperCase(Locale.ROOT));
         while (matcher.find()) {
             String candidato = matcher.group();
             if (!isPalavraComumLocalizador(candidato)) {
@@ -1235,9 +1210,9 @@ public class ChatService {
         putIfNotNull(map, "localizador", reserva.getLocalizador());
         putIfNotNull(map, "status", reserva.getStatus());
         putIfNotNull(map, "sistema", reserva.getSistema());
-        putIfNotNull(map, "dataEmissao", reserva.getDataEmissao());
-        putIfNotNull(map, "dataCriacao", reserva.getDataCriacao());
-        putIfNotBlank(map, "prazoEmissao", reserva.getPrazoEmissao());
+        putIfNotNull(map, "dataEmissao", formatarDataRegistroReserva(reserva.getDataEmissao()));
+        putIfNotNull(map, "dataCriacao", formatarDataRegistroReserva(reserva.getDataCriacao()));
+        putIfNotBlank(map, "prazoEmissao", formatarPrazoEmissaoReserva(reserva.getPrazoEmissao()));
         putIfNotNull(map, "permiteEmitir", reserva.getPermiteEmitir());
         putIfNotNull(map, "permiteCancelar", reserva.getPermiteCancelar());
         putIfNotNull(map, "mapaDeAssentosDisponivel", reserva.getMapaDeAssentosDisponivel());
@@ -1366,6 +1341,8 @@ public class ChatService {
             return alertas;
         }
 
+        String prazoEmissao = formatarPrazoEmissaoReserva(reserva.getPrazoEmissao());
+
         if (isReservaCancelada(reserva)) {
             adicionarAlerta(alertas, "RESERVA_CANCELADA", "Reserva com status de cancelamento.", reserva.getStatus());
         }
@@ -1374,10 +1351,10 @@ public class ChatService {
         } else if (Boolean.TRUE.equals(reserva.getPermiteEmitir())) {
             adicionarAlerta(alertas, "PENDENTE_EMISSAO",
                     "Reserva candidata a emissao. A emissao nao e executada pelo chat; abra a reserva no sistema.",
-                    reserva.getPrazoEmissao());
+                    prazoEmissao);
         }
-        if (reserva.getPrazoEmissao() != null && !reserva.getPrazoEmissao().isBlank()) {
-            adicionarAlerta(alertas, "PRAZO_EMISSAO", "Existe prazo de emissao informado.", reserva.getPrazoEmissao());
+        if (prazoEmissao != null) {
+            adicionarAlerta(alertas, "PRAZO_EMISSAO", "Existe prazo de emissao informado.", prazoEmissao);
         }
         Date proximaPartida = obterProximaPartida(reserva);
         if (proximaPartida != null && isDentroDasProximasHoras(proximaPartida, 72)) {
@@ -1567,7 +1544,7 @@ public class ChatService {
             Map<String, Object> map = new LinkedHashMap<>();
             putIfNotBlank(map, "numero", bilhete.getNumero());
             putIfNotBlank(map, "status", bilhete.getStatus());
-            putIfNotNull(map, "dataEmissao", bilhete.getDataDeEmissao());
+            putIfNotNull(map, "dataEmissao", formatarDataRegistroReserva(bilhete.getDataDeEmissao()));
             putIfNotBlank(map, "passageiro", bilhete.getPassageiro());
             putIfNotBlank(map, "paxRef", bilhete.getPaxRef());
             resultado.add(map);
@@ -1633,9 +1610,9 @@ public class ChatService {
         Map<String, Object> map = new LinkedHashMap<>();
         putIfNotBlank(map, "numeroVoo", voo.getNumeroVoo());
         putIfNotBlank(map, "status", voo.getStatus());
-        putIfNotNull(map, "dataPartida", voo.getDataPartida());
+        putIfNotNull(map, "dataPartida", formatarDataReserva(voo.getDataPartida(), "dd/MM/yyyy"));
         putIfNotBlank(map, "horaPartida", voo.getHoraPartida());
-        putIfNotNull(map, "dataChegada", voo.getDataChegada());
+        putIfNotNull(map, "dataChegada", formatarDataReserva(voo.getDataChegada(), "dd/MM/yyyy"));
         putIfNotBlank(map, "horaChegada", voo.getHoraChegada());
         putIfNotBlank(map, "duracao", voo.getDuracao());
         putIfNotNull(map, "qtdEscalas", voo.getQtdEscalas());
@@ -2180,6 +2157,40 @@ public class ChatService {
         return iata;
     }
 
+    /** O Hub serializa Date como ISO ou milissegundos; o modelo recebe o prazo pronto para exibir. */
+    private String formatarPrazoEmissaoReserva(String prazoEmissao) {
+        if (prazoEmissao == null || prazoEmissao.isBlank()) {
+            return null;
+        }
+        String valor = prazoEmissao.trim();
+        try {
+            Date data = new StdDateFormat()
+                    .withTimeZone(TimeZone.getTimeZone("America/Sao_Paulo"))
+                    .withLenient(false)
+                    .parse(valor);
+            // Quando a origem fornece somente o dia, nao fabricar a hora 00:00.
+            return formatarDataReserva(data, valor.matches("\\d{4}-\\d{2}-\\d{2}")
+                    ? "dd/MM/yyyy" : "dd/MM/yyyy HH:mm");
+        } catch (ParseException ex) {
+            return null;
+        }
+    }
+
+    /** Mantem a data e hora de criacao/emissao separadas das datas e horarios dos voos. */
+    private String formatarDataRegistroReserva(Date date) {
+        return formatarDataReserva(date, "dd/MM/yyyy HH:mm");
+    }
+
+    /** Usa o fuso da tela da reserva aerea sem depender do fuso padrao do servidor. */
+    private String formatarDataReserva(Date date, String pattern) {
+        if (date == null) {
+            return null;
+        }
+        SimpleDateFormat formato = new SimpleDateFormat(pattern, Locale.forLanguageTag("pt-BR"));
+        formato.setTimeZone(TimeZone.getTimeZone("America/Sao_Paulo"));
+        return formato.format(date);
+    }
+
     private String formatarDataSistema(Date date) {
         if (date == null) {
             return null;
@@ -2191,10 +2202,14 @@ public class ChatService {
     public ChatMessageDTO buscarCheckinsProximos(ConversationRequestDTO req) {
         String resultadoJson;
 
-        // 1) Busca lista no serviço (null-safe)
+        // Filtra pelo status da reserva antes de enviar qualquer dado ao modelo.
         List<Checkin72Horas> checkinList = Optional
                 .ofNullable(checkinService.findCheckin72Horas(new CheckinRQ(req.idErp(), 2)))
-                .orElseGet(java.util.Collections::emptyList);
+                .orElseGet(java.util.Collections::emptyList)
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(reserva -> Objects.equals(reserva.getStatusReserva(), STATUS_RESERVA_WOOBA_EMITIDA))
+                .toList();
 
         try {
             // 2) Converte List<Checkin72Horas> -> List<ReservaCheckInIA> sem serializar antes
@@ -2221,7 +2236,10 @@ public class ChatService {
             resultadoJson = "{\"reservaCheckInIA\":[]}";
         }
 
-        return new ChatMessageDTO("system", "Dado do sistema: " + resultadoJson);
+        return new ChatMessageDTO("system", "Dado do sistema: " + resultadoJson
+                + "\nEsta e a consulta atual de embarques proximos, apenas de reservas emitidas. "
+                + "Use exclusivamente os itens desta lista; nao acrescente reservas de consultas anteriores. "
+                + "Se a lista estiver vazia, informe que nao ha reservas emitidas com embarques proximos retornadas para esta agencia.");
     }
 
     public ChatMessageDTO montarMensagemFaturas(ConversationRequestDTO req) {
