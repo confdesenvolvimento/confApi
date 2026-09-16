@@ -126,7 +126,7 @@ public class ChatConfiancaRemarcacaoService {
     private static final String FORMA_INDISPONIVEL = "INDISPONIVEL";
     private static final String FORMA_SUJEITA_VALIDACAO = "SUJEITA_VALIDACAO";
     private static final DateTimeFormatter DATA_BR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-    private static final int LIMITE_OPCOES = 15;
+    private static final int LIMITE_OPCOES = 30;
     private static final int STATUS_RESERVA_EMITIDA = 3;
     private static final int PAGINA_PADRAO_RESERVAS = 0;
     private static final int TAMANHO_PADRAO_RESERVAS = 10;
