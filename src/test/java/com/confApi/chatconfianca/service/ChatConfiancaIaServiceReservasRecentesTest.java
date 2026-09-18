@@ -3,10 +3,19 @@ package com.confApi.chatconfianca.service;
 import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.model.DepartamentoUnidade;
 import com.confApi.chatconfianca.dto.model.Mensagem;
+import com.confApi.chatconfianca.dto.model.RefUnidade;
 import com.confApi.chatconfianca.dto.enums.RemetenteTipo;
 import com.confApi.chatconfianca.dto.request.PerguntarConfiaRequest;
 import com.confApi.chatconfianca.dto.response.ChatConfiancaIaResponse;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
+import com.confApi.chatconfianca.intencao.ChatIntencaoClassificacao;
+import com.confApi.chatconfianca.intencao.ChatMemoriaRecuperacaoShadowAuditService;
+import com.confApi.chatconfianca.intencao.ChatIntencaoShadowService;
+import com.confApi.chatconfianca.intencao.ChatIntencaoShadowProperties;
+import com.confApi.chatconfianca.intencao.ChatConfiancaDecisaoIaService;
+import com.confApi.chatconfianca.intencao.ChatConfiancaDecisaoIa;
+import com.confApi.chatconfianca.intencao.ChatIaDecisaoAuditService;
+import com.confApi.chatconfianca.intencao.ChatIntencaoRuntimeDto;
 import com.confApi.chatgpt.dto.ChatActionDTO;
 import com.confApi.chatgpt.dto.ChatMessageDTO;
 import com.confApi.chatgpt.dto.ChatRequestDTO;
@@ -20,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +55,10 @@ class ChatConfiancaIaServiceReservasRecentesTest {
     private ChatService chatService;
     private ProfilePromptRegistry profiles;
     private ObjectMapper mapper;
+    private ChatIntencaoShadowService chatIntencaoShadowService;
+    private ChatIntencaoShadowProperties decisionProperties;
+    private ChatMemoriaRecuperacaoShadowAuditService chatMemoriaRecuperacaoAuditService;
+    private ChatIaDecisaoAuditService chatIaDecisaoAuditService;
     private ChatConfiancaIaService service;
 
     @BeforeEach
@@ -53,8 +67,21 @@ class ChatConfiancaIaServiceReservasRecentesTest {
         chatService = mock(ChatService.class);
         profiles = mock(ProfilePromptRegistry.class);
         mapper = new ObjectMapper().findAndRegisterModules();
+        chatIntencaoShadowService = mock(ChatIntencaoShadowService.class);
+        chatMemoriaRecuperacaoAuditService =
+                mock(ChatMemoriaRecuperacaoShadowAuditService.class);
+        chatIaDecisaoAuditService = mock(ChatIaDecisaoAuditService.class);
+        when(chatIntencaoShadowService.classificar(any(), any(), any()))
+                .thenReturn(ChatIntencaoClassificacao.status("DESABILITADO"));
+        decisionProperties = new ChatIntencaoShadowProperties();
+        ChatConfiancaDecisaoIaService decisaoIaService =
+                new ChatConfiancaDecisaoIaService(
+                        chatIntencaoShadowService, chatService, decisionProperties);
         service = new ChatConfiancaIaService(
-                chatConfiancaService, chatService, profiles, mapper);
+                chatConfiancaService, chatService, profiles, mapper,
+                chatIntencaoShadowService, decisaoIaService,
+                chatMemoriaRecuperacaoAuditService,
+                chatIaDecisaoAuditService);
     }
 
     @Test
@@ -423,6 +450,159 @@ class ChatConfiancaIaServiceReservasRecentesTest {
         verifyNoInteractions(profiles);
     }
 
+    @Test
+    void deveSugerirFinanceiroParaBspSemFixarDepartamentoDaConversa() throws Exception {
+        PerguntarConfiaRequest request = request("Quero consultar o calendario BSP");
+        prepararContexto(request);
+        RefUnidade unidade = new RefUnidade();
+        unidade.setCodgUnidade(7);
+        unidade.setNomeUnidade("Unidade Cuiabá");
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        sessao.setUnidade(unidade);
+        when(chatConfiancaService.montarSessao(7, 321)).thenReturn(sessao);
+        ChatIntencaoClassificacao sombra = ChatIntencaoClassificacao.status("CLASSIFICADA");
+        sombra.setCodigo("financeiro.calendario_bsp");
+        sombra.setIntencaoId(15L);
+        sombra.setNome("Calendario BSP");
+        sombra.setScore(new BigDecimal("25.000"));
+        sombra.setSegundoScore(BigDecimal.ZERO.setScale(3));
+        sombra.setConfianca(96);
+        sombra.getTermosPositivos().addAll(List.of("calendario BSP", "BSP"));
+        when(chatIntencaoShadowService.classificar(eq(request.getMensagem()), any(), any()))
+                .thenReturn(sombra);
+        DepartamentoUnidade financeiro = new DepartamentoUnidade();
+        financeiro.setId(31L);
+        financeiro.setNomeExibicao("Financeiro");
+        DepartamentoUnidade atendimento = new DepartamentoUnidade();
+        atendimento.setId(32L);
+        atendimento.setNomeExibicao("Atendimento");
+        when(chatConfiancaService.listarDepartamentosRoteamentoPorUsuario(7, 321))
+                .thenReturn(List.of(financeiro, atendimento));
+        prepararRespostaIa(request, List.of(), null);
+
+        ChatConfiancaIaResponse response = service.perguntar(request);
+
+        assertEquals(31L, response.getDepartamentoSugerido().getId());
+        assertTrue(response.getDepartamentoSugeridoConfianca() >= 80);
+        assertEquals("financeiro", response.getIntencao());
+        assertEquals(20L, response.getConversa().getDepartamentoUnidadeId());
+        JsonNode metadados = mapper.readTree(response.getConversa().getMetadadosJson());
+        assertEquals(31L, metadados.path("departamentoSugeridoId").asLong());
+        assertTrue(metadados.path("departamentoSugeridoConfianca").asInt() >= 80);
+        JsonNode classificacao = metadados.path("classificacaoIntencaoShadow");
+        assertEquals("SHADOW", classificacao.path("modo").asText());
+        assertEquals(15L, classificacao.path("intencaoId").asLong());
+        assertEquals("financeiro.calendario_bsp", classificacao.path("intencao").asText());
+        assertEquals(96, classificacao.path("confianca").asInt());
+        verify(chatIntencaoShadowService).classificar(
+                eq(request.getMensagem()), eq(7), eq("Unidade Cuiabá"));
+        verify(chatIntencaoShadowService).registrarComparacao(
+                eq(10L), eq(30L), eq("financeiro"), eq(sombra));
+        verify(chatMemoriaRecuperacaoAuditService).registrar(
+                eq(10L), eq(30L), eq("Unidade Cuiabá"), eq(sombra));
+    }
+
+    @Test
+    void naoDeveEscolherDepartamentoQuandoMensagemNaoTemConfianca() throws Exception {
+        PerguntarConfiaRequest request = request("Bom dia, preciso de uma orientacao");
+        prepararContexto(request);
+        DepartamentoUnidade financeiro = new DepartamentoUnidade();
+        financeiro.setId(31L);
+        financeiro.setNomeExibicao("Financeiro");
+        DepartamentoUnidade atendimento = new DepartamentoUnidade();
+        atendimento.setId(32L);
+        atendimento.setNomeExibicao("Atendimento");
+        when(chatConfiancaService.listarDepartamentosRoteamentoPorUsuario(7, 321))
+                .thenReturn(List.of(financeiro, atendimento));
+        prepararRespostaIa(request, List.of(), null);
+
+        ChatConfiancaIaResponse response = service.perguntar(request);
+
+        assertNull(response.getDepartamentoSugerido());
+        assertNull(response.getDepartamentoSugeridoConfianca());
+    }
+
+    @Test
+    void decisaoUnificadaDeveInjetarSomenteMemoriaDaIntencaoEExecutarAcaoEscolhida()
+            throws Exception {
+        decisionProperties.setUnifiedDecisionEnabled(true);
+        decisionProperties.setUnifiedDecisionCanaryEnabled(false);
+        PerguntarConfiaRequest request = request("Quero consultar minhas faturas");
+        prepararContexto(request);
+        ChatIntencaoClassificacao classificacao = ChatIntencaoClassificacao.status("CLASSIFICADA");
+        classificacao.setIntencaoId(40L);
+        classificacao.setCodigo("financeiro.faturas");
+        classificacao.setNome("Consulta de faturas");
+        classificacao.setConfianca(94);
+        ChatIntencaoRuntimeDto.Memoria memoria = new ChatIntencaoRuntimeDto.Memoria();
+        memoria.setCodgMemoria(70);
+        memoria.setTexto("As faturas devem ser apresentadas somente para a agencia autenticada.");
+        classificacao.setMemoriasDetalhadas(List.of(memoria));
+        classificacao.setMemoriasRecuperadas(List.of(70));
+        when(chatIntencaoShadowService.classificar(eq(request.getMensagem()), any(), any()))
+                .thenReturn(classificacao);
+        when(chatService.actionApis(anyList(), any(), eq("faturas")))
+                .thenReturn(List.of("faturas"));
+        prepararRespostaIa(request, List.of(), null);
+
+        ChatConfiancaIaResponse response = service.perguntar(request);
+
+        assertEquals("financeiro.faturas", response.getIntencao());
+        ArgumentCaptor<ChatRequestDTO> chatRequest = ArgumentCaptor.forClass(ChatRequestDTO.class);
+        verify(chatService).chat(chatRequest.capture(), anyList(), isNull());
+        assertTrue(chatRequest.getValue().messages().stream().anyMatch(item ->
+                item.content().contains("As faturas devem ser apresentadas somente")));
+        verify(chatService).actionApis(anyList(), any(), eq("faturas"));
+        JsonNode metadados = mapper.readTree(response.getConversa().getMetadadosJson());
+        assertTrue(metadados.path("decisaoIa").path("aplicada").asBoolean());
+        assertEquals("faturas", metadados.path("decisaoIa").path("acao").asText());
+        assertEquals(70, metadados.path("decisaoIa").path("memoriaIds").get(0).asInt());
+        verify(chatIaDecisaoAuditService).registrar(
+                eq(10L), eq(30L), isNull(), eq("Confianca"),
+                any(ChatConfiancaDecisaoIa.class), eq(false), eq(false),
+                isNull(), anyLong());
+    }
+
+    @Test
+    void canarioInstitucionalDeveAplicarMemoriaERegistrarElegibilidade() throws Exception {
+        decisionProperties.setUnifiedDecisionEnabled(true);
+        decisionProperties.setUnifiedDecisionCanaryEnabled(true);
+        decisionProperties.setUnifiedDecisionCanaryIntentionPrefixes(List.of("institucional."));
+        PerguntarConfiaRequest request = request("Qual e o horario de atendimento?");
+        prepararContexto(request);
+        ChatIntencaoClassificacao classificacao = ChatIntencaoClassificacao.status("CLASSIFICADA");
+        classificacao.setIntencaoId(50L);
+        classificacao.setCodigo("institucional.horario_atendimento");
+        classificacao.setNome("Horario de atendimento");
+        classificacao.setConfianca(96);
+        ChatIntencaoRuntimeDto.Memoria memoria = new ChatIntencaoRuntimeDto.Memoria();
+        memoria.setCodgMemoria(7);
+        memoria.setTexto("Atendimento de segunda a sexta-feira.");
+        classificacao.setMemoriasDetalhadas(List.of(memoria));
+        classificacao.setMemoriasRecuperadas(List.of(7));
+        when(chatIntencaoShadowService.classificar(eq(request.getMensagem()), any(), any()))
+                .thenReturn(classificacao);
+        prepararRespostaIa(request, List.of(), null);
+
+        ChatConfiancaIaResponse response = service.perguntar(request);
+
+        assertEquals("institucional.horario_atendimento", response.getIntencao());
+        ArgumentCaptor<ChatRequestDTO> chatRequest = ArgumentCaptor.forClass(ChatRequestDTO.class);
+        verify(chatService).chat(chatRequest.capture(), anyList(), isNull());
+        assertTrue(chatRequest.getValue().messages().stream().anyMatch(item ->
+                item.content().contains("Atendimento de segunda a sexta-feira.")));
+        verify(chatService, never()).actionApis(anyList(), any());
+        verify(chatService, never()).actionApis(anyList(), any(), anyString());
+        JsonNode decisao = mapper.readTree(response.getConversa().getMetadadosJson())
+                .path("decisaoIa");
+        assertTrue(decisao.path("canarioHabilitado").asBoolean());
+        assertTrue(decisao.path("canarioElegivel").asBoolean());
+        assertTrue(decisao.path("aplicada").asBoolean());
+        assertEquals("UNIFICADA", decisao.path("modo").asText());
+        assertEquals("institucional.", decisao.path("escopoCanario").get(0).asText());
+        assertEquals(7, decisao.path("memoriaIds").get(0).asInt());
+    }
+
     private PerguntarConfiaRequest request(String mensagem) {
         PerguntarConfiaRequest request = new PerguntarConfiaRequest();
         request.setConversaId(10L);
@@ -440,15 +620,19 @@ class ChatConfiancaIaServiceReservasRecentesTest {
         departamento.setId(20L);
         departamento.setNomeExibicao("ConfIA Geral");
 
-        when(chatConfiancaService.montarSessao(7, 321)).thenReturn(new SessaoChatResponse());
-        when(chatConfiancaService.buscarConversa(10L)).thenReturn(conversa);
+        SessaoChatResponse sessao = new SessaoChatResponse();
+        when(chatConfiancaService.montarSessao(7, 321)).thenReturn(sessao);
+        when(chatConfiancaService.buscarConversaNaSessao(
+                eq(10L), eq(7), any(SessaoChatResponse.class))).thenReturn(conversa);
         when(chatConfiancaService.listarMensagens(10L, 7, false, false))
                 .thenReturn(new ArrayList<>());
-        when(chatConfiancaService.listarDepartamentosDisponiveisPorUsuario(7, 321))
+        when(chatConfiancaService.listarDepartamentosRoteamentoPorUsuario(7, 321))
                 .thenReturn(List.of(departamento));
+        Mensagem mensagemUsuario = new Mensagem();
+        mensagemUsuario.setId(30L);
         when(chatConfiancaService.registrarMensagemUsuarioAssistida(
                 10L, 7, request.getMensagem()))
-                .thenReturn(new Mensagem());
+                .thenReturn(mensagemUsuario);
     }
 
     private void prepararRespostaIa(PerguntarConfiaRequest request,

@@ -14,6 +14,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
@@ -136,6 +137,48 @@ class ChatConfiancaManagerClientTest {
         verify(tokenProvider).invalidateIfCurrent("token-antigo");
         verify(tokenProvider).invalidateIfCurrent("token-novo");
         verify(restTemplate, times(2)).exchange(
+                anyString(),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class));
+    }
+
+    @Test
+    void deveRepetirGetAposFalhaTransitoriaDeTransporte() {
+        when(tokenProvider.bearerToken()).thenReturn("token-valido");
+        when(restTemplate.exchange(
+                anyString(),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                eq(String.class)))
+                .thenThrow(new ResourceAccessException("conexao encerrada"))
+                .thenReturn(ResponseEntity.ok("ok"));
+
+        assertEquals("ok", client.get(
+                "chat-confianca/consultas/remarcacoes/reservas-emitidas",
+                String.class));
+
+        verify(restTemplate, times(2)).exchange(
+                anyString(),
+                eq(HttpMethod.GET),
+                any(HttpEntity.class),
+                eq(String.class));
+    }
+
+    @Test
+    void naoDeveRepetirPostAposFalhaDeTransporte() {
+        when(tokenProvider.bearerToken()).thenReturn("token-valido");
+        when(restTemplate.exchange(
+                anyString(),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)))
+                .thenThrow(new ResourceAccessException("conexao encerrada"));
+
+        assertThrows(ServiceIndisponivelException.class,
+                () -> client.post("chat-confianca/persistencia/mensagens", "body", String.class));
+
+        verify(restTemplate, times(1)).exchange(
                 anyString(),
                 eq(HttpMethod.POST),
                 any(HttpEntity.class),

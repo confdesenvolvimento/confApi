@@ -8,6 +8,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.OkHttp3ClientHttpRequestFactory;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
@@ -55,6 +56,22 @@ public class AppConfig {
                 15000);
     }
 
+    @Bean("chatIntencaoAuditExecutor")
+    public ThreadPoolTaskExecutor chatIntencaoAuditExecutor(
+            @Value("${chat-confianca.intencao-v1.audit-core-pool-size:1}") int corePoolSize,
+            @Value("${chat-confianca.intencao-v1.audit-max-pool-size:2}") int maxPoolSize,
+            @Value("${chat-confianca.intencao-v1.audit-queue-capacity:500}") int queueCapacity) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(Math.max(1, corePoolSize));
+        executor.setMaxPoolSize(Math.max(Math.max(1, corePoolSize), maxPoolSize));
+        executor.setQueueCapacity(Math.max(1, queueCapacity));
+        executor.setThreadNamePrefix("chat-intencao-audit-");
+        executor.setDaemon(true);
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.initialize();
+        return executor;
+    }
+
     private RestTemplate pooledRestTemplate(
             RestTemplateBuilder builder,
             long connectTimeoutMs,
@@ -74,7 +91,7 @@ public class AppConfig {
                 .readTimeout(Duration.ofMillis(requestTimeout))
                 .writeTimeout(Duration.ofMillis(requestTimeout))
                 .callTimeout(Duration.ofMillis(requestTimeout))
-                .retryOnConnectionFailure(false)
+                .retryOnConnectionFailure(true)
                 .build();
 
         return builder

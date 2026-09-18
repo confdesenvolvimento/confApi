@@ -106,6 +106,21 @@ public class ChatConfiancaService {
     private final ChatConfiancaConfigService configService;
     private final OciObjectStorageService objectStorage;
 
+    private static final class DisponibilidadeAtendimentoContext {
+        private final Map<Long, List<DepartamentoAtendente>> atendentesPorDepartamento;
+        private final Map<Integer, AtendenteStatus> statusPorAtendente;
+        private final boolean statusEmLoteDisponivel;
+
+        private DisponibilidadeAtendimentoContext(
+                Map<Long, List<DepartamentoAtendente>> atendentesPorDepartamento,
+                Map<Integer, AtendenteStatus> statusPorAtendente,
+                boolean statusEmLoteDisponivel) {
+            this.atendentesPorDepartamento = atendentesPorDepartamento;
+            this.statusPorAtendente = statusPorAtendente;
+            this.statusEmLoteDisponivel = statusEmLoteDisponivel;
+        }
+    }
+
     public ChatConfiancaService(ChatConfiancaManagerClient manager, ChatConfiancaConfigService configService) {
         this(manager, configService, new OciObjectStorageService());
     }
@@ -133,11 +148,16 @@ public class ChatConfiancaService {
 
         RefAgencia agencia = null;
         if (usuario.getCodgAgencia() != null) {
+            if (codgAgenciaSessao != null
+                    && !Objects.equals(usuario.getCodgAgencia(), codgAgenciaSessao)) {
+              //  throw regra(403, "A agencia informada nao pertence ao usuario.");
+            }
             agencia = buscarOuSincronizarAgencia(usuario.getCodgAgencia());
             validarAgenciaAtiva(agencia, usuario.getCodgAgencia(), 403);
         } else if (codgAgenciaSessao != null) {
             agencia = buscarOuSincronizarAgencia(codgAgenciaSessao);
             validarAgenciaAtiva(agencia, codgAgenciaSessao, 403);
+            validarAcessoAgenciaSessao(usuario, agencia);
         }
 
         Integer codgUnidade = agencia != null ? agencia.getCodgUnidade() : usuario.getCodgUnidade();
@@ -193,6 +213,7 @@ public class ChatConfiancaService {
     }
 
     public List<DepartamentoAtendimentoOpcao> listarOpcoesAtendimentoUsuario(Integer codgUsuario, Integer codgAgenciaSessao) {
+        long inicio = System.nanoTime();
         SessaoChatResponse sessao = montarSessao(codgUsuario, codgAgenciaSessao);
         List<DepartamentoUnidade> departamentos = listarDepartamentosSessao(sessao);
         Integer codgUnidade = unidadeSessao(sessao);
@@ -205,17 +226,23 @@ public class ChatConfiancaService {
         }
         Set<Long> idsConfiaGeral = idsDepartamentoConfiaGeral();
         LocalDateTime agora = LocalDateTime.now(ZONA_HORARIO_ATENDIMENTO);
-        return departamentos.stream()
+        DisponibilidadeAtendimentoContext disponibilidade = carregarDisponibilidadeAtendimento(departamentos);
+        List<DepartamentoAtendimentoOpcao> opcoes = departamentos.stream()
                 .filter(Objects::nonNull)
                 .filter(item -> item.getId() != null)
                 .filter(item -> !idsConfiaGeral.contains(item.getDepartamentoId()))
                 .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
-                .map(item -> montarOpcaoAtendimento(item, agora))
+                .map(item -> montarOpcaoAtendimento(item, agora, disponibilidade))
                 .sorted(Comparator
                         .comparing((DepartamentoAtendimentoOpcao item) -> !Boolean.TRUE.equals(item.getPermiteHumano()))
                         .thenComparing(DepartamentoAtendimentoOpcao::getNomeExibicao,
                                 Comparator.nullsLast(String::compareToIgnoreCase)))
                 .collect(Collectors.toList());
+        long duracaoMs = Duration.ofNanos(System.nanoTime() - inicio).toMillis();
+        if (duracaoMs >= 500) {
+            LOGGER.info("Opcoes de atendimento carregadas em " + duracaoMs + " ms para o usuario " + codgUsuario + ".");
+        }
+        return opcoes;
     }
 
     private List<DepartamentoUnidade> listarDepartamentosSessao(SessaoChatResponse sessao) {
@@ -237,15 +264,16 @@ public class ChatConfiancaService {
 
     private DepartamentoAtendimentoOpcao montarOpcaoAtendimento(
             DepartamentoUnidade departamentoUnidade,
-            LocalDateTime agora) {
+            LocalDateTime agora,
+            DisponibilidadeAtendimentoContext disponibilidade) {
         boolean ativo = departamentoUnidade != null && !Boolean.FALSE.equals(departamentoUnidade.getAtivo());
         boolean dentroHorario = ativo && dentroDoHorarioAtendimento(departamentoUnidade, agora);
         List<DepartamentoAtendente> atendentes = ativo
-                ? listarAtendentesAtivos(departamentoUnidade)
+                ? listarAtendentesAtivos(departamentoUnidade, disponibilidade)
                 : new ArrayList<>();
         boolean possuiAtendente = !atendentes.isEmpty();
         boolean atendenteLivre = dentroHorario && atendentes.stream()
-                .anyMatch(item -> atendenteDisponivelParaDistribuicao(item, departamentoUnidade));
+                .anyMatch(item -> atendenteDisponivelParaDistribuicao(item, departamentoUnidade, disponibilidade));
         boolean permiteHumano = dentroHorario && possuiAtendente;
         DepartamentoAtendimentoOpcao opcao = new DepartamentoAtendimentoOpcao();
         opcao.setDepartamentoUnidadeId(departamentoUnidade.getId());
@@ -261,6 +289,85 @@ public class ChatConfiancaService {
         aplicarDisponibilidadeHumana(
                 opcao, departamentoUnidade, dentroHorario, possuiAtendente, atendenteLivre);
         return opcao;
+    }
+
+    private DisponibilidadeAtendimentoContext carregarDisponibilidadeAtendimento(
+            List<DepartamentoUnidade> departamentos) {
+        Map<Long, List<DepartamentoAtendente>> atendentesPorDepartamento = new LinkedHashMap<>();
+        try {
+            List<DepartamentoAtendente> vinculos = configService.listarDepartamentoAtendentes();
+            if (vinculos != null) {
+                atendentesPorDepartamento.putAll(vinculos.stream()
+                        .filter(Objects::nonNull)
+                        .filter(item -> item.getDepartamentoUnidadeId() != null)
+                        .collect(Collectors.groupingBy(
+                                DepartamentoAtendente::getDepartamentoUnidadeId,
+                                LinkedHashMap::new,
+                                Collectors.toList())));
+            }
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.WARNING,
+                    "Nao foi possivel carregar os vinculos dos atendentes em lote; usando consultas por equipe.", ex);
+            departamentos.stream()
+                    .filter(Objects::nonNull)
+                    .filter(item -> item.getId() != null)
+                    .forEach(item -> atendentesPorDepartamento.put(
+                            item.getId(), listarAtendentesAtivos(item)));
+        }
+
+        Map<Integer, AtendenteStatus> statusPorAtendente = new LinkedHashMap<>();
+        boolean statusEmLoteDisponivel = false;
+        try {
+            List<AtendenteStatus> status = configService.listarAtendenteStatus();
+            statusEmLoteDisponivel = true;
+            if (status != null) {
+                status.stream()
+                        .filter(Objects::nonNull)
+                        .filter(item -> item.getCodgUsuario() != null)
+                        .forEach(item -> statusPorAtendente.put(item.getCodgUsuario(), item));
+            }
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.WARNING,
+                    "Nao foi possivel carregar os status dos atendentes em lote; usando consultas individuais.", ex);
+        }
+        return new DisponibilidadeAtendimentoContext(
+                atendentesPorDepartamento, statusPorAtendente, statusEmLoteDisponivel);
+    }
+
+    private List<DepartamentoAtendente> listarAtendentesAtivos(
+            DepartamentoUnidade departamentoUnidade,
+            DisponibilidadeAtendimentoContext disponibilidade) {
+        if (departamentoUnidade == null || departamentoUnidade.getId() == null) {
+            return new ArrayList<>();
+        }
+        return disponibilidade.atendentesPorDepartamento
+                .getOrDefault(departamentoUnidade.getId(), new ArrayList<>()).stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getCodgUsuario() != null)
+                .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
+                .filter(item -> !Boolean.FALSE.equals(item.getRecebeChamados()))
+                .collect(Collectors.toList());
+    }
+
+    private boolean atendenteDisponivelParaDistribuicao(
+            DepartamentoAtendente atendente,
+            DepartamentoUnidade departamentoUnidade,
+            DisponibilidadeAtendimentoContext disponibilidade) {
+        if (atendente == null || atendente.getCodgUsuario() == null) {
+            return false;
+        }
+        if (!disponibilidade.statusEmLoteDisponivel) {
+            return atendenteDisponivelParaDistribuicao(atendente, departamentoUnidade);
+        }
+        AtendenteStatus status = disponibilidade.statusPorAtendente.get(atendente.getCodgUsuario());
+        boolean online = status == null
+                || status.getStatus() == null
+                || status.getStatus() == StatusAtendente.ONLINE;
+        int atendimentosAtivos = status == null || status.getAtendimentosAtivos() == null
+                ? 0
+                : status.getAtendimentosAtivos();
+        Integer limite = limiteEfetivo(atendente, departamentoUnidade);
+        return online && (limite == null || limite <= 0 || atendimentosAtivos < limite);
     }
 
     private void aplicarDisponibilidadeHumana(
@@ -387,6 +494,34 @@ public class ChatConfiancaService {
                 .collect(Collectors.toSet());
     }
 
+    public boolean isDepartamentoConfiaGeral(DepartamentoUnidade departamentoUnidade) {
+        if (departamentoUnidade == null) {
+            return false;
+        }
+        if (NOME_DEPARTAMENTO_CONFIA_GERAL.equalsIgnoreCase(
+                Objects.toString(departamentoUnidade.getNomeExibicao(), ""))) {
+            return true;
+        }
+        return departamentoUnidade.getDepartamentoId() != null
+                && idsDepartamentoConfiaGeral().contains(departamentoUnidade.getDepartamentoId());
+    }
+
+    public List<DepartamentoUnidade> listarDepartamentosRoteamentoPorUsuario(
+            Integer codgUsuario,
+            Integer codgAgenciaSessao) {
+        List<DepartamentoUnidade> disponiveis = listarDepartamentosDisponiveisPorUsuario(
+                codgUsuario, codgAgenciaSessao);
+        Set<Long> idsConfiaGeral = idsDepartamentoConfiaGeral();
+        return disponiveis.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getId() != null)
+                .filter(item -> !NOME_DEPARTAMENTO_CONFIA_GERAL.equalsIgnoreCase(
+                        Objects.toString(item.getNomeExibicao(), "")))
+                .filter(item -> item.getDepartamentoId() == null
+                        || !idsConfiaGeral.contains(item.getDepartamentoId()))
+                .collect(Collectors.toList());
+    }
+
     private String nomeOpcaoDepartamento(DepartamentoUnidade departamentoUnidade) {
         if (departamentoUnidade == null) {
             return "Atendimento";
@@ -485,7 +620,6 @@ public class ChatConfiancaService {
                                              String descricaoInicial, PrioridadeConversa prioridade,
                                              String metadadosJson, Integer codgAgenciaSessao) {
         validarObrigatorio(codgUsuario, "Informe o usuario.");
-        validarObrigatorio(departamentoUnidadeId, "Informe o departamento.");
 
         SessaoChatResponse sessao = montarSessao(codgUsuario, codgAgenciaSessao);
         RefUsuario usuario = sessao.getUsuario();
@@ -494,11 +628,19 @@ public class ChatConfiancaService {
             throw regra(400, "Usuario nao esta vinculado a uma agencia.");
         }
 
-        DepartamentoUnidade departamentoUnidade = listarDepartamentosDisponiveis(agencia.getCodgAgencia())
-                .stream()
-                .filter(item -> departamentoUnidadeId.equals(item.getId()))
-                .findFirst()
-                .orElseThrow(() -> regra(400, "Departamento indisponivel para a unidade da agencia."));
+        DepartamentoUnidade departamentoUnidade;
+        if (departamentoUnidadeId == null) {
+            departamentoUnidade = garantirDepartamentoConfiaGeral(agencia.getCodgUnidade());
+            if (departamentoUnidade == null || departamentoUnidade.getId() == null) {
+                throw regra(500, "Nao foi possivel preparar a sessao da ConfIA.");
+            }
+        } else {
+            departamentoUnidade = listarDepartamentosDisponiveis(agencia.getCodgAgencia())
+                    .stream()
+                    .filter(item -> departamentoUnidadeId.equals(item.getId()))
+                    .findFirst()
+                    .orElseThrow(() -> regra(400, "Departamento indisponivel para a unidade da agencia."));
+        }
 
         LocalDateTime agora = LocalDateTime.now();
         PrioridadeConversa prioridadeNormalizada = prioridade == null ? PrioridadeConversa.NORMAL : prioridade;
@@ -530,6 +672,17 @@ public class ChatConfiancaService {
         registrarEvento(conversa.getId(), "CONFIA_CONVERSA_INICIADA", usuario.getCodgUsuario(),
                 "Conversa iniciada com a ConfIA.");
         return conversa;
+    }
+
+    public Conversa atualizarMetadadosConversaAssistida(Long conversaId, String metadadosJson) {
+        validarObrigatorio(conversaId, "Informe a conversa.");
+        Conversa conversa = buscarConversaOuFalhar(conversaId);
+        if (!metadadosOrigemConfia(conversa.getMetadadosJson())) {
+            throw regra(409, "Somente conversas da ConfIA aceitam atualizacao deste contexto.");
+        }
+        conversa.setMetadadosJson(metadadosJson);
+        conversa.setUltimoEventoEm(LocalDateTime.now());
+        return manager.post("chat-confianca/persistencia/conversas", conversa, Conversa.class);
     }
 
     public Mensagem registrarMensagemUsuarioAssistida(Long conversaId, Integer codgUsuario, String conteudo) {
@@ -596,9 +749,53 @@ public class ChatConfiancaService {
         if (departamentoUnidade == null) {
             throw regra(404, "Departamento da conversa nao encontrado.");
         }
+        if (isDepartamentoConfiaGeral(departamentoUnidade)) {
+            throw regra(400, "Selecione a equipe desejada antes de solicitar atendimento humano.");
+        }
         validarHorarioAtendimento(departamentoUnidade);
         if (!possuiAtendenteHumano(departamentoUnidade)) {
             throw regra(400, "Este departamento nao possui atendente humano disponivel no momento.");
+        }
+
+        return encaminharConversaParaAtendente(
+                conversa, departamentoUnidade, codgUsuario, motivo, false);
+    }
+
+    public Conversa encaminharConversaParaAtendente(Long conversaId,
+                                                     Integer codgUsuario,
+                                                     Long departamentoUnidadeId,
+                                                     String motivo) {
+        validarObrigatorio(conversaId, "Informe a conversa.");
+        validarObrigatorio(codgUsuario, "Informe o usuario.");
+        validarObrigatorio(departamentoUnidadeId, "Selecione a equipe desejada.");
+
+        Conversa conversa = buscarConversaOuFalhar(conversaId);
+        validarSolicitacaoAtendimentoHumano(conversa, codgUsuario);
+        if (conversa.getStatus() == StatusConversa.EM_ATENDIMENTO
+                || conversa.getStatus() == StatusConversa.AGUARDANDO_ATENDENTE) {
+            if (Objects.equals(conversa.getDepartamentoUnidadeId(), departamentoUnidadeId)) {
+                return conversa;
+            }
+            throw regra(409, "A conversa ja foi encaminhada para outra equipe.");
+        }
+        if (!aceitaMensagem(conversa.getStatus())) {
+            throw regra(409, "Conversa nao aceita encaminhamento para atendimento humano.");
+        }
+
+        DepartamentoUnidade departamentoUnidade = manager.get(
+                "chat-confianca/persistencia/departamento-unidades/" + departamentoUnidadeId,
+                DepartamentoUnidade.class
+        );
+        if (departamentoUnidade == null
+                || !Objects.equals(departamentoUnidade.getCodgUnidade(), conversa.getCodgUnidade())
+                || Boolean.FALSE.equals(departamentoUnidade.getAtivo())
+                || Boolean.FALSE.equals(departamentoUnidade.getPermiteChamadoAgencia())
+                || isDepartamentoConfiaGeral(departamentoUnidade)) {
+            throw regra(400, "A equipe selecionada nao esta disponivel para esta conversa.");
+        }
+        validarHorarioAtendimento(departamentoUnidade);
+        if (!possuiAtendenteHumano(departamentoUnidade)) {
+            throw regra(400, "Esta equipe nao possui atendente humano disponivel no momento.");
         }
 
         return encaminharConversaParaAtendente(
@@ -1072,6 +1269,20 @@ public class ChatConfiancaService {
         validarObrigatorio(codgUsuario, "Informe o usuario.");
         Conversa conversa = buscarConversaOuFalhar(conversaId);
         validarAcessoConversa(conversa, codgUsuario, gestor, "Usuario nao participa da conversa.");
+        return conversa;
+    }
+
+    public Conversa buscarConversaNaSessao(Long conversaId, Integer codgUsuario,
+                                            SessaoChatResponse sessao) {
+        Conversa conversa = buscarConversa(conversaId, codgUsuario, false);
+        Integer codgAgenciaSessao = sessao == null || sessao.getAgencia() == null
+                ? null
+                : sessao.getAgencia().getCodgAgencia();
+        Integer codgUnidadeSessao = unidadeSessao(sessao);
+        if (!Objects.equals(conversa.getCodgAgencia(), codgAgenciaSessao)
+                || !Objects.equals(conversa.getCodgUnidade(), codgUnidadeSessao)) {
+            throw regra(403, "A conversa nao pertence a agencia e unidade da sessao atual.");
+        }
         return conversa;
     }
 
@@ -2924,6 +3135,25 @@ public class ChatConfiancaService {
         return limitarTextoResumo(request.getCategoria().trim() + " - " + motivo, 500);
     }
 
+    private void validarAcessoAgenciaSessao(RefUsuario usuario, RefAgencia agencia) {
+        if (usuario == null || agencia == null) {
+            throw regra(403, "Nao foi possivel validar a agencia da sessao.");
+        }
+        if (usuario.getCodgUnidade() != null
+                && Objects.equals(usuario.getCodgUnidade(), agencia.getCodgUnidade())) {
+            return;
+        }
+        List<String> perfisGlobais = listarPerfis(usuario.getCodgUsuario(), null);
+        if (temPerfil(perfisGlobais, "ADMIN", "ADMIN_CHAT")) {
+            return;
+        }
+        if (atendentePossuiVinculoNaUnidade(
+                usuario.getCodgUsuario(), agencia.getCodgUnidade())) {
+            return;
+        }
+       // throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
+    }
+
     private void validarTextoObrigatorio(String valor, String mensagem) {
         if (isBlank(valor)) {
             throw regra(400, mensagem);
@@ -3039,7 +3269,7 @@ public class ChatConfiancaService {
 
     private String gerarProtocolo(LocalDateTime agora) {
         String sufixo = UUID.randomUUID().toString().substring(0, 6).toUpperCase(Locale.ROOT);
-        return "CHAT-" + agora.format(PROTOCOLO_FORMAT) + "-" + sufixo;
+        return "CHAT-" /*+ agora.format(PROTOCOLO_FORMAT) + "-"*/ + sufixo;
     }
 
     private String normalizarAssunto(String assunto) {
@@ -3171,4 +3401,3 @@ public class ChatConfiancaService {
         return new RegraDeNegocioException(status, mensagem);
     }
 }
-

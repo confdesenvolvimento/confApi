@@ -28,6 +28,7 @@ import com.confApi.chatconfianca.dto.response.ChatNotificacaoResumoResponse;
 import com.confApi.chatconfianca.dto.response.DepartamentoAtendimentoOpcao;
 import com.confApi.chatconfianca.dto.response.SessaoChatResponse;
 import com.confApi.chatconfianca.service.ChatConfiancaIaService;
+import com.confApi.chatconfianca.service.ChatConfiancaRequestAuthorizationService;
 import com.confApi.chatconfianca.service.ChatConfiancaService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,6 +36,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,44 +50,61 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatConfiancaController {
     private final ChatConfiancaService service;
     private final ChatConfiancaIaService iaService;
+    private final ChatConfiancaRequestAuthorizationService authorizationService;
 
-    public ChatConfiancaController(ChatConfiancaService service, ChatConfiancaIaService iaService) {
+    public ChatConfiancaController(ChatConfiancaService service,
+                                   ChatConfiancaIaService iaService,
+                                   ChatConfiancaRequestAuthorizationService authorizationService) {
         this.service = service;
         this.iaService = iaService;
+        this.authorizationService = authorizationService;
     }
 
     @GetMapping("/sessao/{codgUsuario}")
     public SessaoChatResponse montarSessao(@PathVariable Integer codgUsuario,
-                                           @RequestParam(required = false) Integer codgAgenciaSessao) {
+                                           @RequestParam(required = false) Integer codgAgenciaSessao,
+                                           Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.montarSessao(codgUsuario, codgAgenciaSessao);
     }
 
     @GetMapping("/departamentos/agencia/{codgAgencia}")
-    public List<DepartamentoUnidade> listarDepartamentosDisponiveis(@PathVariable Integer codgAgencia) {
+    public List<DepartamentoUnidade> listarDepartamentosDisponiveis(@PathVariable Integer codgAgencia,
+                                                                     Authentication authentication) {
+        authorizationService.validarAgencia(authentication, codgAgencia);
         return service.listarDepartamentosDisponiveis(codgAgencia);
     }
 
     @GetMapping("/departamentos/usuario/{codgUsuario}")
     public List<DepartamentoUnidade> listarDepartamentosDisponiveisPorUsuario(@PathVariable Integer codgUsuario,
-                                                                              @RequestParam(required = false) Integer codgAgenciaSessao) {
+                                                                              @RequestParam(required = false) Integer codgAgenciaSessao,
+                                                                              Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarDepartamentosDisponiveisPorUsuario(codgUsuario, codgAgenciaSessao);
     }
 
     @GetMapping("/departamentos-opcoes/usuario/{codgUsuario}")
     public List<DepartamentoAtendimentoOpcao> listarOpcoesAtendimentoUsuario(@PathVariable Integer codgUsuario,
-                                                                              @RequestParam(required = false) Integer codgAgenciaSessao) {
+                                                                              @RequestParam(required = false) Integer codgAgenciaSessao,
+                                                                              Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarOpcoesAtendimentoUsuario(codgUsuario, codgAgenciaSessao);
     }
 
     @PostMapping("/conversas")
-    public Conversa abrirConversa(@RequestBody AbrirConversaRequest request) {
+    public Conversa abrirConversa(@RequestBody AbrirConversaRequest request,
+                                  Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return service.abrirConversa(request);
     }
 
     @GetMapping("/conversas/{conversaId}")
     public Conversa buscarConversa(@PathVariable Long conversaId,
                                    @RequestParam Integer codgUsuario,
-                                   @RequestParam(defaultValue = "false") boolean gestor) {
+                                   @RequestParam(defaultValue = "false") boolean gestor,
+                                   Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.buscarConversa(conversaId, codgUsuario, gestor);
     }
 
@@ -93,82 +112,117 @@ public class ChatConfiancaController {
     public List<Mensagem> listarMensagens(@PathVariable Long conversaId,
                                           @RequestParam Integer codgUsuario,
                                           @RequestParam(defaultValue = "false") boolean podeVerInternas,
-                                          @RequestParam(defaultValue = "false") boolean gestor) {
+                                          @RequestParam(defaultValue = "false") boolean gestor,
+                                          Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarMensagens(conversaId, codgUsuario, podeVerInternas, gestor);
     }
 
     @GetMapping("/conversas/{conversaId}/eventos")
     public List<ConversaEvento> listarEventos(@PathVariable Long conversaId,
                                               @RequestParam Integer codgUsuario,
-                                              @RequestParam(defaultValue = "false") boolean gestor) {
+                                              @RequestParam(defaultValue = "false") boolean gestor,
+                                              Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarEventos(conversaId, codgUsuario, gestor);
     }
 
 
     @GetMapping("/tags")
-    public List<Tag> listarTagsAtivas(@RequestParam Integer codgUsuario) {
+    public List<Tag> listarTagsAtivas(@RequestParam Integer codgUsuario,
+                                     Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarTagsAtivas(codgUsuario);
     }
 
     @GetMapping("/conversas/{conversaId}/tags")
     public List<Tag> listarTagsConversa(@PathVariable Long conversaId,
                                         @RequestParam Integer codgUsuario,
-                                        @RequestParam(defaultValue = "false") boolean gestor) {
+                                        @RequestParam(defaultValue = "false") boolean gestor,
+                                        Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarTagsConversa(conversaId, codgUsuario, gestor);
     }
 
     @PostMapping("/conversas/tags")
-    public Tag adicionarTagConversa(@RequestBody AdicionarTagConversaRequest request) {
+    public Tag adicionarTagConversa(@RequestBody AdicionarTagConversaRequest request,
+                                    Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return service.adicionarTagConversa(request);
     }
 
     @PostMapping("/conversas/tags/remover")
-    public void removerTagConversa(@RequestBody AdicionarTagConversaRequest request) {
+    public void removerTagConversa(@RequestBody AdicionarTagConversaRequest request,
+                                   Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         service.removerTagConversa(request);
     }
 
     @PostMapping("/conversas/transferir")
-    public Conversa transferirConversa(@RequestBody TransferirConversaRequest request) {
+    public Conversa transferirConversa(@RequestBody TransferirConversaRequest request,
+                                       Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return service.transferirConversa(request);
     }
 
     @GetMapping("/conversas/{conversaId}/sla")
     public SlaConversaResumo calcularSlaConversa(@PathVariable Long conversaId,
                                                  @RequestParam Integer codgUsuario,
-                                                 @RequestParam(defaultValue = "false") boolean gestor) {
+                                                 @RequestParam(defaultValue = "false") boolean gestor,
+                                                 Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.calcularSlaConversa(conversaId, codgUsuario, gestor);
     }
 
     @GetMapping("/dashboard/unidade/{codgUnidade}")
     public DashboardAtendimentoResumo dashboardUnidade(@PathVariable Integer codgUnidade,
-                                                       @RequestParam Integer codgUsuario) {
+                                                       @RequestParam Integer codgUsuario,
+                                                       Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.dashboardUnidade(codgUnidade, codgUsuario);
     }
 
     @PostMapping("/mensagens")
-    public Mensagem enviarMensagem(@RequestBody EnviarMensagemRequest request) {
+    public Mensagem enviarMensagem(@RequestBody EnviarMensagemRequest request,
+                                   Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return service.enviarMensagem(request);
     }
 
     @PostMapping("/ia/perguntar")
-    public ChatConfiancaIaResponse perguntarConfia(@RequestBody PerguntarConfiaRequest request) {
+    public ChatConfiancaIaResponse perguntarConfia(@RequestBody PerguntarConfiaRequest request,
+                                                   Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return iaService.perguntar(request);
     }
 
     @PostMapping("/ia/encaminhar-atendente")
-    public ChatConfiancaIaResponse encaminharConfiaParaAtendente(@RequestBody PerguntarConfiaRequest request) {
+    public ChatConfiancaIaResponse encaminharConfiaParaAtendente(@RequestBody PerguntarConfiaRequest request,
+                                                                 Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return iaService.encaminharAtendente(request);
     }
 
     @PostMapping("/anexos")
-    public Mensagem enviarAnexo(@RequestBody EnviarAnexoRequest request) {
+    public Mensagem enviarAnexo(@RequestBody EnviarAnexoRequest request,
+                                Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return service.enviarAnexo(request);
     }
 
     @GetMapping("/anexos/{anexoId}/download")
     public ResponseEntity<byte[]> baixarAnexo(@PathVariable Long anexoId,
                                               @RequestParam Integer codgUsuario,
-                                              @RequestParam(defaultValue = "false") boolean gestor) {
+                                              @RequestParam(defaultValue = "false") boolean gestor,
+                                              Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         AnexoDownloadResponse arquivo = service.baixarAnexo(anexoId, codgUsuario, gestor);
         String mimeType = arquivo.getMimeType() == null || arquivo.getMimeType().isBlank()
                 ? MediaType.APPLICATION_OCTET_STREAM_VALUE
@@ -182,61 +236,87 @@ public class ChatConfiancaController {
 
     @GetMapping("/fila/atendente/{codgUsuario}")
     public List<VwFilaAtendimento> listarFilaParaAtendente(@PathVariable Integer codgUsuario,
-                                                           @RequestParam(defaultValue = "false") boolean gestor) {
+                                                           @RequestParam(defaultValue = "false") boolean gestor,
+                                                           Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarFilaParaAtendente(codgUsuario, gestor);
     }
 
     @PostMapping("/fila/assumir")
-    public Conversa assumirAtendimento(@RequestBody AssumirAtendimentoRequest request) {
+    public Conversa assumirAtendimento(@RequestBody AssumirAtendimentoRequest request,
+                                       Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgAtendente());
         return service.assumirAtendimento(request);
     }
 
     @PostMapping("/fila/redistribuir")
     public Conversa redistribuirFila(@RequestParam Long filaId,
-                                     @RequestParam Integer codgUsuario) {
+                                     @RequestParam Integer codgUsuario,
+                                     Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.redistribuirFila(filaId, codgUsuario);
     }
 
     @PostMapping("/conversas/encerrar")
-    public Conversa encerrarConversa(@RequestBody EncerrarConversaRequest request) {
+    public Conversa encerrarConversa(@RequestBody EncerrarConversaRequest request,
+                                     Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return service.encerrarConversa(request);
     }
 
     @PostMapping("/avaliacoes")
-    public AtendimentoAvaliacao avaliarAtendimento(@RequestBody AvaliarAtendimentoRequest request) {
+    public AtendimentoAvaliacao avaliarAtendimento(@RequestBody AvaliarAtendimentoRequest request,
+                                                    Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuarioAvaliador());
         return service.avaliarAtendimento(request);
     }
 
     @GetMapping("/avaliacoes/conversa/{conversaId}")
     public AtendimentoAvaliacao buscarAvaliacaoAtendimento(@PathVariable Long conversaId,
                                                             @RequestParam Integer codgUsuario,
-                                                            @RequestParam(defaultValue = "false") boolean gestor) {
+                                                            @RequestParam(defaultValue = "false") boolean gestor,
+                                                            Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.buscarAvaliacaoAtendimento(conversaId, codgUsuario, gestor);
     }
 
     @PostMapping("/leituras")
-    public int registrarLeitura(@RequestBody RegistrarLeituraRequest request) {
+    public int registrarLeitura(@RequestBody RegistrarLeituraRequest request,
+                                Authentication authentication) {
+        authorizationService.validarUsuario(authentication,
+                request == null ? null : request.getCodgUsuario());
         return service.registrarLeitura(request);
     }
 
     @GetMapping("/historico/solicitante/{codgUsuario}")
-    public List<VwConversaResumo> listarHistoricoSolicitante(@PathVariable Integer codgUsuario) {
+    public List<VwConversaResumo> listarHistoricoSolicitante(@PathVariable Integer codgUsuario,
+                                                             Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarHistoricoSolicitante(codgUsuario);
     }
 
     @GetMapping("/historico/atendente/{codgUsuario}")
-    public List<VwConversaResumo> listarHistoricoAtendente(@PathVariable Integer codgUsuario) {
+    public List<VwConversaResumo> listarHistoricoAtendente(@PathVariable Integer codgUsuario,
+                                                           Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarHistoricoAtendente(codgUsuario);
     }
 
     @GetMapping("/notificacoes/resumo/{codgUsuario}")
-    public ChatNotificacaoResumoResponse resumirNotificacoes(@PathVariable Integer codgUsuario) {
+    public ChatNotificacaoResumoResponse resumirNotificacoes(@PathVariable Integer codgUsuario,
+                                                              Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.resumirNotificacoes(codgUsuario);
     }
 
     @GetMapping("/historico/unidade/{codgUnidade}")
     public List<VwConversaResumo> listarHistoricoUnidade(@PathVariable Integer codgUnidade,
-                                                         @RequestParam Integer codgUsuario) {
+                                                         @RequestParam Integer codgUsuario,
+                                                         Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.listarHistoricoUnidade(codgUnidade, codgUsuario);
     }
 
@@ -257,7 +337,9 @@ public class ChatConfiancaController {
                                                    @RequestParam(required = false)
                                                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
                                                    LocalDateTime dataFim,
-                                                   @RequestParam(required = false) Integer limite) {
+                                                   @RequestParam(required = false) Integer limite,
+                                                   Authentication authentication) {
+        authorizationService.validarUsuario(authentication, codgUsuario);
         return service.buscarHistorico(codgUsuario, gestor, termo, status, prioridade, codgUnidade,
                 codgAgencia, codgSolicitante, codgAtendente, departamentoUnidadeId,
                 dataInicio, dataFim, limite);

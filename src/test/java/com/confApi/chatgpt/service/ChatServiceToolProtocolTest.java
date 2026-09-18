@@ -4,6 +4,7 @@ import com.confApi.aereo.AereoClient;
 import com.confApi.aereo.AereoRegrasReservaService;
 import com.confApi.chatconfianca.service.ChatConfiancaReservaAereaService;
 import com.confApi.chatgpt.config.OpenAIProperties;
+import com.confApi.chatgpt.dto.ChatActionDTO;
 import com.confApi.chatgpt.dto.ChatMessageDTO;
 import com.confApi.chatgpt.dto.ChatRequestDTO;
 import com.confApi.chatgpt.dto.ChatResponseDTO;
@@ -197,6 +198,38 @@ class ChatServiceToolProtocolTest {
                         "politicaCompanhia", "limiteAlternativas");
     }
 
+    @Test
+    void finalizaPacoteLocalmenteEEntregaAcaoDePesquisa() throws Exception {
+        Execucao execucao = executar(
+                Map.of(
+                        "origem", "MAO",
+                        "destino", "FOR",
+                        "mesIda", "2027-01",
+                        "duracaoDias", 5),
+                Map.of(),
+                "Monte pacote saindo de Manaus para Fortaleza em janeiro "
+                        + "5 dias com melhor preco",
+                "search_cheapest_packages");
+
+        assertThat(execucao.chamadas()).isEqualTo(1);
+        assertThat(execucao.primeiroPayload().path("tool_choice")
+                .path("function").path("name").asText())
+                .isEqualTo("search_cheapest_packages");
+        assertThat(execucao.response().content())
+                .isEqualTo("Menor pacote no cache: MAO para FOR por R$ 4.200,00.");
+        assertThat(execucao.response().actions())
+                .singleElement()
+                .satisfies(action -> {
+                    assertThat(action.code()).isEqualTo("pesquisar_pacotes");
+                    assertThat(action.localizador()).contains("origem=MAO", "destino=FOR");
+                });
+        assertThat(execucao.argumentos())
+                .containsEntry("origem", "MAO")
+                .containsEntry("destino", "FOR")
+                .containsEntry("mesIda", "2027-01")
+                .containsEntry("duracaoDias", 5);
+    }
+
     private Execucao executar(Map<String, Object> argumentosModelo,
                               Map<String, Object> contextoLocal,
                               String mensagemUsuario) throws Exception {
@@ -258,13 +291,28 @@ class ChatServiceToolProtocolTest {
                 .build();
 
         ToolRouter router = mock(ToolRouter.class);
-        String mensagem = "search_cheapest_roundtrip_airfares".equals(nomeFerramenta)
-                ? "O menor total combinado e R$ 5.000,00."
-                : "A menor tarifa e R$ 3.500,60.";
+        String mensagem = switch (nomeFerramenta) {
+            case "search_cheapest_roundtrip_airfares" ->
+                    "O menor total combinado e R$ 5.000,00.";
+            case "search_cheapest_packages" ->
+                    "Menor pacote no cache: MAO para FOR por R$ 4.200,00.";
+            default -> "A menor tarifa e R$ 3.500,60.";
+        };
+        List<ChatActionDTO> actions = "search_cheapest_packages".equals(nomeFerramenta)
+                ? List.of(new ChatActionDTO(
+                "pesquisar_pacotes",
+                "Pesquisar este pacote",
+                "R$ 4.200,00 encontrado no cache",
+                "?origem=MAO&destino=FOR",
+                false,
+                false,
+                false,
+                "Pesquise e revalide o pacote."))
+                : List.of();
         when(router.execute(eq(nomeFerramenta), any())).thenReturn(Map.of(
                 "status", "OK",
                 "mensagem", mensagem,
-                "actions", List.of()));
+                "actions", actions));
         OpenAIProperties properties = mock(OpenAIProperties.class);
         when(properties.getChatModel()).thenReturn("test-model");
         when(properties.getBaseUrl()).thenReturn("http://localhost");
@@ -288,9 +336,13 @@ class ChatServiceToolProtocolTest {
                         mensagens,
                         null,
                         false,
-                        List.of("search_cheapest_roundtrip_airfares".equals(nomeFerramenta)
-                                ? ToolSchemas.searchCheapestRoundtripAirfares()
-                                : ToolSchemas.searchCheapestAirfares()),
+                        List.of(switch (nomeFerramenta) {
+                            case "search_cheapest_roundtrip_airfares" ->
+                                    ToolSchemas.searchCheapestRoundtripAirfares();
+                            case "search_cheapest_packages" ->
+                                    ToolSchemas.searchCheapestPackages();
+                            default -> ToolSchemas.searchCheapestAirfares();
+                        }),
                         metadata),
                 new ArrayList<>(),
                 null);

@@ -74,19 +74,27 @@ public class ToolSchemas {
                 "description", "IATA de origem. Converta a cidade informada para o codigo IATA."));
         properties.put("destino", Map.of(
                 "type", "string",
-                "description", "IATA de destino. Converta a cidade informada para o codigo IATA."));
+                "description", "IATA de destino ou codigo metropolitano. Para Rio de Janeiro sem aeroporto especifico use RIO; para Sao Paulo use SAO."));
         properties.put("cabine", Map.of(
                 "type", "string",
                 "enum", List.of("Y", "W", "C", "F"),
                 "description", "Cabine opcional aplicada aos dois trechos. Sem preferencia, omita."));
         properties.put("mesIda", Map.of(
                 "type", "string",
-                "pattern", "^[0-9]{4}-[0-9]{2}$"));
+                "pattern", "^[0-9]{4}-[0-9]{2}$",
+                "description", "Mes da ida. Sem ano informado pelo usuario, use a proxima ocorrencia futura."));
         properties.put("mesVolta", Map.of(
                 "type", "string",
-                "pattern", "^[0-9]{4}-[0-9]{2}$"));
-        properties.put("dataIda", Map.of("type", "string", "format", "date"));
-        properties.put("dataVolta", Map.of("type", "string", "format", "date"));
+                "pattern", "^[0-9]{4}-[0-9]{2}$",
+                "description", "Mes da volta, posterior ou igual ao mes da ida."));
+        properties.put("dataIda", Map.of(
+                "type", "string",
+                "format", "date",
+                "description", "Data exata da ida. Sem ano informado pelo usuario, use a proxima ocorrencia futura."));
+        properties.put("dataVolta", Map.of(
+                "type", "string",
+                "format", "date",
+                "description", "Data exata da volta, posterior a data da ida."));
         properties.put("dataIdaInicio", Map.of("type", "string", "format", "date"));
         properties.put("dataIdaFim", Map.of("type", "string", "format", "date"));
         properties.put("dataVoltaInicio", Map.of("type", "string", "format", "date"));
@@ -126,6 +134,50 @@ public class ToolSchemas {
                         + "Nao pergunte cabine nem periodo antes da consulta. Diferencie a menor "
                         + "combinacao com a mesma companhia da menor com companhias diferentes.",
                 schema);
+    }
+
+    public static ToolDefinition searchCheapestPackages() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("origem", Map.of(
+                "type", "string",
+                "description", "IATA de origem. Converta a cidade informada para o codigo IATA."));
+        properties.put("destino", Map.of(
+                "type", "string",
+                "description", "IATA de destino ou codigo metropolitano. Para Rio de Janeiro use RIO; para Sao Paulo use SAO."));
+        properties.put("mesIda", Map.of(
+                "type", "string",
+                "pattern", "^[0-9]{4}-[0-9]{2}$",
+                "description", "Mes de saida. Se o usuario omitir o ano, use a proxima ocorrencia futura."));
+        properties.put("dataIdaInicio", Map.of("type", "string", "format", "date"));
+        properties.put("dataIdaFim", Map.of("type", "string", "format", "date"));
+        properties.put("duracaoDias", Map.of(
+                "type", "integer",
+                "minimum", 2,
+                "maximum", 31,
+                "description", "Duracao em dias corridos informada pelo usuario. Cinco dias equivalem a quatro noites."));
+        properties.put("duracaoNoites", Map.of(
+                "type", "integer",
+                "minimum", 1,
+                "maximum", 30,
+                "description", "Use somente quando o usuario informar explicitamente a quantidade de noites."));
+        properties.put("adultos", Map.of(
+                "type", "integer", "minimum", 1, "maximum", 9,
+                "description", "Padrao 2 adultos quando a ocupacao nao for informada."));
+        properties.put("quartos", Map.of(
+                "type", "integer", "minimum", 1, "maximum", 4,
+                "description", "Padrao 1 quarto. O cache atual suporta uma acomodacao."));
+        properties.put("limite", Map.of(
+                "type", "integer", "minimum", 1, "maximum", 10,
+                "description", "Quantidade maxima de oportunidades. Padrao 3."));
+
+        return new ToolDefinition(
+                "search_cheapest_packages",
+                "Consulta no cache as menores oportunidades de pacote com aereo de ida e volta e hotel. "
+                        + "Execute quando houver origem e destino. Nao prometa disponibilidade: o resultado deve ser revalidado.",
+                Map.of(
+                        "type", "object",
+                        "properties", properties,
+                        "required", List.of("origem", "destino")));
     }
 
     public static ToolDefinition searchHotels() {

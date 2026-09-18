@@ -17,8 +17,12 @@ public class UsuarioServiceImpl implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 
+        System.out.println("USERNAME: " + username);
+
         Usuario user = usuarioRepository.findByLogin(username);
         //System.out.println("Usuario:UserDetails " + user.getLogin() + " - " + user.getRole());
+
+        System.out.println("USER ROLE: " + user);
 
         String[] roles = new String[] { user.getRole() };
 

@@ -1,7 +1,11 @@
 package com.confApi.chatconfianca.controller;
 
+import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
+import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
 import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
 import com.confApi.chatconfianca.service.ChatConfiancaRemarcacaoService;
+import com.confApi.db.confManager.usuario.Usuario;
+import com.confApi.endPoints.usuario.UsuarioApi;
 import com.confApi.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +23,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,6 +36,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ChatConfiancaRemarcacaoControllerTest {
     @Mock
     private ChatConfiancaRemarcacaoService service;
+    @Mock
+    private UsuarioApi usuarioApi;
 
     private MockMvc mockMvc;
     private Authentication clientePayaraAutenticado;
@@ -40,7 +47,8 @@ class ChatConfiancaRemarcacaoControllerTest {
         clientePayaraAutenticado = new UsernamePasswordAuthenticationToken(
                 "api.confplus", null, List.of());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new ChatConfiancaRemarcacaoController(service, "api.confplus"))
+                .standaloneSetup(new ChatConfiancaRemarcacaoController(
+                        service, "api.confplus", "api.mobile", usuarioApi))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -112,9 +120,12 @@ class ChatConfiancaRemarcacaoControllerTest {
     }
 
     @Test
-    void deveRejeitarClienteDiferenteDoPayaraEmTodosOsEndpointsAntesDoService() throws Exception {
+    void deveRejeitarJwtMobileQuandoCodgUsuarioNaoPertenceAoPrincipal() throws Exception {
         Authentication clienteNaoAutorizado = new UsernamePasswordAuthenticationToken(
                 "usuario.teste", null, List.of());
+        Usuario usuarioAutenticado = new Usuario();
+        usuarioAutenticado.setCodgUsuario(303);
+        when(usuarioApi.consultaUsuarioByLogin("usuario.teste")).thenReturn(usuarioAutenticado);
         List<RequestBuilder> requisicoes = List.of(
                 get("/v1/chat-confianca/remarcacoes/reservas-emitidas")
                         .param("conversaId", "20")
@@ -155,6 +166,77 @@ class ChatConfiancaRemarcacaoControllerTest {
         for (RequestBuilder requisicao : requisicoes) {
             mockMvc.perform(requisicao).andExpect(status().isForbidden());
         }
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void deveAceitarJwtMobileQuandoCodgUsuarioPertenceAoPrincipal() throws Exception {
+        Authentication clienteMobile = new UsernamePasswordAuthenticationToken(
+                "usuario.mobile", null, List.of());
+        Usuario usuarioAutenticado = new Usuario();
+        usuarioAutenticado.setCodgUsuario(202);
+        when(usuarioApi.consultaUsuarioByLogin("usuario.mobile")).thenReturn(usuarioAutenticado);
+        ReservasEmitidasRemarcacaoResponse response = new ReservasEmitidasRemarcacaoResponse();
+        when(service.listarReservasEmitidas(20L, 202, null, null, null, 0, 10))
+                .thenReturn(response);
+
+        mockMvc.perform(get("/v1/chat-confianca/remarcacoes/reservas-emitidas")
+                        .param("conversaId", "20")
+                        .param("codgUsuario", "202")
+                        .principal(clienteMobile))
+                .andExpect(status().isOk());
+
+        verify(service).listarReservasEmitidas(20L, 202, null, null, null, 0, 10);
+    }
+
+    @Test
+    void deveAceitarJwtMobileAoIniciarSimulacaoDoProprioUsuario() throws Exception {
+        Authentication clienteMobile = new UsernamePasswordAuthenticationToken(
+                "usuario.mobile", null, List.of());
+        Usuario usuarioAutenticado = new Usuario();
+        usuarioAutenticado.setCodgUsuario(202);
+        when(usuarioApi.consultaUsuarioByLogin("usuario.mobile")).thenReturn(usuarioAutenticado);
+        when(service.iniciar(any(RemarcacaoRequest.Iniciar.class)))
+                .thenReturn(new RemarcacaoSimulacaoResponse());
+
+        mockMvc.perform(post("/v1/chat-confianca/remarcacoes/iniciar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"conversaId\":20,\"codgUsuario\":202,\"reservaId\":501,\"localizador\":\"ABC123\"}")
+                        .principal(clienteMobile))
+                .andExpect(status().isOk());
+
+        verify(service).iniciar(any(RemarcacaoRequest.Iniciar.class));
+    }
+
+    @Test
+    void deveAceitarClienteTecnicoMobileEDelegarUsuarioLogadoAoService() throws Exception {
+        Authentication clienteTecnicoMobile = new UsernamePasswordAuthenticationToken(
+                "api.mobile", null, List.of());
+        when(service.iniciar(any(RemarcacaoRequest.Iniciar.class)))
+                .thenReturn(new RemarcacaoSimulacaoResponse());
+
+        mockMvc.perform(post("/v1/chat-confianca/remarcacoes/iniciar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"conversaId\":20,\"codgUsuario\":202,\"reservaId\":501,\"localizador\":\"ABC123\"}")
+                        .principal(clienteTecnicoMobile))
+                .andExpect(status().isOk());
+
+        verify(service).iniciar(any(RemarcacaoRequest.Iniciar.class));
+        verifyNoInteractions(usuarioApi);
+    }
+
+    @Test
+    void deveRejeitarJwtMobileQuandoUsuarioNaoForLocalizado() throws Exception {
+        Authentication clienteMobile = new UsernamePasswordAuthenticationToken(
+                "usuario.inexistente", null, List.of());
+        when(usuarioApi.consultaUsuarioByLogin("usuario.inexistente")).thenReturn(new Usuario());
+
+        mockMvc.perform(get("/v1/chat-confianca/remarcacoes/reservas-emitidas")
+                        .param("conversaId", "20")
+                        .param("codgUsuario", "202")
+                        .principal(clienteMobile))
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(service);
     }

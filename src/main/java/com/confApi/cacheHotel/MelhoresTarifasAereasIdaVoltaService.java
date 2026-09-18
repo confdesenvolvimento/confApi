@@ -42,11 +42,15 @@ public class MelhoresTarifasAereasIdaVoltaService {
     public Map<String, Object> consultar(Map<String, Object> argumentos) {
         Map<String, Object> args = argumentos == null ? Map.of() : argumentos;
         MelhoresTarifasAereasIdaVoltaRequest request = montarRequest(args);
+        String destinoSolicitado = request.getDestino();
+        List<String> aeroportosConsultados = expandirDestinoMetropolitano(destinoSolicitado);
         String politica = normalizarPolitica(texto(args.get("politicaCompanhia")));
         String modo = normalizarModo(texto(args.get("modoResposta")));
         int limite = inteiro(args.get("limiteAlternativas"), 5, 1, 10);
 
-        MelhoresTarifasAereasIdaVoltaResponse response = client.consultar(request);
+        ConsultaSelecionada consulta = consultarDestinos(request, aeroportosConsultados);
+        request = consulta.request();
+        MelhoresTarifasAereasIdaVoltaResponse response = consulta.response();
         if (response == null) {
             throw new IllegalStateException("O cache nao retornou uma resposta.");
         }
@@ -58,6 +62,8 @@ public class MelhoresTarifasAereasIdaVoltaService {
         resultado.put("moeda", "BRL");
         resultado.put("origem", request.getOrigem());
         resultado.put("destino", request.getDestino());
+        resultado.put("destinoSolicitado", destinoSolicitado);
+        resultado.put("aeroportosConsultados", aeroportosConsultados);
         resultado.put("cabine", request.getCabine());
         resultado.put("politicaCompanhia", politica);
         resultado.put("modoResposta", modo);
@@ -83,6 +89,56 @@ public class MelhoresTarifasAereasIdaVoltaService {
         actions.addAll(criarAcoesRefinamento(request, response, politica, modo, limite));
         resultado.put("actions", actions);
         return resultado;
+    }
+
+    private ConsultaSelecionada consultarDestinos(
+            MelhoresTarifasAereasIdaVoltaRequest base,
+            List<String> destinos
+    ) {
+        List<ConsultaSelecionada> consultas = new ArrayList<>();
+        for (String destino : destinos) {
+            MelhoresTarifasAereasIdaVoltaRequest request = copiarRequest(base);
+            request.setDestino(destino);
+            MelhoresTarifasAereasIdaVoltaResponse response = client.consultar(request);
+            if (response != null) {
+                consultas.add(new ConsultaSelecionada(request, response));
+            }
+        }
+        if (consultas.isEmpty()) {
+            throw new IllegalStateException("O cache nao retornou uma resposta.");
+        }
+        return consultas.stream()
+                .filter(item -> "OK".equalsIgnoreCase(item.response().getStatus()))
+                .filter(item -> combinacaoValida(item.response().getMelhorGeral()))
+                .min(Comparator.comparing(
+                        item -> item.response().getMelhorGeral().getTotal()))
+                .orElse(consultas.get(0));
+    }
+
+    private MelhoresTarifasAereasIdaVoltaRequest copiarRequest(
+            MelhoresTarifasAereasIdaVoltaRequest origem
+    ) {
+        MelhoresTarifasAereasIdaVoltaRequest copia =
+                new MelhoresTarifasAereasIdaVoltaRequest();
+        copia.setOrigem(origem.getOrigem());
+        copia.setDestino(origem.getDestino());
+        copia.setDataIdaInicio(origem.getDataIdaInicio());
+        copia.setDataIdaFim(origem.getDataIdaFim());
+        copia.setDataVoltaInicio(origem.getDataVoltaInicio());
+        copia.setDataVoltaFim(origem.getDataVoltaFim());
+        copia.setCabine(origem.getCabine());
+        copia.setDuracaoMinimaDias(origem.getDuracaoMinimaDias());
+        copia.setDuracaoMaximaDias(origem.getDuracaoMaximaDias());
+        copia.setLimiteAlternativas(origem.getLimiteAlternativas());
+        return copia;
+    }
+
+    private List<String> expandirDestinoMetropolitano(String destino) {
+        return switch (destino) {
+            case "RIO" -> List.of("GIG", "SDU");
+            case "SAO" -> List.of("GRU", "CGH", "VCP");
+            default -> List.of(destino);
+        };
     }
 
     private MelhoresTarifasAereasIdaVoltaRequest montarRequest(Map<String, Object> args) {
@@ -757,5 +813,11 @@ public class MelhoresTarifasAereasIdaVoltaService {
         return valor == null || valor.toString().isBlank()
                 ? null
                 : valor.toString().trim();
+    }
+
+    private record ConsultaSelecionada(
+            MelhoresTarifasAereasIdaVoltaRequest request,
+            MelhoresTarifasAereasIdaVoltaResponse response
+    ) {
     }
 }

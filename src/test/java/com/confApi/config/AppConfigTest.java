@@ -12,9 +12,9 @@ import org.springframework.web.client.RestTemplate;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppConfigTest {
 
@@ -22,7 +22,7 @@ class AppConfigTest {
     private final RestTemplateBuilder builder = new RestTemplateBuilder();
 
     @Test
-    void deveConfigurarTimeoutsDoManagerSemRetryDeTransporte() {
+    void deveConfigurarTimeoutsDoManagerComRetryDeTransporte() {
         OkHttpClient client = httpClient(config.chatConfiancaRestTemplate(
                 builder,
                 1_234L,
@@ -34,7 +34,7 @@ class AppConfigTest {
         assertEquals(5_678, client.readTimeoutMillis());
         assertEquals(5_678, client.writeTimeoutMillis());
         assertEquals(5_678, client.callTimeoutMillis());
-        assertFalse(client.retryOnConnectionFailure());
+        assertTrue(client.retryOnConnectionFailure());
     }
 
     @Test
@@ -46,7 +46,7 @@ class AppConfigTest {
 
         assertEquals(5_000, client.connectTimeoutMillis());
         assertEquals(15_000, client.callTimeoutMillis());
-        assertFalse(client.retryOnConnectionFailure());
+        assertTrue(client.retryOnConnectionFailure());
     }
 
     @Test

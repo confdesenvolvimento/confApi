@@ -15,6 +15,9 @@ public class ChatConfiancaIaResponse {
     private Mensagem mensagemUsuario;
     private Mensagem mensagemBot;
     private DepartamentoUnidade departamentoSugerido;
+    private Integer departamentoSugeridoConfianca;
+    private String intencao;
+    private List<String> topicos = new ArrayList<>();
     private String resposta;
     private boolean sugerirAtendente;
     private boolean atendenteSolicitado;

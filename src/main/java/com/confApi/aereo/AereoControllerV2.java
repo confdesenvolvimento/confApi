@@ -28,6 +28,12 @@ public class AereoControllerV2 {
         return aereoClientV2.pesquisarDisponibilidade(req);
     }
 
+    @PostMapping("/pesquisarApp")
+    public List<PesquisaResponse> pesquisarApp(@RequestBody PesquisaRequestDTOV2 req) {
+        List<PesquisaResponse> result = aereoClient.pesquisarDisponibilidadeV2(req);
+        return result;
+    }
+
     @PostMapping("/tarifar")
     public PreReserva tarifar(@RequestBody PreReserva req) {
         return aereoClientV2.tarifar(req);
@@ -97,6 +103,7 @@ public class AereoControllerV2 {
 
     @PostMapping("/tarifarPesquisa")
     public List<PesquisaResponse> tarifarPesquisa(@RequestBody TarifarPesquisaRequest req) {
+        System.out.println("TARIFAR" + req);
         List<PesquisaResponse> result = aereoClientV2.tarifarPesquisa(req);
         return result;
     }

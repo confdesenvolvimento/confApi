@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -24,6 +25,9 @@ import java.util.function.Supplier;
 
 @Service
 public class ChatConfiancaManagerClient {
+    private static final int MAX_GET_ATTEMPTS = 3;
+    private static final long GET_RETRY_BACKOFF_MS = 150L;
+
     private final RestTemplate restTemplate;
     private final ChatConfiancaTokenProvider tokenProvider;
     private final MeterRegistry meterRegistry;
@@ -39,7 +43,8 @@ public class ChatConfiancaManagerClient {
 
     public <T> T get(String path, Class<T> responseType) {
         try {
-            ResponseEntity<T> response = exchange(path, HttpMethod.GET, null, responseType);
+            ResponseEntity<T> response = getWithTransportRetry(
+                    () -> exchange(path, HttpMethod.GET, null, responseType));
             return response.getBody();
         } catch (HttpClientErrorException.NotFound ex) {
             return null;
@@ -52,7 +57,8 @@ public class ChatConfiancaManagerClient {
 
     public <T> List<T> getList(String path, ParameterizedTypeReference<List<T>> responseType) {
         try {
-            ResponseEntity<List<T>> response = exchange(path, HttpMethod.GET, null, responseType);
+            ResponseEntity<List<T>> response = getWithTransportRetry(
+                    () -> exchange(path, HttpMethod.GET, null, responseType));
             return response.getBody() != null ? response.getBody() : Collections.emptyList();
         } catch (HttpClientErrorException.NotFound ex) {
             return Collections.emptyList();
@@ -98,6 +104,31 @@ public class ChatConfiancaManagerClient {
             throw mapStatusException("excluir no manager", ex);
         } catch (RestClientException ex) {
             throw new ServiceIndisponivelException("Nao foi possivel excluir no manager.");
+        }
+    }
+
+    private <T> T getWithTransportRetry(Supplier<T> request) {
+        ResourceAccessException lastFailure = null;
+        for (int attempt = 1; attempt <= MAX_GET_ATTEMPTS; attempt++) {
+            try {
+                return request.get();
+            } catch (ResourceAccessException ex) {
+                lastFailure = ex;
+                if (attempt < MAX_GET_ATTEMPTS && !waitBeforeGetRetry(attempt)) {
+                    break;
+                }
+            }
+        }
+        throw lastFailure;
+    }
+
+    private boolean waitBeforeGetRetry(int attempt) {
+        try {
+            Thread.sleep(GET_RETRY_BACKOFF_MS * attempt);
+            return true;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 

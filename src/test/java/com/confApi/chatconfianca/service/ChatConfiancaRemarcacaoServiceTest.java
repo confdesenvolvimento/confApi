@@ -4,6 +4,7 @@ import com.confApi.aereo.AereoClient;
 import com.confApi.aereo.dto.ConsultarLocalizadorRequest;
 import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
 import com.confApi.aereo.dto.FamiliaPreco;
+import com.confApi.aereo.dto.FamiliaPrecoInter;
 import com.confApi.aereo.dto.PesquisaRequestDTO;
 import com.confApi.aereo.dto.PesquisaResponse;
 import com.confApi.aereo.dto.Preco;
@@ -12,6 +13,9 @@ import com.confApi.aereo.dto.Reserva;
 import com.confApi.aereo.dto.TarifarRequest;
 import com.confApi.aereo.dto.TarifarResponse;
 import com.confApi.aereo.dto.Trecho;
+import com.confApi.aereo.dto.ValorBase;
+import com.confApi.aereo.dto.ValorPassageiro;
+import com.confApi.aereo.dto.ValorReserva;
 import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
 import com.confApi.chatconfianca.dto.enums.StatusConversa;
 import com.confApi.chatconfianca.dto.model.Conversa;
@@ -500,6 +504,68 @@ class ChatConfiancaRemarcacaoServiceTest {
     }
 
     @Test
+    void deveExibirSomenteFamiliasComTarifaIgualOuMaiorQueOriginal() throws Exception {
+        Trecho opcao = opcaoPesquisa("LATAM-ID", "CGB", "BSB", "3895");
+        opcao.setFamilias(List.of(
+                familiaPesquisa("Menor", 250.0, 400.0),
+                familiaPesquisa("Igual", 300.0, 360.0),
+                familiaPesquisa("Maior", 350.0, 410.0)));
+        prepararPesquisaLatamComTarifaMinima(
+                opcao, "IGUAL_OU_MAIOR", 300.0);
+
+        RemarcacaoSimulacaoResponse response = service.pesquisar(
+                SIMULACAO_ID, pesquisaRemarcacao());
+
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals(1, response.getOpcoes().size());
+        assertEquals(List.of("Igual", "Maior"), response.getOpcoes().get(0).getFamilias()
+                .stream().map(RemarcacaoSimulacaoResponse.Familia::getNome).toList());
+    }
+
+    @Test
+    void deveManterTarifaMenorQuandoConfiguracaoPermite() throws Exception {
+        Trecho opcao = opcaoPesquisa("LATAM-ID", "CGB", "BSB", "3895");
+        opcao.setFamilias(List.of(familiaPesquisa("Menor", 250.0, 400.0)));
+        prepararPesquisaLatamComTarifaMinima(
+                opcao, "PODE_SER_MENOR", 300.0);
+
+        RemarcacaoSimulacaoResponse response = service.pesquisar(
+                SIMULACAO_ID, pesquisaRemarcacao());
+
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals("Menor", response.getOpcoes().get(0).getFamilias().get(0).getNome());
+    }
+
+    @Test
+    void deveBloquearQuandoRetarifacaoFinalFicaAbaixoDaTarifaOriginal() throws Exception {
+        Trecho opcao = opcaoPesquisa("LATAM-ID", "CGB", "BSB", "3895");
+        opcao.setFamilias(List.of(familiaPesquisa("Igual", 300.0, 360.0)));
+        prepararPesquisaLatamComTarifaMinima(
+                opcao, "IGUAL_OU_MAIOR", 300.0);
+        simulacao.setStatus("AGUARDANDO_OPCAO");
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcao)));
+
+        TarifarResponse tarifa = new TarifarResponse();
+        Preco preco = new Preco();
+        preco.setMoeda("BRL");
+        PrecoTipo adulto = new PrecoTipo();
+        adulto.setValorTarifa(250.0);
+        adulto.setValorTaxaEmbarque(60.0);
+        preco.setPrecoAdulto(adulto);
+        tarifa.setPreco(preco);
+        when(aereoClient.tarifar(any())).thenReturn(tarifa);
+        when(regraService.simular(any())).thenReturn(
+                regraPermitida(false, "IGUAL_OU_MAIOR"));
+
+        RemarcacaoSimulacaoResponse response = service.simular(
+                SIMULACAO_ID, simular(0, 0));
+
+        assertEquals("NAO_ELEGIVEL", response.getStatus());
+        assertTrue(response.getMotivoBloqueio().contains(
+                "tarifa igual ou superior a tarifa original"));
+    }
+
+    @Test
     void deveManterLegadoSeguroQuandoLocalizadorTemUmaCorrespondenciaExata() {
         when(manager.get(
                 contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
@@ -696,6 +762,37 @@ class ChatConfiancaRemarcacaoServiceTest {
         verify(regraService).simular(regraRequest.capture());
         assertEquals(2, regraRequest.getValue().getQuantidadeTrechos());
         assertFalse(regraRequest.getValue().getFamiliaTarifariaAlterada());
+    }
+
+    @Test
+    void deveTarifarCadaVooDaConexaoComSuaPropriaClasse() throws Exception {
+        Trecho ida = opcaoPesquisa("IDA-CONEXAO", "CGB", "BSB", "1429");
+        Voo conexao = voo("GRU", "BSB", "1458");
+        conexao.setIdentificacaoDoVoo("VOO-1458");
+        ida.setVoos(List.of(ida.getVoos().get(0), conexao));
+
+        FamiliaPreco familia = ida.getFamilias().get(0);
+        familia.setFamiliaPrecoInterList(List.of(
+                familiaInter("1429", "A", "BASE-1429", "LIGHT-1429"),
+                familiaInter("1458", "B", "BASE-1458", "LIGHT-1458")));
+        prepararPesquisaLatamComTarifaMinima(ida, "PODE_SER_MENOR", 300.0);
+        simulacao.setStatus("AGUARDANDO_OPCAO");
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(ida)));
+        prepararTarifacaoPermitida();
+
+        service.simular(SIMULACAO_ID, simular(0, 0));
+
+        ArgumentCaptor<TarifarRequest> tarifaRequest = ArgumentCaptor.forClass(TarifarRequest.class);
+        verify(aereoClient).tarifar(tarifaRequest.capture());
+        assertEquals(2, tarifaRequest.getValue().getClasses().size());
+        assertEquals("1429", tarifaRequest.getValue().getClasses().get(0).getNumero());
+        assertEquals("A", tarifaRequest.getValue().getClasses().get(0).getClasse());
+        assertEquals("BASE-1429", tarifaRequest.getValue().getClasses().get(0).getBaseTarifaria());
+        assertEquals("LIGHT-1429", tarifaRequest.getValue().getClasses().get(0).getFamilia());
+        assertEquals("1458", tarifaRequest.getValue().getClasses().get(1).getNumero());
+        assertEquals("B", tarifaRequest.getValue().getClasses().get(1).getClasse());
+        assertEquals("BASE-1458", tarifaRequest.getValue().getClasses().get(1).getBaseTarifaria());
+        assertEquals("LIGHT-1458", tarifaRequest.getValue().getClasses().get(1).getFamilia());
     }
 
     @Test
@@ -960,6 +1057,58 @@ class ChatConfiancaRemarcacaoServiceTest {
         return request;
     }
 
+    private RemarcacaoRequest.Pesquisar pesquisaRemarcacao() {
+        RemarcacaoRequest.Pesquisar request = new RemarcacaoRequest.Pesquisar();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setData(LocalDate.now().plusDays(10));
+        request.setPeriodo("QUALQUER");
+        request.setSomenteDireto(false);
+        return request;
+    }
+
+    private void prepararPesquisaLatamComTarifaMinima(
+            Trecho opcao,
+            String novoValorMinimo,
+            double tarifaOriginal) throws Exception {
+        simulacao.setStatus("AGUARDANDO_CRITERIOS");
+        simulacao.setOrigem("CGB");
+        simulacao.setDestino("BSB");
+        simulacao.setCompanhiaIata("LA");
+        simulacao.setPassageirosJson(
+                "{\"escopo\":\"INDIVIDUAL\",\"indices\":[0],\"passageiros\":[]}");
+        simulacao.setRegraSnapshotJson(mapper.writeValueAsString(
+                regraPermitida(false, novoValorMinimo)));
+
+        ConsultarLocalizadorResponse reserva = reservaLatamElegivel(
+                "LA", "LA", "LA", false);
+        definirTarifaOriginal(reserva.getReservas().get(0), tarifaOriginal);
+        when(aereoClient.carregarReserva(any())).thenReturn(reserva);
+
+        opcao.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, "LA", "LATAM"));
+        opcao.getVoos().get(0).setCiaMandatoria(
+                new com.confApi.hub.aereo.dto.Companhia(1, "LA", "LATAM"));
+        PesquisaResponse disponibilidade = new PesquisaResponse();
+        disponibilidade.setTrechos1(List.of(opcao));
+        when(aereoClient.pesquisarDisponibilidade(any())).thenReturn(List.of(disponibilidade));
+    }
+
+    private void definirTarifaOriginal(Reserva reserva, double tarifa) {
+        ValorPassageiro passageiro = new ValorPassageiro();
+        passageiro.setNomePassageiro("Maria");
+        passageiro.setTarifa(tarifa);
+        passageiro.setTotal(tarifa);
+
+        ValorBase base = new ValorBase();
+        base.setTarifa(tarifa);
+        base.setTotal(tarifa);
+        base.setValorPassageiroList(List.of(passageiro));
+
+        ValorReserva valorReserva = new ValorReserva();
+        valorReserva.setValor(tarifa);
+        valorReserva.setValorBase(base);
+        reserva.setValorReserva(valorReserva);
+    }
+
     private void prepararSimulacaoConjunta() throws Exception {
         simulacao.setStatus("AGUARDANDO_OPCAO");
         simulacao.setTrechoIndice(0);
@@ -1017,6 +1166,40 @@ class ChatConfiancaRemarcacaoServiceTest {
         return trecho;
     }
 
+    private FamiliaPreco familiaPesquisa(
+            String nome,
+            double tarifa,
+            double totalGeral) {
+        FamiliaPreco familia = new FamiliaPreco();
+        familia.setClasse("Y");
+        familia.setBaseTarifaria("YBR");
+        familia.setTipo(nome);
+        familia.setFamilia(new com.confApi.aereo.dto.Familia(
+                nome, nome.toUpperCase()));
+        Preco preco = new Preco();
+        preco.setTotalTarifa(tarifa);
+        preco.setTotalGeral(totalGeral);
+        PrecoTipo adulto = new PrecoTipo();
+        adulto.setValorTarifa(tarifa);
+        preco.setPrecoAdulto(adulto);
+        familia.setPreco(preco);
+        return familia;
+    }
+
+    private FamiliaPrecoInter familiaInter(
+            String numeroVoo,
+            String classe,
+            String baseTarifaria,
+            String codigoFamilia) {
+        FamiliaPrecoInter familia = new FamiliaPrecoInter();
+        familia.setNumeroVoo(numeroVoo);
+        familia.setClasse(classe);
+        familia.setBaseTarifaria(baseTarifaria);
+        familia.setFamilia(new com.confApi.aereo.dto.Familia(codigoFamilia, codigoFamilia));
+        return familia;
+    }
+
+
     private TrechoReserva trechoReserva(String origem, String destino, String numero) {
         TrechoReserva trecho = new TrechoReserva();
         trecho.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, "G3", "GOL"));
@@ -1058,10 +1241,17 @@ class ChatConfiancaRemarcacaoServiceTest {
     }
 
     private RegraAereaAlteracaoConsultaResponse regraPermitida(boolean remarcacaoConjunta) {
+        return regraPermitida(remarcacaoConjunta, null);
+    }
+
+    private RegraAereaAlteracaoConsultaResponse regraPermitida(
+            boolean remarcacaoConjunta,
+            String novoValorMinimo) {
         RegraAereaAlteracaoRegraResponse regra = new RegraAereaAlteracaoRegraResponse();
         regra.setId(10L);
         regra.setPermiteAlteracao(true);
         regra.setExigeRemarcacaoConjunta(remarcacaoConjunta);
+        regra.setNovoValorMinimo(novoValorMinimo);
         RegraAereaAlteracaoCalculoResponse calculo = new RegraAereaAlteracaoCalculoResponse();
         calculo.setCalculoCompleto(true);
         calculo.setValorTarifaBase(BigDecimal.ZERO);

@@ -183,6 +183,16 @@ public class AereoClient {
         );
     }
 
+    public List<PesquisaResponse> pesquisarDisponibilidadeV2(PesquisaRequestDTOV2 pesquisaRequestDTO) {
+        return post(
+                "Aéreo - Pesquisar Disponibilidade V2",
+                API_AEREO + "/pesquisa",
+                pesquisaRequestDTO,
+                new ParameterizedTypeReference<List<PesquisaResponse>>() {},
+                Collections.emptyList()
+        );
+    }
+
     private <REQ, RES> RES post(
             String operacao,
             String endpoint,
@@ -276,7 +286,17 @@ public class AereoClient {
     }
 
     private String montarUrl(String endpoint) {
-        return UrlConfig.URL_CONFIANCA_HUB + endpoint;
+        String baseUrl = UrlConfig.URL_CONFIANCA_HUB;
+        boolean baseTerminaComBarra = baseUrl.endsWith("/");
+        boolean endpointComecaComBarra = endpoint.startsWith("/");
+
+        if (baseTerminaComBarra && endpointComecaComBarra) {
+            return baseUrl + endpoint.substring(1);
+        }
+        if (!baseTerminaComBarra && !endpointComecaComBarra) {
+            return baseUrl + "/" + endpoint;
+        }
+        return baseUrl + endpoint;
     }
 
     private HttpHeaders defaultHeaders(String bearerToken) {
