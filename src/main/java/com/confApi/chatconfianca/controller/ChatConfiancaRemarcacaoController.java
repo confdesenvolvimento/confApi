@@ -111,6 +111,14 @@ public class ChatConfiancaRemarcacaoController {
         return service.encaminhar(id, request);
     }
 
+    @PostMapping("/{id}/voltar")
+    public RemarcacaoSimulacaoResponse voltar(@PathVariable Long id,
+                                               @RequestBody RemarcacaoRequest.Voltar request,
+                                               Authentication authentication) {
+        validarClientePayara(authentication);
+        return service.voltar(id, request);
+    }
+
     @GetMapping("/{id}")
     public RemarcacaoSimulacaoResponse consultar(@PathVariable Long id,
                                                  @RequestParam Integer codgUsuario,

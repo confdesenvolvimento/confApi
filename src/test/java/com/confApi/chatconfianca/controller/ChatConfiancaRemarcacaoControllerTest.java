@@ -1,6 +1,9 @@
 package com.confApi.chatconfianca.controller;
 
 import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
+import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
+import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
+import org.mockito.ArgumentCaptor;
 import com.confApi.chatconfianca.service.ChatConfiancaRemarcacaoService;
 import com.confApi.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +25,8 @@ import java.util.List;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -43,6 +48,65 @@ class ChatConfiancaRemarcacaoControllerTest {
                 .standaloneSetup(new ChatConfiancaRemarcacaoController(service, "api.confplus"))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    void deveReceberVoltarComVersaoERetornarEstadoRestaurado() throws Exception {
+        RemarcacaoSimulacaoResponse response = new RemarcacaoSimulacaoResponse();
+        response.setId(70L);
+        response.setVersao(8);
+        response.setStatus("AGUARDANDO_CRITERIOS");
+        response.setPermiteVoltar(true);
+        response.setLabelVoltar("Voltar para os passageiros");
+        response.setPreferenciasRestauradas(true);
+        when(service.voltar(eq(70L), any())).thenReturn(response);
+
+        mockMvc.perform(post("/v1/chat-confianca/remarcacoes/70/voltar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codgUsuario\":202,\"versaoEsperada\":7}")
+                        .principal(clientePayaraAutenticado))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.versao").value(8))
+                .andExpect(jsonPath("$.status").value("AGUARDANDO_CRITERIOS"))
+                .andExpect(jsonPath("$.permiteVoltar").value(true))
+                .andExpect(jsonPath("$.labelVoltar").value("Voltar para os passageiros"))
+                .andExpect(jsonPath("$.preferenciasRestauradas").value(true));
+        ArgumentCaptor<RemarcacaoRequest.Voltar> request =
+                ArgumentCaptor.forClass(RemarcacaoRequest.Voltar.class);
+        verify(service).voltar(eq(70L), request.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(202, request.getValue().getCodgUsuario());
+        org.junit.jupiter.api.Assertions.assertEquals(7, request.getValue().getVersaoEsperada());
+    }
+
+    @Test
+    void deveBloquearVoltarSemAutenticacaoAntesDoService() throws Exception {
+        mockMvc.perform(post("/v1/chat-confianca/remarcacoes/70/voltar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codgUsuario\":202,\"versaoEsperada\":7}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void deveReceberSelecaoExplicitaIdaVoltaPreservandoContratoLegado() throws Exception {
+        RemarcacaoSimulacaoResponse response = new RemarcacaoSimulacaoResponse();
+        response.setId(70L);
+        response.setVersao(3);
+        response.setRemarcacaoConjunta(true);
+        when(service.selecionarTrecho(eq(70L), any())).thenReturn(response);
+        mockMvc.perform(post("/v1/chat-confianca/remarcacoes/70/trecho")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codgUsuario\":202,\"trechosIndices\":[0,1]}")
+                        .principal(clientePayaraAutenticado))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.remarcacaoConjunta").value(true))
+                .andExpect(jsonPath("$.versao").value(3));
+        ArgumentCaptor<RemarcacaoRequest.SelecionarTrecho> request =
+                ArgumentCaptor.forClass(RemarcacaoRequest.SelecionarTrecho.class);
+        verify(service).selecionarTrecho(eq(70L), request.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(0, 1), request.getValue().getTrechosIndices());
+        org.junit.jupiter.api.Assertions.assertNull(request.getValue().getTrechoIndice());
+        org.junit.jupiter.api.Assertions.assertEquals(202, request.getValue().getCodgUsuario());
     }
 
     @Test
@@ -147,6 +211,10 @@ class ChatConfiancaRemarcacaoControllerTest {
                 post("/v1/chat-confianca/remarcacoes/70/encaminhar")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"codgUsuario\":202}")
+                        .principal(clienteNaoAutorizado),
+                post("/v1/chat-confianca/remarcacoes/70/voltar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codgUsuario\":202,\"versaoEsperada\":7}")
                         .principal(clienteNaoAutorizado),
                 get("/v1/chat-confianca/remarcacoes/70")
                         .param("codgUsuario", "202")

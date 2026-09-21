@@ -11,6 +11,7 @@ import java.util.List;
 @Data
 public class RemarcacaoSimulacaoResponse {
     private Long id;
+    private Integer versao;
     private Long conversaId;
     private String status;
     private String localizador;
@@ -20,8 +21,15 @@ public class RemarcacaoSimulacaoResponse {
     private String motivoBloqueio;
     private LocalDateTime expiraEm;
     private boolean permiteEncaminhar;
+    private boolean permiteVoltar;
+    private String labelVoltar;
+    private boolean preferenciasRestauradas;
     private boolean permiteSelecionarTodos;
     private boolean remarcacaoConjunta;
+    private boolean remarcacaoConjuntaObrigatoria;
+    private boolean permiteSelecionarIdaVolta;
+    private List<Integer> indicesTrechosIdaVolta = new ArrayList<>();
+    private List<TrechoSelecionado> trechosSelecionados = new ArrayList<>();
     private Integer ordemTrechoAtual;
     private Integer quantidadeTrechos;
     private boolean exigeFormaPagamento;
