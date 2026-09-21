@@ -4,8 +4,6 @@ import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
 import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
 import com.confApi.chatconfianca.service.ChatConfiancaRemarcacaoService;
-import com.confApi.db.confManager.usuario.Usuario;
-import com.confApi.endPoints.usuario.UsuarioApi;
 import com.confApi.exception.RegraDeNegocioException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,26 +17,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.util.Objects;
 
 @RestController
 @RequestMapping("/v1/chat-confianca/remarcacoes")
 public class ChatConfiancaRemarcacaoController {
     private final ChatConfiancaRemarcacaoService service;
     private final String loginClientePayara;
-    private final String loginClienteMobile;
-    private final UsuarioApi usuarioApi;
 
     public ChatConfiancaRemarcacaoController(ChatConfiancaRemarcacaoService service,
                                              @Value("${chat-confianca.cliente-payara.login:api.confplus}")
-                                             String loginClientePayara,
-                                             @Value("${chat-confianca.cliente-mobile.login:api.mobile}")
-                                             String loginClienteMobile,
-                                             UsuarioApi usuarioApi) {
+                                             String loginClientePayara) {
         this.service = service;
         this.loginClientePayara = loginClientePayara;
-        this.loginClienteMobile = loginClienteMobile;
-        this.usuarioApi = usuarioApi;
     }
 
     @GetMapping("/reservas-emitidas")
@@ -53,7 +43,7 @@ public class ChatConfiancaRemarcacaoController {
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "10") Integer size,
             Authentication authentication) {
-        validarCliente(authentication, codgUsuario);
+        validarClientePayara(authentication);
         return service.listarReservasEmitidas(
                 conversaId,
                 codgUsuario,
@@ -66,16 +56,16 @@ public class ChatConfiancaRemarcacaoController {
 
     @PostMapping("/iniciar")
     public RemarcacaoSimulacaoResponse iniciar(@RequestBody RemarcacaoRequest.Iniciar request,
-                                                Authentication authentication) {
-        validarCliente(authentication, request == null ? null : request.getCodgUsuario());
+                                               Authentication authentication) {
+        validarClientePayara(authentication);
         return service.iniciar(request);
     }
 
     @PostMapping("/{id}/trecho")
     public RemarcacaoSimulacaoResponse selecionarTrecho(@PathVariable Long id,
-                                                         @RequestBody RemarcacaoRequest.SelecionarTrecho request,
-                                                         Authentication authentication) {
-        validarCliente(authentication, request == null ? null : request.getCodgUsuario());
+                                                        @RequestBody RemarcacaoRequest.SelecionarTrecho request,
+                                                        Authentication authentication) {
+        validarClientePayara(authentication);
         return service.selecionarTrecho(id, request);
     }
 
@@ -84,7 +74,7 @@ public class ChatConfiancaRemarcacaoController {
             @PathVariable Long id,
             @RequestBody RemarcacaoRequest.SelecionarPassageiros request,
             Authentication authentication) {
-        validarCliente(authentication, request == null ? null : request.getCodgUsuario());
+        validarClientePayara(authentication);
         return service.selecionarPassageiros(id, request);
     }
 
@@ -92,7 +82,7 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse pesquisar(@PathVariable Long id,
                                                  @RequestBody RemarcacaoRequest.Pesquisar request,
                                                  Authentication authentication) {
-        validarCliente(authentication, request == null ? null : request.getCodgUsuario());
+        validarClientePayara(authentication);
         return service.pesquisar(id, request);
     }
 
@@ -100,7 +90,7 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse simular(@PathVariable Long id,
                                                @RequestBody RemarcacaoRequest.Simular request,
                                                Authentication authentication) {
-        validarCliente(authentication, request == null ? null : request.getCodgUsuario());
+        validarClientePayara(authentication);
         return service.simular(id, request);
     }
 
@@ -109,7 +99,7 @@ public class ChatConfiancaRemarcacaoController {
             @PathVariable Long id,
             @RequestBody RemarcacaoRequest.SelecionarFormaPagamento request,
             Authentication authentication) {
-        validarCliente(authentication, request == null ? null : request.getCodgUsuario());
+        validarClientePayara(authentication);
         return service.selecionarFormaPagamento(id, request);
     }
 
@@ -117,41 +107,33 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse encaminhar(@PathVariable Long id,
                                                   @RequestBody RemarcacaoRequest.Encaminhar request,
                                                   Authentication authentication) {
-        validarCliente(authentication, request == null ? null : request.getCodgUsuario());
+        validarClientePayara(authentication);
         return service.encaminhar(id, request);
+    }
+
+    @PostMapping("/{id}/voltar")
+    public RemarcacaoSimulacaoResponse voltar(@PathVariable Long id,
+                                              @RequestBody RemarcacaoRequest.Voltar request,
+                                              Authentication authentication) {
+        validarClientePayara(authentication);
+        return service.voltar(id, request);
     }
 
     @GetMapping("/{id}")
     public RemarcacaoSimulacaoResponse consultar(@PathVariable Long id,
                                                  @RequestParam Integer codgUsuario,
                                                  Authentication authentication) {
-        validarCliente(authentication, codgUsuario);
+        validarClientePayara(authentication);
         return service.consultar(id, codgUsuario);
     }
 
-    private void validarCliente(Authentication authentication, Integer codgUsuario) {
+    private void validarClientePayara(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()
-                || authentication.getName() == null || authentication.getName().isBlank()) {
+                || authentication.getName() == null || authentication.getName().isBlank()
+                || loginClientePayara == null || loginClientePayara.isBlank()
+                || !loginClientePayara.trim().equalsIgnoreCase(authentication.getName().trim())) {
             throw acessoNegado();
         }
-
-        String loginAutenticado = authentication.getName().trim();
-        if (loginTecnico(loginClientePayara, loginAutenticado)
-                || loginTecnico(loginClienteMobile, loginAutenticado)) {
-            return;
-        }
-
-        Usuario usuarioAutenticado = usuarioApi.consultaUsuarioByLogin(loginAutenticado);
-        if (usuarioAutenticado == null
-                || usuarioAutenticado.getCodgUsuario() == null
-                || !Objects.equals(usuarioAutenticado.getCodgUsuario(), codgUsuario)) {
-            throw acessoNegado();
-        }
-    }
-
-    private boolean loginTecnico(String loginConfigurado, String loginAutenticado) {
-        return loginConfigurado != null && !loginConfigurado.isBlank()
-                && loginConfigurado.trim().equalsIgnoreCase(loginAutenticado);
     }
 
     private RegraDeNegocioException acessoNegado() {

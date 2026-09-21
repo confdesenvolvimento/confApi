@@ -692,6 +692,101 @@ class ChatConfiancaRemarcacaoServiceTest {
     }
 
     @Test
+    void deveOferecerIdaVoltaSomenteParaParInversoElegivelComCronologiaConhecida() {
+        Reserva reserva = prepararReservaIdaVolta();
+        simulacao.setStatus("AGUARDANDO_TRECHO");
+        simulacao.setVersao(8);
+        RemarcacaoSimulacaoResponse response = service.consultar(SIMULACAO_ID, USUARIO_ID);
+        assertTrue(response.isPermiteSelecionarIdaVolta());
+        assertEquals(List.of(0, 1), response.getIndicesTrechosIdaVolta());
+        assertEquals(8, response.getVersao());
+
+        reserva.getViagens().get(1).setDestino(new com.confApi.hub.aereo.dto.Aeroporto("GRU", "GRU"));
+        assertFalse(service.consultar(SIMULACAO_ID, USUARIO_ID).isPermiteSelecionarIdaVolta());
+        reserva.getViagens().get(1).setDestino(new com.confApi.hub.aereo.dto.Aeroporto("CGB", "CGB"));
+        reserva.getViagens().get(1).getVoos().get(0).setDataPartida(null);
+        assertFalse(service.consultar(SIMULACAO_ID, USUARIO_ID).isPermiteSelecionarIdaVolta());
+    }
+
+    @Test
+    void deveSelecionarIdaVoltaOpcionalEOrdenarOsIndicesAntesDosPassageiros() {
+        prepararReservaIdaVolta();
+        when(regraService.simular(any())).thenReturn(regraPermitida(false));
+        RemarcacaoRequest.SelecionarTrecho request = selecionarIdaVolta(List.of(1, 0));
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(SIMULACAO_ID, request);
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.isRemarcacaoConjunta());
+        assertFalse(response.isRemarcacaoConjuntaObrigatoria());
+        assertEquals(1, response.getOrdemTrechoAtual());
+        assertEquals(2, response.getQuantidadeTrechos());
+        assertEquals("[0,1]", simulacao.getTrechosIndicesJson());
+        assertEquals(0, simulacao.getTrechoIndice());
+        assertTrue(response.getTrechosSelecionados().isEmpty());
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void deveUsarCronologiaMesmoQuandoReservaTrazVoltaAntesDaIda() {
+        Reserva reserva = prepararReservaIdaVolta();
+        reserva.setViagens(List.of(reserva.getViagens().get(1), reserva.getViagens().get(0)));
+        simulacao.setStatus("AGUARDANDO_TRECHO");
+        assertEquals(List.of(1, 0), service.consultar(SIMULACAO_ID, USUARIO_ID).getIndicesTrechosIdaVolta());
+        when(regraService.simular(any())).thenReturn(regraPermitida(false));
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
+        assertEquals("[1,0]", simulacao.getTrechosIndicesJson());
+        assertEquals(1, simulacao.getTrechoIndice());
+        assertEquals("CGB", response.getCriterios().getOrigem());
+    }
+
+    @Test
+    void deveRejeitarIndicesRepetidosAusentesOuForaDaReserva() {
+        prepararReservaIdaVolta();
+        for (List<Integer> indices : List.of(List.<Integer>of(), List.of(0), List.of(0, 0),
+                List.of(0, 2), List.of(-1, 0), java.util.Arrays.asList(0, null))) {
+            assertThrows(RegraDeNegocioException.class,
+                    () -> service.selecionarTrecho(SIMULACAO_ID, selecionarIdaVolta(indices)));
+        }
+        assertNull(simulacao.getTrechosIndicesJson());
+        verify(regraService, never()).simular(any());
+    }
+
+    @Test
+    void deveRejeitarIdaVoltaDeCompanhiasDiferentes() {
+        Reserva reserva = prepararReservaIdaVolta();
+        reserva.getViagens().get(1).setCompanhia(new com.confApi.hub.aereo.dto.Companhia(2, "AD", "AZUL"));
+        assertThrows(RegraDeNegocioException.class,
+                () -> service.selecionarTrecho(SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))));
+        verify(regraService, never()).simular(any());
+    }
+
+    @Test
+    void deveExigirRegraHomologadaCompativelNosDoisTrechos() {
+        prepararReservaIdaVolta();
+        RegraAereaAlteracaoConsultaResponse outraRegra = regraPermitida(false);
+        outraRegra.getRegra().setId(11L);
+        when(regraService.simular(any())).thenReturn(regraPermitida(false), outraRegra);
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
+        assertEquals("NAO_ELEGIVEL", response.getStatus());
+        assertTrue(response.getMensagem().contains("regras diferentes"));
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void devePreservarExigenciaConjuntaAoEscolherSomenteVolta() {
+        prepararReservaIdaVolta();
+        when(regraService.simular(any())).thenReturn(regraPermitida(true));
+        RemarcacaoRequest.SelecionarTrecho request = new RemarcacaoRequest.SelecionarTrecho();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setTrechoIndice(1);
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(SIMULACAO_ID, request);
+        assertTrue(response.isRemarcacaoConjuntaObrigatoria());
+        assertEquals("[0,1]", simulacao.getTrechosIndicesJson());
+        assertEquals(0, simulacao.getTrechoIndice());
+    }
+
+    @Test
     void deveAtivarFluxoConjuntoPelaConfiguracaoDaRegra() {
         simulacao.setStatus("AGUARDANDO_TRECHO");
         Passageiro passageiro = passageiro("Maria", "ADT", "001", "ATIVO");
@@ -715,6 +810,7 @@ class ChatConfiancaRemarcacaoServiceTest {
                 service.selecionarTrecho(SIMULACAO_ID, request);
 
         assertTrue(response.isRemarcacaoConjunta());
+        assertTrue(response.isRemarcacaoConjuntaObrigatoria());
         assertEquals(2, response.getQuantidadeTrechos());
         assertEquals("[0,1]", simulacao.getTrechosIndicesJson());
         assertTrue(simulacao.getTrechosOriginaisJson().contains("5678"));
@@ -733,7 +829,132 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(2, response.getOrdemTrechoAtual());
         assertEquals(Integer.valueOf(1), simulacao.getTrechoIndice());
         assertTrue(simulacao.getOfertaSelecionadaJson().contains("\"trechoIndice\":0"));
+        assertEquals(1, response.getTrechosSelecionados().size());
+        assertEquals(0, response.getTrechosSelecionados().get(0).getTrechoIndice());
+        assertEquals(LocalDate.now().plusDays(30), response.getCriterios().getDataMinima());
         verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void devePreservarIdaSelecionadaAoPesquisarEConsultarVolta() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        String ofertaIda = simulacao.getOfertaSelecionadaJson();
+        PesquisaResponse pesquisa = new PesquisaResponse();
+        pesquisa.setTrechos1(List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678")));
+        when(aereoClient.pesquisarDisponibilidade(any())).thenReturn(List.of(pesquisa));
+        RemarcacaoRequest.Pesquisar request = pesquisaRemarcacao();
+        request.setData(LocalDate.now().plusDays(33));
+
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, request);
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals(ofertaIda, simulacao.getOfertaSelecionadaJson());
+        assertEquals(1, response.getTrechosSelecionados().size());
+        assertEquals("CGB", response.getTrechosSelecionados().get(0).getVoo().getOrigem());
+        assertEquals(1, service.consultar(SIMULACAO_ID, USUARIO_ID).getTrechosSelecionados().size());
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void deveRejeitarDataDaVoltaAnteriorAChegadaDaIdaSemApagarSelecao() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        String ofertaIda = simulacao.getOfertaSelecionadaJson();
+        RemarcacaoRequest.Pesquisar request = pesquisaRemarcacao();
+        request.setData(LocalDate.now().plusDays(29));
+        assertThrows(RegraDeNegocioException.class, () -> service.pesquisar(SIMULACAO_ID, request));
+        assertEquals(ofertaIda, simulacao.getOfertaSelecionadaJson());
+        verify(aereoClient, never()).pesquisarDisponibilidade(any());
+    }
+
+    @Test
+    void deveValidarHorarioDaVoltaNoMesmoDiaAntesDeTarifar() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        Trecho volta = opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678");
+        Voo voo = volta.getVoos().get(0);
+        definirHorario(voo, LocalDate.now().plusDays(30), "12:30", "14:30");
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(volta)));
+        String ofertaIda = simulacao.getOfertaSelecionadaJson();
+        assertThrows(RegraDeNegocioException.class, () -> service.simular(SIMULACAO_ID, simular(0, 0)));
+        assertEquals(ofertaIda, simulacao.getOfertaSelecionadaJson());
+        verify(aereoClient, never()).tarifar(any());
+
+        definirHorario(voo, LocalDate.now().plusDays(30), "13:30", "15:30");
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(volta)));
+        prepararTarifacaoPermitida();
+        assertEquals("PREVIA_DISPONIVEL", service.simular(SIMULACAO_ID, simular(0, 0)).getStatus());
+    }
+
+    @Test
+    void deveAceitarHorarioLocalDeChegadaIgualAPartidaEmAeroportosComFusosDistintos() throws Exception {
+        Reserva reserva = prepararReservaIdaVolta();
+        reserva.getViagens().get(0).getVoos().get(0).setHoraChegada("10:30");
+        simulacao.setStatus("AGUARDANDO_TRECHO");
+        assertTrue(service.consultar(SIMULACAO_ID, USUARIO_ID).isPermiteSelecionarIdaVolta());
+
+        prepararSimulacaoConjunta();
+        Trecho ida = opcaoPesquisa("IDA-ID", "CGB", "BSB", "1234");
+        ida.getVoos().get(0).setHoraChegada("10:30");
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(ida)));
+        assertEquals("AGUARDANDO_CRITERIOS", service.simular(SIMULACAO_ID, simular(0, 0)).getStatus());
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        prepararTarifacaoPermitida();
+        assertEquals("PREVIA_DISPONIVEL", service.simular(SIMULACAO_ID, simular(0, 0)).getStatus());
+    }
+
+    @Test
+    void deveNaoFiltrarTarifaMinimaIndividualNoFluxoConjunto() throws Exception {
+        Trecho opcao = opcaoPesquisa("IDA-ID", "CGB", "BSB", "1234");
+        opcao.setFamilias(List.of(familiaPesquisa("Light", 250.0, 300.0)));
+        prepararPesquisaLatamComTarifaMinima(opcao, "IGUAL_OU_MAIOR", 500.0);
+        simulacao.setTrechosIndicesJson("[0,1]");
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals(1, response.getOpcoes().size());
+        assertEquals(1, response.getOpcoes().get(0).getFamilias().size());
+    }
+
+    @Test
+    void deveAplicarMinimoNoTotalTarifadoDaIdaEVolta() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        Reserva reserva = prepararReservaIdaVolta();
+        definirTarifaOriginal(reserva, 500.0);
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        prepararTarifacaoPermitida();
+        when(regraService.simular(any())).thenReturn(regraPermitida(false, "IGUAL_OU_MAIOR"));
+
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("NAO_ELEGIVEL", response.getStatus());
+        assertTrue(response.getMensagem().contains("tarifa igual ou superior"));
+        verify(aereoClient).tarifar(any());
+    }
+
+    @Test
+    void deveCobrarUmUnicoTotalConsolidadoSemDuplicarMultaPorTrecho() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        prepararTarifacaoPermitida();
+        RegraAereaAlteracaoConsultaResponse regra = regraPermitida(false);
+        regra.getCalculo().setValorMulta(new BigDecimal("50.00"));
+        regra.getCalculo().setDiferencaTarifaria(new BigDecimal("30.00"));
+        regra.getCalculo().setTaxaServico(new BigDecimal("10.00"));
+        regra.getCalculo().setTotalPrevisto(new BigDecimal("90.00"));
+        when(regraService.simular(any())).thenReturn(regra);
+
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertEquals(2, response.getPrevia().getTrechosSelecionados().size());
+        assertEquals(new BigDecimal("50.00"), response.getPrevia().getMulta());
+        assertEquals(new BigDecimal("90.00"), response.getPrevia().getTotalEstimado());
+        assertEquals(response.getPrevia().getTotalEstimado(), response.getPrevia().getTotalSelecionado());
+        verify(aereoClient).tarifar(any());
+        verify(regraService).simular(any());
     }
 
     @Test
@@ -750,6 +971,8 @@ class ChatConfiancaRemarcacaoServiceTest {
 
         assertEquals("PREVIA_DISPONIVEL", response.getStatus());
         assertEquals(2, response.getPrevia().getTrechosSelecionados().size());
+        assertEquals(List.of(0, 1), response.getTrechosSelecionados().stream()
+                .map(RemarcacaoSimulacaoResponse.TrechoSelecionado::getTrechoIndice).toList());
         ArgumentCaptor<TarifarRequest> tarifaRequest = ArgumentCaptor.forClass(TarifarRequest.class);
         verify(aereoClient).tarifar(tarifaRequest.capture());
         assertEquals("IDA-ID", tarifaRequest.getValue().getIdentificacaoViagem());
@@ -1039,6 +1262,345 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(409, erro.getStatus());
     }
 
+    @Test
+    void voltarDosPassageirosDeveLimparSelecaoEDarNovaEscolhaDosTrechos() throws Exception {
+        prepararNavegacaoVoltar();
+        simulacao.setStatus("AGUARDANDO_PASSAGEIROS");
+        marcarCalculoEPagamentoObsoletos();
+
+        RemarcacaoSimulacaoResponse response = service.voltar(SIMULACAO_ID, voltar());
+
+        assertEquals("AGUARDANDO_TRECHO", response.getStatus());
+        assertNull(simulacao.getTrechoIndice());
+        assertNull(simulacao.getTrechosIndicesJson());
+        assertNull(simulacao.getCriteriosJson());
+        assertNull(simulacao.getResultadosJson());
+        assertNull(simulacao.getOfertaSelecionadaJson());
+        assertNull(simulacao.getPassageirosJson());
+        assertCalculoEPagamentoLimpos(response);
+        assertEquals(2, response.getTrechos().size());
+        assertTrue(response.isPermiteSelecionarIdaVolta());
+        assertFalse(response.isPermiteVoltar());
+        assertEquals(SIMULACAO_ID, response.getId());
+        assertEquals(CONVERSA_ID, response.getConversaId());
+    }
+
+    @Test
+    void voltarDosCriteriosDaIdaDevePermitirRevisarMesmoPassageiroUnico() throws Exception {
+        prepararNavegacaoVoltar();
+        simulacao.setStatus("AGUARDANDO_CRITERIOS");
+        marcarCalculoEPagamentoObsoletos();
+
+        RemarcacaoSimulacaoResponse response = service.voltar(SIMULACAO_ID, voltar());
+
+        assertEquals("AGUARDANDO_PASSAGEIROS", response.getStatus());
+        assertEquals(1, response.getPassageiros().size());
+        assertFalse(response.getPassageiros().get(0).isSelecionado());
+        assertEquals(0, mapper.readTree(simulacao.getPassageirosJson()).path("indices").size());
+        assertEquals("[0,1]", simulacao.getTrechosIndicesJson());
+        assertEquals(0, simulacao.getTrechoIndice());
+        assertNull(simulacao.getCriteriosJson());
+        assertNull(simulacao.getResultadosJson());
+        assertNull(simulacao.getOfertaSelecionadaJson());
+        assertCalculoEPagamentoLimpos(response);
+        assertTrue(response.isPermiteVoltar());
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void voltarDasOpcoesDaVoltaDeveRestaurarPreferenciasEPreservarIda() throws Exception {
+        prepararNavegacaoVoltar();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        RemarcacaoRequest.Pesquisar criterios = pesquisaVoltar(33, "TARDE", true);
+        simulacao.setCriteriosJson(mapper.writeValueAsString(criterios));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        simulacao.setStatus("AGUARDANDO_OPCAO");
+        String passageiros = simulacao.getPassageirosJson();
+        marcarCalculoEPagamentoObsoletos();
+
+        RemarcacaoSimulacaoResponse response = service.voltar(SIMULACAO_ID, voltar());
+
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertEquals(1, simulacao.getTrechoIndice());
+        assertEquals(1, response.getTrechosSelecionados().size());
+        assertEquals(0, response.getTrechosSelecionados().get(0).getTrechoIndice());
+        assertEquals(passageiros, simulacao.getPassageirosJson());
+        assertNull(simulacao.getResultadosJson());
+        assertTrue(response.isPreferenciasRestauradas());
+        assertEquals(criterios.getData(), response.getCriterios().getDataSugerida());
+        assertEquals("TARDE", response.getCriterios().getPeriodo());
+        assertTrue(response.getCriterios().isSomenteDireto());
+        assertCalculoEPagamentoLimpos(response);
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void voltarDosCriteriosDaVoltaDeveRestaurarPesquisaDaIdaSemTarifar() throws Exception {
+        prepararNavegacaoVoltar();
+        String resultadosIda = simulacao.getResultadosJson();
+        String criteriosIda = simulacao.getCriteriosJson();
+        String passageiros = simulacao.getPassageirosJson();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+
+        RemarcacaoSimulacaoResponse response = service.voltar(SIMULACAO_ID, voltar());
+
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals(0, simulacao.getTrechoIndice());
+        assertEquals("CGB", simulacao.getOrigem());
+        assertEquals("BSB", simulacao.getDestino());
+        assertEquals(mapper.readTree(resultadosIda), mapper.readTree(simulacao.getResultadosJson()));
+        assertEquals(mapper.readTree(criteriosIda), mapper.readTree(simulacao.getCriteriosJson()));
+        assertEquals(passageiros, simulacao.getPassageirosJson());
+        assertTrue(response.getTrechosSelecionados().isEmpty());
+        assertEquals(1, response.getOpcoes().size());
+        assertTrue(response.isPreferenciasRestauradas());
+        assertEquals(LocalDate.now().plusDays(30), response.getCriterios().getDataSugerida());
+        assertCalculoEPagamentoLimpos(response);
+        verify(aereoClient, never()).tarifar(any());
+
+        RemarcacaoSimulacaoResponse consulta = service.consultar(SIMULACAO_ID, USUARIO_ID);
+        assertTrue(consulta.isPermiteVoltar());
+        assertNotNull(consulta.getLabelVoltar());
+        assertTrue(consulta.isPreferenciasRestauradas());
+        assertEquals(response.getCriterios().getDataSugerida(), consulta.getCriterios().getDataSugerida());
+        verify(aereoClient, never()).pesquisarDisponibilidade(any());
+    }
+
+    @Test
+    void voltarDaVoltaLegadaSemSnapshotDeveReabrirCriteriosDaIda() throws Exception {
+        prepararNavegacaoVoltar();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        com.fasterxml.jackson.databind.node.ObjectNode selecao =
+                (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(simulacao.getOfertaSelecionadaJson());
+        for (com.fasterxml.jackson.databind.JsonNode item : selecao.path("trechos")) {
+            ((com.fasterxml.jackson.databind.node.ObjectNode) item).remove("criteriosPesquisa");
+            ((com.fasterxml.jackson.databind.node.ObjectNode) item).remove("resultadosPesquisa");
+        }
+        simulacao.setOfertaSelecionadaJson(mapper.writeValueAsString(selecao));
+
+        RemarcacaoSimulacaoResponse response = service.voltar(SIMULACAO_ID, voltar());
+
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertEquals(0, simulacao.getTrechoIndice());
+        assertNull(simulacao.getResultadosJson());
+        assertTrue(response.getTrechosSelecionados().isEmpty());
+        assertNotNull(response.getCriterios());
+        assertFalse(response.isPreferenciasRestauradas());
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void voltarDaPreviaConjuntaDeveReabrirVoltaEInvalidarPrecoEPagamento() throws Exception {
+        prepararNavegacaoVoltar();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setCriteriosJson(mapper.writeValueAsString(pesquisaVoltar(33, "TARDE", true)));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        String resultadosVolta = simulacao.getResultadosJson();
+        prepararTarifacaoPermitida();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setFormaPagamentoCodigo(2);
+        simulacao.setFormaPagamentoDescricao("Cartao");
+        simulacao.setPagamentoStatus("PREFERENCIA_REGISTRADA");
+        simulacao.setPagamentoSelecionadoEm(LocalDateTime.now());
+
+        RemarcacaoSimulacaoResponse response = service.voltar(SIMULACAO_ID, voltar());
+
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals(1, simulacao.getTrechoIndice());
+        assertEquals("BSB", response.getCriterios().getOrigem());
+        assertEquals(mapper.readTree(resultadosVolta), mapper.readTree(simulacao.getResultadosJson()));
+        assertEquals(1, response.getTrechosSelecionados().size());
+        assertEquals(0, response.getTrechosSelecionados().get(0).getTrechoIndice());
+        assertCalculoEPagamentoLimpos(response);
+        assertTrue(response.isPreferenciasRestauradas());
+        verify(aereoClient).tarifar(any());
+        assertThrows(RegraDeNegocioException.class,
+                () -> service.encaminhar(SIMULACAO_ID, encaminhar()));
+    }
+
+    @Test
+    void voltarParaCorrigirIdaDevePermitirConcluirERecalcularNovaPreviaConjunta() throws Exception {
+        prepararNavegacaoVoltar();
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(
+                opcaoPesquisa("IDA-ORIGINAL", "CGB", "BSB", "1234"),
+                opcaoPesquisa("IDA-ALTERNATIVA", "CGB", "BSB", "9876"))));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        service.voltar(SIMULACAO_ID, voltar());
+
+        RemarcacaoSimulacaoResponse novaIda = service.simular(SIMULACAO_ID, simular(1, 0));
+        assertEquals("AGUARDANDO_CRITERIOS", novaIda.getStatus());
+        assertEquals(2, novaIda.getOrdemTrechoAtual());
+        assertEquals("9876", novaIda.getTrechosSelecionados().get(0).getVoo().getNumerosVoos());
+        simulacao.setCriteriosJson(mapper.writeValueAsString(pesquisaVoltar(33, "TARDE", true)));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        prepararTarifacaoPermitida();
+
+        RemarcacaoSimulacaoResponse previa = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", previa.getStatus());
+        assertEquals(2, previa.getPrevia().getTrechosSelecionados().size());
+        assertEquals("9876", previa.getPrevia().getTrechosSelecionados().get(0).getVoo().getNumerosVoos());
+        service.voltar(SIMULACAO_ID, voltar());
+        RemarcacaoSimulacaoResponse recalculada = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", recalculada.getStatus());
+        assertEquals(2, recalculada.getPrevia().getTrechosSelecionados().size());
+        verify(aereoClient, org.mockito.Mockito.times(2)).tarifar(any());
+    }
+
+    @Test
+    void voltarDaPreviaLegadaSemResultadosDeveReabrirCriterios() throws Exception {
+        prepararNavegacaoVoltar();
+        simulacao.setTrechosIndicesJson("[0]");
+        prepararPrevia("80.00");
+        simulacao.setResultadosJson(null);
+        marcarCalculoEPagamentoObsoletos();
+
+        RemarcacaoSimulacaoResponse response = service.voltar(SIMULACAO_ID, voltar());
+
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertEquals(0, simulacao.getTrechoIndice());
+        assertNotNull(response.getCriterios());
+        assertCalculoEPagamentoLimpos(response);
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void voltarDeveRejeitarVersaoAusenteOuAntigaSemMutarEstado() {
+        simulacao.setVersao(7);
+        for (Integer versao : java.util.Arrays.asList(null, 6)) {
+            RemarcacaoRequest.Voltar request = voltar();
+            request.setVersaoEsperada(versao);
+            RegraDeNegocioException erro = assertThrows(RegraDeNegocioException.class,
+                    () -> service.voltar(SIMULACAO_ID, request));
+            assertEquals(409, erro.getStatus());
+            assertEquals("AGUARDANDO_PASSAGEIROS", simulacao.getStatus());
+            assertEquals(7, simulacao.getVersao());
+        }
+        verify(manager, never()).post(anyString(), any(), any(Class.class));
+        verify(aereoClient, never()).carregarReserva(any());
+    }
+
+    @Test
+    void voltarDeveRejeitarSegundoCliqueDaMesmaVersao() throws Exception {
+        prepararNavegacaoVoltar();
+        simulacao.setStatus("AGUARDANDO_CRITERIOS");
+        RemarcacaoRequest.Voltar request = voltar();
+        RemarcacaoSimulacaoResponse primeiro = service.voltar(SIMULACAO_ID, request);
+        assertEquals("AGUARDANDO_PASSAGEIROS", primeiro.getStatus());
+        assertTrue(primeiro.getVersao() > request.getVersaoEsperada());
+        Integer versaoDepois = simulacao.getVersao();
+
+        RegraDeNegocioException erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.voltar(SIMULACAO_ID, request));
+
+        assertEquals(409, erro.getStatus());
+        assertEquals("AGUARDANDO_PASSAGEIROS", simulacao.getStatus());
+        assertEquals(versaoDepois, simulacao.getVersao());
+    }
+
+    @Test
+    void voltarDevePreservarCompatibilidadeComSimulacaoLegadaSemVersao() throws Exception {
+        prepararNavegacaoVoltar();
+        simulacao.setVersao(null);
+        simulacao.setStatus("AGUARDANDO_CRITERIOS");
+        when(manager.post(anyString(), any(SimulacaoRemarcacao.class), eq(SimulacaoRemarcacao.class)))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+
+        RemarcacaoSimulacaoResponse response = service.voltar(SIMULACAO_ID, voltar());
+
+        assertEquals("AGUARDANDO_PASSAGEIROS", response.getStatus());
+        assertNull(response.getVersao());
+    }
+
+    @Test
+    void voltarDeveBloquearEtapasFinaisIniciaisEOcupadas() {
+        simulacao.setVersao(5);
+        for (String status : List.of("ENCAMINHADO", "NAO_ELEGIVEL", "ERRO", "EXPIRADO",
+                "CANCELADO", "AGUARDANDO_TRECHO", "PESQUISANDO", "CALCULANDO")) {
+            simulacao.setStatus(status);
+            RegraDeNegocioException erro = assertThrows(RegraDeNegocioException.class,
+                    () -> service.voltar(SIMULACAO_ID, voltar()));
+            assertEquals(409, erro.getStatus());
+            assertEquals(status, simulacao.getStatus());
+        }
+        verify(manager, never()).post(anyString(), any(), any(Class.class));
+    }
+
+    @Test
+    void voltarDeveRespeitarExpiracaoUsuarioEConversaHumana() {
+        RemarcacaoRequest.Voltar outroUsuario = voltar();
+        outroUsuario.setCodgUsuario(999);
+        assertEquals(403, assertThrows(RegraDeNegocioException.class,
+                () -> service.voltar(SIMULACAO_ID, outroUsuario)).getStatus());
+        simulacao.setExpiraEm(LocalDateTime.now().minusMinutes(1));
+        assertEquals(409, assertThrows(RegraDeNegocioException.class,
+                () -> service.voltar(SIMULACAO_ID, voltar())).getStatus());
+        simulacao.setExpiraEm(LocalDateTime.now().plusMinutes(20));
+        conversa.setStatus(StatusConversa.AGUARDANDO_ATENDENTE);
+        conversa.setAtendenteResponsavelCodgUsuario(700);
+        assertEquals(409, assertThrows(RegraDeNegocioException.class,
+                () -> service.voltar(SIMULACAO_ID, voltar())).getStatus());
+        verify(manager, never()).post(anyString(), any(), any(Class.class));
+    }
+
+    @Test
+    void consultaDeveEsconderVoltarAposEncaminhamento() {
+        simulacao.setStatus("ENCAMINHADO");
+        conversa.setStatus(StatusConversa.AGUARDANDO_ATENDENTE);
+        conversa.setAtendenteResponsavelCodgUsuario(700);
+        assertFalse(service.consultar(SIMULACAO_ID, USUARIO_ID).isPermiteVoltar());
+    }
+
+    private void prepararNavegacaoVoltar() throws Exception {
+        prepararSimulacaoConjunta();
+        Reserva reserva = prepararReservaIdaVolta();
+        simulacao.setTrechoOriginalJson(mapper.writeValueAsString(reserva.getViagens().get(0)));
+        simulacao.setTrechosOriginaisJson(mapper.writeValueAsString(reserva.getViagens()));
+        simulacao.setCriteriosJson(mapper.writeValueAsString(pesquisaVoltar(30, "MANHA", false)));
+        simulacao.setVersao(5);
+        when(manager.post(anyString(), any(SimulacaoRemarcacao.class), eq(SimulacaoRemarcacao.class)))
+                .thenAnswer(invocation -> {
+                    SimulacaoRemarcacao salva = invocation.getArgument(1);
+                    salva.setVersao(salva.getVersao() + 1);
+                    return salva;
+                });
+    }
+
+    private RemarcacaoRequest.Pesquisar pesquisaVoltar(int dias, String periodo, boolean direto) {
+        RemarcacaoRequest.Pesquisar request = pesquisaRemarcacao();
+        request.setData(LocalDate.now().plusDays(dias));
+        request.setPeriodo(periodo);
+        request.setSomenteDireto(direto);
+        return request;
+    }
+
+    private RemarcacaoRequest.Voltar voltar() {
+        RemarcacaoRequest.Voltar request = new RemarcacaoRequest.Voltar();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setVersaoEsperada(simulacao.getVersao());
+        return request;
+    }
+
+    private void marcarCalculoEPagamentoObsoletos() {
+        simulacao.setCalculoJson("{\"totalEstimado\":90.00}");
+        simulacao.setFormaPagamentoCodigo(2);
+        simulacao.setFormaPagamentoDescricao("Cartao");
+        simulacao.setPagamentoStatus("PREFERENCIA_REGISTRADA");
+        simulacao.setPagamentoSelecionadoEm(LocalDateTime.now());
+    }
+
+    private void assertCalculoEPagamentoLimpos(RemarcacaoSimulacaoResponse response) {
+        assertNull(simulacao.getCalculoJson());
+        assertNull(simulacao.getFormaPagamentoCodigo());
+        assertNull(simulacao.getFormaPagamentoDescricao());
+        assertNull(simulacao.getPagamentoSelecionadoEm());
+        assertNull(response.getPrevia());
+        assertNull(response.getFormaPagamentoSelecionada());
+        assertFalse(response.isPermiteEncaminhar());
+    }
+
     private RemarcacaoRequest.Iniciar iniciar(Integer reservaId, String localizador) {
         RemarcacaoRequest.Iniciar request = new RemarcacaoRequest.Iniciar();
         request.setConversaId(CONVERSA_ID);
@@ -1133,6 +1695,34 @@ class ChatConfiancaRemarcacaoServiceTest {
         when(aereoClient.carregarReserva(any())).thenReturn(hub);
     }
 
+    private Reserva prepararReservaIdaVolta() {
+        Reserva reserva = new Reserva();
+        reserva.setLocalizador("ABC123");
+        reserva.setPassageiros(List.of(passageiro("Maria", "ADT", "001", "ATIVO")));
+        reserva.setViagens(List.of(trechoReserva("CGB", "BSB", "1234"),
+                trechoReserva("BSB", "CGB", "5678")));
+        ConsultarLocalizadorResponse response = new ConsultarLocalizadorResponse();
+        response.setReservas(List.of(reserva));
+        when(aereoClient.carregarReserva(any())).thenReturn(response);
+        when(aeroportoService.findIatasAeroportosNacionais()).thenReturn(java.util.Set.of("CGB", "BSB", "GRU"));
+        return reserva;
+    }
+
+    private RemarcacaoRequest.SelecionarTrecho selecionarIdaVolta(List<Integer> indices) {
+        RemarcacaoRequest.SelecionarTrecho request = new RemarcacaoRequest.SelecionarTrecho();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setTrechosIndices(indices);
+        return request;
+    }
+
+    private void definirHorario(Voo voo, LocalDate data, String partida, String chegada) {
+        java.util.Date dia = java.util.Date.from(data.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant());
+        voo.setDataPartida(dia);
+        voo.setDataChegada(dia);
+        voo.setHoraPartida(partida);
+        voo.setHoraChegada(chegada);
+    }
+
     private Trecho opcaoPesquisa(String identificacao, String origem, String destino, String numero) {
         return opcaoPesquisa(identificacao, origem, destino, numero, "LIGHT", "Light");
     }
@@ -1200,6 +1790,7 @@ class ChatConfiancaRemarcacaoServiceTest {
     }
 
 
+
     private TrechoReserva trechoReserva(String origem, String destino, String numero) {
         TrechoReserva trecho = new TrechoReserva();
         trecho.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, "G3", "GOL"));
@@ -1217,13 +1808,8 @@ class ChatConfiancaRemarcacaoServiceTest {
         voo.setFamiliaCodigo("LIGHT");
         voo.setOrigem(new com.confApi.hub.aereo.dto.Aeroporto(origem, origem));
         voo.setDestino(new com.confApi.hub.aereo.dto.Aeroporto(destino, destino));
-        voo.setDataPartida(java.util.Date.from(
-                LocalDateTime.now().plusDays(30).atZone(java.time.ZoneId.systemDefault()).toInstant()));
-        voo.setHoraPartida("10:30");
-        voo.setDataChegada(java.util.Date.from(
-                LocalDateTime.now().plusDays(30).plusHours(2)
-                        .atZone(java.time.ZoneId.systemDefault()).toInstant()));
-        voo.setHoraChegada("12:30");
+        int dias = "BSB".equals(origem) && "CGB".equals(destino) ? 33 : 30;
+        definirHorario(voo, LocalDate.now().plusDays(dias), "10:30", "12:30");
         return voo;
     }
 

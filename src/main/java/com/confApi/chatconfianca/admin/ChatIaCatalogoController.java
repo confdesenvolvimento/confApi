@@ -13,6 +13,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatIaCatalogoController {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.confApi.chatconfianca.hotel.ChatIaHotelService hotel;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.confApi.chatconfianca.hotel.ChatIaHotelReservaService hotelReserva;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.confApi.chatconfianca.hotel.ChatIaHotelListaService hotelLista;
     @GetMapping("/catalogo")
     public Map<String,Object> catalogo() {
         List<Map<String,Object>> itens=new ArrayList<>();
@@ -36,6 +40,19 @@ public class ChatIaCatalogoController {
             item.put("permissao","Autenticacao e validacoes do executor atual; agencia/unidade/usuario sempre obtidos da sessao. O cadastro nao concede permissoes.");
             var ferramenta=ChatV2Arguments.tool(c);
             item.put("parametros",c==ChatV2Capability.HOTEL_DADOS?com.confApi.chatconfianca.hotel.ChatIaHotelService.schema():ferramenta==null?Map.of():ferramenta.jsonSchema());
+            if(c==ChatV2Capability.HOTEL_RESERVA) {
+                item.put("cadastroAplicavel",true);
+                item.put("estadoCadastro",hotelReserva==null?"IMPLEMENTADO_DESABILITADO":hotelReserva.estadoCadastro());
+                item.put("observacaoConfiguracao","Leitura privada de reservas do Manager, sempre da agência autenticada. Requer V2, flags hotel-reserva e cadeia ativa. Aplica pergunta, limites, timeout e oferta por interações. Resposta factual fixa: textos de estilo/objetivo/restrições e confiança mínima NÃO alteram a resposta nesta entrega. Não revalida fornecedor/status, não emite voucher, não cancela. Sem cache compartilhado. IDs só do servidor.");
+            }
+            if(c==ChatV2Capability.HOTEL_LISTA){
+                item.put("cadastroAplicavel",true);item.put("estadoCadastro",hotelLista==null?"IMPLEMENTADO_DESABILITADO":hotelLista.estadoCadastro());
+                item.put("observacaoConfiguracao","Lista privada do Manager por agência, hóspede/hotel/cidade e período CRIACAO/ENTRADA/SAIDA. Sem período: últimos 30 dias de criação. Até 5 opções, paginação por data/ID. Aplica cadeia ativa, limite/sugestões e timeout; formato factual fixo. Textos livres, confiança mínima e oferta por contagem de interações não controlam este executor. Abrir item exige hotel-reserva habilitado e configurado. Sem status, fornecedor, cache compartilhado ou escritas.");
+            }
+            item.put("exigeConfirmacao",c.exigeConfirmacao());
+            item.put("permissao","Autenticacao e validacoes do executor atual; agencia/unidade/usuario sempre obtidos da sessao. O cadastro nao concede permissoes.");
+
+            item.put("parametros",c==ChatV2Capability.HOTEL_LISTA?com.confApi.chatconfianca.hotel.ChatIaHotelListaService.schema():c==ChatV2Capability.HOTEL_RESERVA?com.confApi.chatconfianca.hotel.ChatIaHotelReservaService.schema():c==ChatV2Capability.HOTEL_DADOS?com.confApi.chatconfianca.hotel.ChatIaHotelService.schema():ferramenta==null?Map.of():ferramenta.jsonSchema());
             itens.add(item);
         }
         return Map.of("versao","catalogo-ia-v1","cadastrosAplicadosAoChat",false,"acoes",itens);
@@ -61,6 +78,9 @@ public class ChatIaCatalogoController {
             case ALERTAS -> new String[]{"AlertaTarifaService","listarPorUsuario"};
             case FAMILIAS -> new String[]{"ChatService","listarFamilias"};
             case VOOS, HOTEL -> new String[]{"ToolRouter","execute"};
+
+            case HOTEL_LISTA -> new String[]{"ChatIaHotelListaService","listarReservas"};
+            case HOTEL_RESERVA -> new String[]{"ChatIaHotelReservaService","consultarReserva"};
             case HOTEL_DADOS -> new String[]{"ChatIaHotelService","consultarHotel"};
             case TARIFA_IDA -> new String[]{"MelhoresTarifasAereasService","consultar"};
             case TARIFA_VOLTA -> new String[]{"MelhoresTarifasAereasIdaVoltaService","consultar"};

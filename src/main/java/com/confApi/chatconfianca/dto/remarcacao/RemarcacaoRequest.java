@@ -3,6 +3,7 @@ package com.confApi.chatconfianca.dto.remarcacao;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public final class RemarcacaoRequest {
     private RemarcacaoRequest() {
@@ -21,6 +22,7 @@ public final class RemarcacaoRequest {
     public static class SelecionarTrecho {
         private Integer codgUsuario;
         private Integer trechoIndice;
+        private List<Integer> trechosIndices;
     }
 
     @Data
@@ -54,5 +56,11 @@ public final class RemarcacaoRequest {
     @Data
     public static class Encaminhar {
         private Integer codgUsuario;
+    }
+
+    @Data
+    public static class Voltar {
+        private Integer codgUsuario;
+        private Integer versaoEsperada;
     }
 }

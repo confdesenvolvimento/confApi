@@ -13,6 +13,12 @@ public class ChatV2Plan {
     private Integer hotelSelecionado;
     private int hotelInteracoes;
     private String hotelConfiguracaoRevisao;
+
+    private Map<String,Integer> reservaHotelOpcoes = new LinkedHashMap<>();
+    private Integer reservaHotelSelecionada;
+    private int reservaHotelInteracoes;
+    private String reservaHotelConfiguracaoRevisao;
+    private com.confApi.chatconfianca.hotel.ChatIaHotelListaEstado listaHotelEstado;
     private boolean continuar;
     private String pergunta;
     private String assuntoHandoff;

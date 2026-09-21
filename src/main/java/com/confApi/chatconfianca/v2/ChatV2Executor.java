@@ -1,5 +1,7 @@
 package com.confApi.chatconfianca.v2;
 
+import com.confApi.chatgpt.util.LocalizadorAereo;
+
 import com.confApi.chatconfianca.intencao.ChatConfiancaDecisaoIa;
 import com.confApi.chatconfianca.intencao.ChatIntencaoRuntimeDto;
 import com.confApi.chatgpt.dto.*;
@@ -20,9 +22,13 @@ public class ChatV2Executor {
     private final ObjectMapper mapper;
     private final com.confApi.chatconfianca.hotel.ChatIaHotelService hotel;
     public ChatV2Executor(ChatService chat,ToolRouter tools,ObjectMapper mapper) { this(chat,tools,mapper,null); }
+    private final com.confApi.chatconfianca.hotel.ChatIaHotelReservaService hotelReserva;
+    public ChatV2Executor(ChatService chat,ToolRouter tools,ObjectMapper mapper,com.confApi.chatconfianca.hotel.ChatIaHotelService hotel) {this(chat,tools,mapper,hotel,null);}
+    private final com.confApi.chatconfianca.hotel.ChatIaHotelListaService hotelLista;
+    public ChatV2Executor(ChatService chat,ToolRouter tools,ObjectMapper mapper,com.confApi.chatconfianca.hotel.ChatIaHotelService hotel,com.confApi.chatconfianca.hotel.ChatIaHotelReservaService hotelReserva) {this(chat,tools,mapper,hotel,hotelReserva,null);}
     @org.springframework.beans.factory.annotation.Autowired
-    public ChatV2Executor(ChatService chat,ToolRouter tools,ObjectMapper mapper,com.confApi.chatconfianca.hotel.ChatIaHotelService hotel) {
-        this.chat=chat;this.tools=tools;this.mapper=mapper;this.hotel=hotel;
+    public ChatV2Executor(ChatService chat,ToolRouter tools,ObjectMapper mapper,com.confApi.chatconfianca.hotel.ChatIaHotelService hotel,com.confApi.chatconfianca.hotel.ChatIaHotelReservaService hotelReserva,com.confApi.chatconfianca.hotel.ChatIaHotelListaService hotelLista) {
+        this.chat=chat;this.tools=tools;this.mapper=mapper;this.hotel=hotel;this.hotelReserva=hotelReserva;this.hotelLista=hotelLista;
     }
     public ChatResponseDTO executar(ChatV2Plan p,ConversationRequestDTO session,ChatConfiancaDecisaoIa d) {
         try {
@@ -38,6 +44,17 @@ public class ChatV2Executor {
                 var result=hotel.consultarHotel(p,session);
                 d.setMemorias(List.of());
                 return finish(p,d,result.status(),result.texto());
+            }
+            if(c==ChatV2Capability.HOTEL_RESERVA) {
+                d.setMemorias(List.of());
+                if(hotelReserva==null)return finish(p,d,"CAPACIDADE_INDISPONIVEL","A consulta de reservas de hotel não está habilitada.");
+                var result=hotelReserva.consultarReserva(p,session);
+                return finish(p,d,result.status(),result.texto());
+            }
+            if(c==ChatV2Capability.HOTEL_LISTA) {
+                d.setMemorias(List.of());
+                if(hotelLista==null)return finish(p,d,"CAPACIDADE_INDISPONIVEL","A listagem de reservas de hotel não está habilitada.");
+                var result=hotelLista.listarReservas(p,session);return finish(p,d,result.status(),result.texto());
             }
             if(c.tool!=null)return consultarTool(p,d);
             if(c.action!=null)return consultarApi(p,session,d);
@@ -69,7 +86,8 @@ public class ChatV2Executor {
         String action=c.action;
         String localizador=c.usaLocalizador()?p.getParametros().get("localizador"):null;
         if(c==ChatV2Capability.RESERVA||c==ChatV2Capability.REGRAS||c==ChatV2Capability.ACOES_RESERVA) {
-            if(localizador==null||!localizador.matches("[A-Za-z0-9]{6}")) {
+
+            if(!LocalizadorAereo.isValido(localizador)) {
                 p.setPergunta("Qual e o localizador da reserva?");return finish(p,d,"AGUARDANDO_DADOS",p.getPergunta());
             }
         }
@@ -99,7 +117,8 @@ public class ChatV2Executor {
         }
         if(dados.isEmpty())return finish(p,d,"SEM_RESULTADO","A consulta nao retornou dados para este atendimento.");
         if(c==ChatV2Capability.CHECKIN && "SEM_RESULTADO".equals(resultadoDados(dados)))
-            return finish(p,d,"SEM_RESULTADO","Não há reservas com embarques próximos retornadas para a agência deste atendimento no momento.");
+
+            return finish(p,d,"SEM_RESULTADO","Não há reservas emitidas com embarques próximos retornadas para a agência deste atendimento no momento.");
         List<ChatMessageDTO> messages=new ArrayList<>();
         messages.add(new ChatMessageDTO("system","""
             Voce explica somente os dados retornados pela consulta autorizada abaixo.

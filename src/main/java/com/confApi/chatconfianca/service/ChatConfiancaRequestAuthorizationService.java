@@ -26,11 +26,22 @@ public class ChatConfiancaRequestAuthorizationService {
     }
 
     public void validarUsuario(Authentication authentication, Integer codgUsuario) {
+        validarAutenticacao(authentication);
+        if (codgUsuario == null) {
+            throw new RegraDeNegocioException(400, "Informe o usuario.");
+        }
+        if (ehClientePayara(authentication)) {
+            return;
+        }
 
-        System.out.println("aut: " + authentication);
-        System.out.println("aut: " + codgUsuario);
-
-
+        RefUsuario usuario = configService.buscarUsuarioReferencia(codgUsuario);
+        if (usuario == null) {
+            usuario = configService.sincronizarUsuarioReferencia(codgUsuario);
+        }
+        if (usuario == null || isBlank(usuario.getLoginUsuario())
+                || !usuario.getLoginUsuario().trim().equalsIgnoreCase(authentication.getName().trim())) {
+            throw acessoNegado("O usuario autenticado nao corresponde ao usuario informado no chat.");
+        }
     }
 
     public void validarAgencia(Authentication authentication, Integer codgAgencia) {

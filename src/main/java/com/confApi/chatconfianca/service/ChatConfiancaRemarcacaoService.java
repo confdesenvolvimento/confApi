@@ -127,7 +127,7 @@ public class ChatConfiancaRemarcacaoService {
     private static final String FORMA_INDISPONIVEL = "INDISPONIVEL";
     private static final String FORMA_SUJEITA_VALIDACAO = "SUJEITA_VALIDACAO";
     private static final DateTimeFormatter DATA_BR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-    private static final int LIMITE_OPCOES = 5;
+    private static final int LIMITE_OPCOES = 50;
     private static final int STATUS_RESERVA_EMITIDA = 3;
     private static final int PAGINA_PADRAO_RESERVAS = 0;
     private static final int TAMANHO_PADRAO_RESERVAS = 10;
@@ -253,6 +253,7 @@ public class ChatConfiancaRemarcacaoService {
                 "Qual trecho deseja alterar?",
                 "Escolha o trecho que deseja alterar. A regra da companhia indicara se os demais tambem precisam ser remarcados.");
         response.setTrechos(montarTrechos(reserva, indicesElegiveis, null));
+        preencherSelecaoIdaVolta(response, reserva, indicesElegiveis);
         registrarEvento(simulacao, "REMARCACAO_AGUARDANDO_TRECHO",
                 "Aguardando escolha do trecho da reserva.", null);
         registrarCard(simulacao, response);
@@ -260,12 +261,27 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     public RemarcacaoSimulacaoResponse selecionarTrecho(Long id, RemarcacaoRequest.SelecionarTrecho request) {
-        if (request == null || request.getCodgUsuario() == null || request.getTrechoIndice() == null) {
+        if (request == null || request.getCodgUsuario() == null
+                || (request.getTrechoIndice() == null && request.getTrechosIndices() == null)) {
             throw regra(400, "Informe o usuario e o trecho.");
         }
         SimulacaoRemarcacao simulacao = buscarValidar(id, request.getCodgUsuario());
         Reserva reserva = carregarReserva(simulacao, montarSessao(simulacao));
         List<Integer> elegiveis = indicesTrechosElegiveis(reserva);
+        if (request.getTrechosIndices() != null) {
+            List<Integer> indices = request.getTrechosIndices();
+            List<Integer> idaVolta = indicesIdaVolta(reserva, elegiveis);
+            if (indices.size() != 2 || indices.stream().anyMatch(java.util.Objects::isNull)
+                    || new HashSet<>(indices).size() != 2
+                    || idaVolta.size() != 2 || !new HashSet<>(indices).equals(new HashSet<>(idaVolta))
+                    || (request.getTrechoIndice() != null && !indices.contains(request.getTrechoIndice()))) {
+                throw regra(400, "Selecione a ida e a volta elegiveis da mesma reserva e companhia.");
+            }
+            RemarcacaoSimulacaoResponse response = prepararTrecho(
+                    simulacao, reserva, idaVolta.get(0), idaVolta);
+            registrarCard(simulacao, response);
+            return response;
+        }
         if (!elegiveis.contains(request.getTrechoIndice())) {
             throw regra(400, "O trecho selecionado nao esta elegivel para simulacao.");
         }
@@ -351,6 +367,10 @@ public class ChatConfiancaRemarcacaoService {
             throw regra(409, "Selecione o trecho antes de pesquisar novos voos.");
         }
         validarDataPesquisa(request.getData());
+        LocalDate minimaConjunta = dataMinimaTrechoAtual(simulacao);
+        if (request.getData().isBefore(minimaConjunta)) {
+            throw regra(400, "A volta nao pode partir antes da chegada do voo de ida selecionado.");
+        }
         SessaoChatResponse sessao = montarSessao(simulacao);
         Reserva reserva = carregarReserva(simulacao, sessao);
         List<Passageiro> passageirosSelecionados = passageirosSelecionados(reserva, simulacao);
@@ -371,7 +391,9 @@ public class ChatConfiancaRemarcacaoService {
             simulacao.setStatus(AGUARDANDO_CRITERIOS);
             simulacao.setResultadosJson(null);
             simulacao = salvar(simulacao);
-            boolean exigeTarifaMinima = exigeTarifaIgualOuMaior(regraSnapshot(simulacao));
+
+            boolean exigeTarifaMinima = indicesTrechosSimulacao(simulacao).size() == 1
+                    && exigeTarifaIgualOuMaior(regraSnapshot(simulacao));
             RemarcacaoSimulacaoResponse response = respostaCriterios(simulacao, original,
                     exigeTarifaMinima
                             ? "Nao encontrei voos compativeis com tarifa igual ou superior a tarifa original. "
@@ -391,6 +413,7 @@ public class ChatConfiancaRemarcacaoService {
                 "Escolha o voo e a familia tarifaria para calcular a previa.");
         response.setCriterios(montarCriterios(original, request.getData(), request.getPeriodo(),
                 Boolean.TRUE.equals(request.getSomenteDireto())));
+        ajustarDataMinimaConjunta(response, simulacao);
         response.setOpcoes(montarOpcoes(opcoes));
         registrarEvento(simulacao, "REMARCACAO_OPCOES_ENCONTRADAS",
                 opcoes.size() + " opcoes apresentadas ao solicitante.", json(request));
@@ -418,8 +441,12 @@ public class ChatConfiancaRemarcacaoService {
         RemarcacaoSimulacaoResponse.OpcaoVoo opcaoView = montarOpcao(opcao, request.getOpcaoIndice());
         RemarcacaoSimulacaoResponse.Familia familiaView = montarFamilia(familia, request.getFamiliaIndice());
         SelecaoPersistida selecao = selecaoPersistida(simulacao);
-        adicionarSelecaoTrecho(selecao, simulacao.getTrechoIndice(), opcao, familia,
+        validarCronologiaSelecao(simulacao, selecao, opcao);
+        SelecaoTrechoPersistida escolha = adicionarSelecaoTrecho(selecao, simulacao.getTrechoIndice(), opcao, familia,
                 opcaoView, familiaView);
+        escolha.setCriteriosPesquisa(vazio(simulacao.getCriteriosJson()) ? null
+                : ler(simulacao.getCriteriosJson(), RemarcacaoRequest.Pesquisar.class));
+        escolha.setResultadosPesquisa(opcoes);
         simulacao.setOfertaSelecionadaJson(json(selecao));
         simulacao.setCalculoJson(null);
         limparPreferenciaPagamento(simulacao);
@@ -435,8 +462,8 @@ public class ChatConfiancaRemarcacaoService {
             simulacao = salvar(simulacao);
 
             RemarcacaoSimulacaoResponse response = respostaCriterios(simulacao, proximoOriginal,
-                    "A regra desta companhia exige remarcar tambem o outro trecho. "
-                            + "Voce pode escolher o mesmo dia e voo da reserva original.");
+                    "Trecho selecionado. Agora escolha a data e o voo do proximo trecho. "
+                            + "O valor total sera calculado depois da escolha dos dois voos.");
             preencherPassageirosSelecionados(response, simulacao);
             registrarEvento(simulacao, "REMARCACAO_CONJUNTA_PROXIMO_TRECHO",
                     "Primeiro trecho selecionado; aguardando a selecao do trecho "
@@ -673,10 +700,185 @@ public class ChatConfiancaRemarcacaoService {
         return resumo.toString();
     }
 
+    public RemarcacaoSimulacaoResponse voltar(Long id, RemarcacaoRequest.Voltar request) {
+        if (request == null || request.getCodgUsuario() == null) {
+            throw regra(400, "Informe o usuario para voltar uma etapa.");
+        }
+        SimulacaoRemarcacao simulacao = buscarValidar(id, request.getCodgUsuario());
+        if (simulacao.getVersao() != null
+                && !simulacao.getVersao().equals(request.getVersaoEsperada())) {
+            throw regra(409, "A simulacao foi atualizada. Atualize o card antes de voltar uma etapa.");
+        }
+        String destino = labelVoltar(simulacao);
+        if (destino == null) {
+            throw regra(409, "Nao e possivel voltar uma etapa no estado atual da simulacao.");
+        }
+
+        String statusAnterior = simulacao.getStatus();
+        List<Integer> indices = indicesTrechosSimulacao(simulacao);
+        int ordem = indices.indexOf(simulacao.getTrechoIndice());
+        Reserva reservaTrechos = null;
+        List<Integer> trechosElegiveis = null;
+        if (AGUARDANDO_PASSAGEIROS.equals(statusAnterior)) {
+            reservaTrechos = carregarReserva(simulacao, montarSessao(simulacao));
+            trechosElegiveis = indicesTrechosElegiveis(reservaTrechos);
+            if (trechosElegiveis.isEmpty()) {
+                throw regra(409, "A reserva nao possui mais trechos elegiveis. Inicie uma nova simulacao.");
+            }
+            limparResultadosPosteriores(simulacao);
+            simulacao.setPassageirosJson(null);
+            simulacao.setTrechoIndice(null);
+            simulacao.setOrigem(null);
+            simulacao.setDestino(null);
+            simulacao.setTrechoOriginalJson(null);
+            simulacao.setTrechosIndicesJson(null);
+            simulacao.setTrechosOriginaisJson(null);
+            simulacao.setRegraId(null);
+            simulacao.setRegraSnapshotJson(null);
+            simulacao.setStatus(AGUARDANDO_TRECHO);
+        } else if (AGUARDANDO_CRITERIOS.equals(statusAnterior) && ordem == 0) {
+            PassageirosPersistidos passageiros = selecaoPassageiros(simulacao);
+            passageiros.setEscopo(null);
+            passageiros.setIndices(new ArrayList<>());
+            if (passageiros.getPassageiros() != null) {
+                passageiros.getPassageiros().forEach(item -> item.setSelecionado(false));
+            }
+            simulacao.setPassageirosJson(json(passageiros));
+            limparResultadosPosteriores(simulacao);
+            simulacao.setStatus(AGUARDANDO_PASSAGEIROS);
+        } else if (AGUARDANDO_CRITERIOS.equals(statusAnterior)) {
+            restaurarPesquisaTrecho(simulacao, indices.get(ordem - 1), false);
+        } else if (AGUARDANDO_OPCAO.equals(statusAnterior)) {
+            removerSelecoesAPartir(simulacao, simulacao.getTrechoIndice());
+            simulacao.setResultadosJson(null);
+            simulacao.setStatus(AGUARDANDO_CRITERIOS);
+        } else if (PREVIA_DISPONIVEL.equals(statusAnterior)) {
+            restaurarPesquisaTrecho(simulacao, indices.get(indices.size() - 1), true);
+        }
+        simulacao.setCalculoJson(null);
+        limparPreferenciaPagamento(simulacao);
+        simulacao.setMotivoBloqueio(null);
+        simulacao = salvar(simulacao);
+
+        RemarcacaoSimulacaoResponse response;
+        if (AGUARDANDO_TRECHO.equals(simulacao.getStatus())) {
+            response = respostaBase(simulacao, "Qual trecho deseja alterar?",
+                    "Escolha novamente o trecho ou a remarcacao de ida e volta.");
+            response.setTrechos(montarTrechos(reservaTrechos, trechosElegiveis, null));
+            preencherSelecaoIdaVolta(response, reservaTrechos, trechosElegiveis);
+        } else {
+            response = montarRespostaConsulta(simulacao);
+            response.setMensagem("Etapa anterior recuperada. Confira os dados para continuar a simulacao.");
+        }
+        registrarEvento(simulacao, "REMARCACAO_ETAPA_ANTERIOR",
+                "Retorno de " + statusAnterior + " para " + simulacao.getStatus() + ".",
+                json(Map.of("statusAnterior", statusAnterior, "statusAtual", simulacao.getStatus())));
+        registrarCard(simulacao, response);
+        return response;
+    }
+
+    private String labelVoltar(SimulacaoRemarcacao simulacao) {
+        if (simulacao == null || simulacao.getStatus() == null
+                || STATUS_FINAIS_CONSULTAVEIS.contains(simulacao.getStatus())
+                || (simulacao.getExpiraEm() != null && !simulacao.getExpiraEm().isAfter(LocalDateTime.now()))) {
+            return null;
+        }
+        List<Integer> indices = indicesTrechosSimulacao(simulacao);
+        int ordem = indices.indexOf(simulacao.getTrechoIndice());
+        if (ordem < 0) return null;
+        if (AGUARDANDO_PASSAGEIROS.equals(simulacao.getStatus())) return "Voltar aos trechos";
+        if (AGUARDANDO_OPCAO.equals(simulacao.getStatus())) return "Voltar \u00e0 pesquisa";
+        if (AGUARDANDO_CRITERIOS.equals(simulacao.getStatus())) {
+            if (ordem == 0) return "Voltar aos passageiros";
+            SelecaoTrechoPersistida anterior = selecaoTrecho(simulacao, indices.get(ordem - 1));
+            return possuiPesquisaSalva(anterior)
+                    ? "Voltar aos voos do trecho anterior" : "Voltar \u00e0 pesquisa anterior";
+        }
+        if (PREVIA_DISPONIVEL.equals(simulacao.getStatus())) {
+            Integer ultimo = indices.get(indices.size() - 1);
+            return possuiPesquisaSalva(selecaoTrecho(simulacao, ultimo))
+                    || (ultimo.equals(simulacao.getTrechoIndice()) && !vazio(simulacao.getResultadosJson()))
+                    ? "Voltar aos voos" : "Voltar \u00e0 pesquisa";
+        }
+        return null;
+    }
+
+    private SelecaoTrechoPersistida selecaoTrecho(SimulacaoRemarcacao simulacao, Integer indice) {
+        return selecaoPersistida(simulacao).getTrechos().stream()
+                .filter(item -> indice.equals(item.getTrechoIndice())).findFirst().orElse(null);
+    }
+
+    private boolean possuiPesquisaSalva(SelecaoTrechoPersistida escolha) {
+        return escolha != null && escolha.getResultadosPesquisa() != null
+                && !escolha.getResultadosPesquisa().isEmpty();
+    }
+
+    private void restaurarPesquisaTrecho(SimulacaoRemarcacao simulacao, Integer indice,
+                                          boolean permitePesquisaAtual) {
+        SelecaoTrechoPersistida escolha = selecaoTrecho(simulacao, indice);
+        boolean mesmoTrecho = indice.equals(simulacao.getTrechoIndice());
+        String criterios = escolha != null && escolha.getCriteriosPesquisa() != null
+                ? json(escolha.getCriteriosPesquisa())
+                : permitePesquisaAtual && mesmoTrecho ? simulacao.getCriteriosJson() : null;
+        String resultados = possuiPesquisaSalva(escolha) ? json(escolha.getResultadosPesquisa())
+                : permitePesquisaAtual && mesmoTrecho ? simulacao.getResultadosJson() : null;
+        TrechoReserva original = trechoOriginalPersistido(simulacao, indice);
+        ativarTrecho(simulacao, original, indice);
+        simulacao.setCriteriosJson(criterios);
+        simulacao.setResultadosJson(resultados);
+        removerSelecoesAPartir(simulacao, indice);
+        simulacao.setStatus(vazio(resultados) ? AGUARDANDO_CRITERIOS : AGUARDANDO_OPCAO);
+    }
+
+    private TrechoReserva trechoOriginalPersistido(SimulacaoRemarcacao simulacao, Integer indice) {
+        if (!vazio(simulacao.getTrechosOriginaisJson())) {
+            try {
+                List<TrechoReserva> originais = mapper.readValue(simulacao.getTrechosOriginaisJson(),
+                        new TypeReference<List<TrechoReserva>>() { });
+                int ordem = indicesTrechosSimulacao(simulacao).indexOf(indice);
+                if (ordem >= 0 && ordem < originais.size() && originais.get(ordem) != null) {
+                    return originais.get(ordem);
+                }
+            } catch (JsonProcessingException ex) {
+                throw regra(500, "Nao foi possivel recuperar os trechos originais da simulacao.");
+            }
+        }
+        if (indice.equals(simulacao.getTrechoIndice()) && !vazio(simulacao.getTrechoOriginalJson())) {
+            return ler(simulacao.getTrechoOriginalJson(), TrechoReserva.class);
+        }
+        return trecho(carregarReserva(simulacao, montarSessao(simulacao)), indice);
+    }
+
+    private void removerSelecoesAPartir(SimulacaoRemarcacao simulacao, Integer indice) {
+        List<Integer> indices = indicesTrechosSimulacao(simulacao);
+        int ordem = indices.indexOf(indice);
+        SelecaoPersistida selecao = selecaoPersistida(simulacao);
+        selecao.getTrechos().removeIf(item -> indices.indexOf(item.getTrechoIndice()) < 0
+                || indices.indexOf(item.getTrechoIndice()) >= ordem);
+        selecao.setOpcao(null);
+        selecao.setFamilia(null);
+        if (!selecao.getTrechos().isEmpty()) {
+            SelecaoTrechoPersistida primeira = selecao.getTrechos().get(0);
+            selecao.setOpcao(primeira.getOpcaoView());
+            selecao.setFamilia(primeira.getFamiliaView());
+        }
+        simulacao.setOfertaSelecionadaJson(selecao.getTrechos().isEmpty() ? null : json(selecao));
+    }
+
     public RemarcacaoSimulacaoResponse consultar(Long id, Integer codgUsuario) {
         SimulacaoRemarcacao simulacao = buscarValidarParaConsulta(id, codgUsuario);
+        return montarRespostaConsulta(simulacao);
+    }
+
+    private RemarcacaoSimulacaoResponse montarRespostaConsulta(SimulacaoRemarcacao simulacao) {
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
                 tituloStatus(simulacao.getStatus()), mensagemStatus(simulacao));
+        if (AGUARDANDO_TRECHO.equals(simulacao.getStatus())) {
+            Reserva reserva = carregarReserva(simulacao, montarSessao(simulacao));
+            List<Integer> elegiveis = indicesTrechosElegiveis(reserva);
+            response.setTrechos(montarTrechos(reserva, elegiveis, null));
+            preencherSelecaoIdaVolta(response, reserva, elegiveis);
+        }
         if (AGUARDANDO_PASSAGEIROS.equals(simulacao.getStatus())
                 || AGUARDANDO_CRITERIOS.equals(simulacao.getStatus())) {
             PassageirosPersistidos persistidos = selecaoPassageiros(simulacao);
@@ -703,7 +905,14 @@ public class ChatConfiancaRemarcacaoService {
             response.getCriterios().setDataSugerida(criterios.getData());
             response.getCriterios().setPeriodo(criterios.getPeriodo());
             response.getCriterios().setSomenteDireto(Boolean.TRUE.equals(criterios.getSomenteDireto()));
+            response.setPreferenciasRestauradas(criterios.getData() != null);
         }
+        if (AGUARDANDO_CRITERIOS.equals(simulacao.getStatus())
+                && response.getCriterios() == null && !vazio(simulacao.getTrechoOriginalJson())) {
+            TrechoReserva original = ler(simulacao.getTrechoOriginalJson(), TrechoReserva.class);
+            response.setCriterios(montarCriterios(original, dataOriginal(original), "QUALQUER", false));
+        }
+        ajustarDataMinimaConjunta(response, simulacao);
         if (AGUARDANDO_CRITERIOS.equals(simulacao.getStatus())
                 || PREVIA_DISPONIVEL.equals(simulacao.getStatus())
                 || ENCAMINHADO.equals(simulacao.getStatus())) {
@@ -732,6 +941,13 @@ public class ChatConfiancaRemarcacaoService {
     private RemarcacaoSimulacaoResponse prepararTrecho(SimulacaoRemarcacao simulacao,
                                                         Reserva reserva,
                                                         Integer indice) {
+        return prepararTrecho(simulacao, reserva, indice, null);
+    }
+
+    private RemarcacaoSimulacaoResponse prepararTrecho(SimulacaoRemarcacao simulacao,
+                                                        Reserva reserva,
+                                                        Integer indice,
+                                                        List<Integer> indicesEscolhidos) {
         TrechoReserva trecho = trecho(reserva, indice);
         simulacao.setTrechoIndice(indice);
         simulacao.setOrigem(iata(trecho.getOrigem()));
@@ -752,11 +968,45 @@ public class ChatConfiancaRemarcacaoService {
 
         List<Integer> indicesObrigatorios = resolverIndicesTrechosObrigatorios(
                 reserva, indice, regra);
+        if (indicesEscolhidos != null) {
+            if (!indicesEscolhidos.containsAll(indicesObrigatorios)) {
+                throw regra(409, "A selecao nao contempla todos os trechos exigidos pela companhia.");
+            }
+            indicesObrigatorios = new ArrayList<>(indicesEscolhidos);
+        }
         if (indicesObrigatorios.size() > 2) {
             return bloquear(simulacao,
                     "A regra exige remarcacao conjunta de mais de dois trechos. "
                             + "A equipe precisa tratar este itinerario manualmente.",
                     false);
+        }
+        if (indicesObrigatorios.size() > 1) {
+            List<Integer> idaVolta = indicesIdaVolta(reserva, indicesTrechosElegiveis(reserva));
+            if (idaVolta.size() == 2
+                    && new HashSet<>(idaVolta).equals(new HashSet<>(indicesObrigatorios))) {
+                indicesObrigatorios = idaVolta;
+            }
+            List<RegraAereaAlteracaoConsultaResponse> regras = new ArrayList<>();
+            for (Integer indiceConjunto : indicesObrigatorios) {
+                RegraAereaAlteracaoConsultaResponse regraTrecho = indiceConjunto.equals(indice)
+                        ? regra : regraService.simular(montarRequestRegra(
+                                reserva, trecho(reserva, indiceConjunto), null, null));
+                if (!regrasCompativeis(regra, regraTrecho)) {
+                    return bloquear(simulacao,
+                            "Os trechos possuem regras diferentes ou nao homologadas para calculo conjunto. "
+                                    + "A equipe precisa analisar a remarcacao de ida e volta.", false);
+                }
+                if (!indicesObrigatorios.containsAll(resolverIndicesTrechosObrigatorios(
+                        reserva, indiceConjunto, regraTrecho))) {
+                    return bloquear(simulacao,
+                            "A regra da companhia exige outros trechos para concluir a remarcacao. "
+                                    + "A equipe precisa analisar este itinerario.", false);
+                }
+                regras.add(regraTrecho);
+            }
+            simulacao.setRegraSnapshotJson(json(regras));
+            trecho = trecho(reserva, indicesObrigatorios.get(0));
+            ativarTrecho(simulacao, trecho, indicesObrigatorios.get(0));
         }
         simulacao.setTrechosIndicesJson(json(indicesObrigatorios));
         simulacao.setTrechosOriginaisJson(json(indicesObrigatorios.stream()
@@ -1427,13 +1677,15 @@ public class ChatConfiancaRemarcacaoService {
                                        Reserva reserva,
                                        List<Passageiro> passageirosSelecionados) {
         if (respostas == null) return new ArrayList<>();
-        boolean exigeTarifaMinima = exigeTarifaIgualOuMaior(regraSnapshot(simulacao));
+        boolean exigeTarifaMinima = indicesTrechosSimulacao(simulacao).size() == 1
+                && exigeTarifaIgualOuMaior(regraSnapshot(simulacao));
         List<Trecho> resultado = new ArrayList<>();
         Set<String> chaves = new HashSet<>();
         for (PesquisaResponse resposta : respostas) {
             if (resposta == null || resposta.getTrechos1() == null) continue;
             for (Trecho trecho : resposta.getTrechos1()) {
-                if (!opcaoCompativel(trecho, simulacao, criterios)) continue;
+                if (!opcaoCompativel(trecho, simulacao, criterios)
+                        || !cronologiaOpcaoCompativel(simulacao, trecho)) continue;
                 if (exigeTarifaMinima) {
                     filtrarFamiliasPorTarifaMinima(trecho, reserva, passageirosSelecionados);
                 }
@@ -1833,6 +2085,15 @@ public class ChatConfiancaRemarcacaoService {
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
                 "Quando deseja viajar?", mensagem);
         response.setCriterios(montarCriterios(trecho, dataOriginal(trecho), "QUALQUER", false));
+        if (!vazio(simulacao.getCriteriosJson())) {
+            RemarcacaoRequest.Pesquisar criterios = ler(simulacao.getCriteriosJson(), RemarcacaoRequest.Pesquisar.class);
+            if (criterios.getData() != null) {
+                response.setCriterios(montarCriterios(trecho, criterios.getData(), criterios.getPeriodo(),
+                        Boolean.TRUE.equals(criterios.getSomenteDireto())));
+                response.setPreferenciasRestauradas(true);
+            }
+        }
+        ajustarDataMinimaConjunta(response, simulacao);
         // Mantem no card os dados reais de cada voo do trecho original, inclusive conexoes.
         response.setTrechos(List.of(montarTrecho(trecho, simulacao.getTrechoIndice(), true)));
         return response;
@@ -1968,6 +2229,10 @@ public class ChatConfiancaRemarcacaoService {
                                                       String mensagem) {
         RemarcacaoSimulacaoResponse response = new RemarcacaoSimulacaoResponse();
         response.setId(simulacao.getId());
+        response.setVersao(simulacao.getVersao());
+        String labelVoltar = labelVoltar(simulacao);
+        response.setPermiteVoltar(labelVoltar != null);
+        response.setLabelVoltar(labelVoltar);
         response.setConversaId(simulacao.getConversaId());
         response.setStatus(simulacao.getStatus());
         response.setLocalizador(simulacao.getLocalizador());
@@ -1978,9 +2243,24 @@ public class ChatConfiancaRemarcacaoService {
         response.setExpiraEm(simulacao.getExpiraEm());
         List<Integer> indices = indicesTrechosSimulacao(simulacao);
         response.setRemarcacaoConjunta(indices.size() > 1);
+        response.setRemarcacaoConjuntaObrigatoria(indices.size() > 1
+                && regrasSnapshot(simulacao).stream().anyMatch(item -> item.getRegra() != null
+                        && Boolean.TRUE.equals(item.getRegra().getExigeRemarcacaoConjunta())));
         response.setQuantidadeTrechos(indices.size());
         int ordemAtual = indices.indexOf(simulacao.getTrechoIndice());
         response.setOrdemTrechoAtual(ordemAtual < 0 ? null : ordemAtual + 1);
+        SelecaoPersistida selecao = selecaoPersistida(simulacao);
+        for (Integer indice : indices) {
+            selecao.getTrechos().stream().filter(item -> indice.equals(item.getTrechoIndice()))
+                    .findFirst().ifPresent(item -> {
+                        RemarcacaoSimulacaoResponse.TrechoSelecionado selecionado =
+                                new RemarcacaoSimulacaoResponse.TrechoSelecionado();
+                        selecionado.setTrechoIndice(indice);
+                        selecionado.setVoo(item.getOpcaoView());
+                        selecionado.setFamilia(item.getFamiliaView());
+                        response.getTrechosSelecionados().add(selecionado);
+                    });
+        }
         return response;
     }
 
@@ -2402,8 +2682,29 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     private RegraAereaAlteracaoConsultaResponse regraSnapshot(SimulacaoRemarcacao simulacao) {
-        if (simulacao == null || vazio(simulacao.getRegraSnapshotJson())) return null;
-        return ler(simulacao.getRegraSnapshotJson(), RegraAereaAlteracaoConsultaResponse.class);
+        List<RegraAereaAlteracaoConsultaResponse> regras = regrasSnapshot(simulacao);
+        return regras.isEmpty() ? null : regras.get(0);
+    }
+
+    private List<RegraAereaAlteracaoConsultaResponse> regrasSnapshot(SimulacaoRemarcacao simulacao) {
+        if (simulacao == null || vazio(simulacao.getRegraSnapshotJson())) return List.of();
+        try {
+            JsonNode root = mapper.readTree(simulacao.getRegraSnapshotJson());
+            if (root.isArray()) {
+                return mapper.convertValue(root,
+                        new TypeReference<List<RegraAereaAlteracaoConsultaResponse>>() { });
+            }
+            return List.of(mapper.treeToValue(root, RegraAereaAlteracaoConsultaResponse.class));
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
+            throw regra(500, "As regras salvas na simulacao estao invalidas.");
+        }
+    }
+
+    private boolean regrasCompativeis(RegraAereaAlteracaoConsultaResponse primeira,
+                                      RegraAereaAlteracaoConsultaResponse segunda) {
+        return regraPermite(primeira) && regraPermite(segunda)
+                && primeira.getRegra().getId() != null
+                && primeira.getRegra().getId().equals(segunda.getRegra().getId());
     }
 
     private boolean exigeTarifaIgualOuMaior(RegraAereaAlteracaoConsultaResponse response) {
@@ -2466,6 +2767,125 @@ public class ChatConfiancaRemarcacaoService {
         return resultado.isEmpty() ? List.of(indiceSelecionado) : resultado;
     }
 
+    private void preencherSelecaoIdaVolta(RemarcacaoSimulacaoResponse response,
+                                          Reserva reserva, List<Integer> elegiveis) {
+        List<Integer> indices = indicesIdaVolta(reserva, elegiveis);
+        response.setIndicesTrechosIdaVolta(indices);
+        response.setPermiteSelecionarIdaVolta(indices.size() == 2);
+    }
+
+    /** Apenas o par inverso, elegivel e com cronologia conhecida pode ser escolhido junto. */
+    private List<Integer> indicesIdaVolta(Reserva reserva, List<Integer> elegiveis) {
+        if (reserva == null || reserva.getViagens() == null || reserva.getViagens().size() != 2
+                || elegiveis == null || elegiveis.size() != 2) return List.of();
+        TrechoReserva primeiro = trecho(reserva, elegiveis.get(0));
+        TrechoReserva segundo = trecho(reserva, elegiveis.get(1));
+        if (!companhiasEquivalentes(companhiaTrecho(primeiro), companhiaTrecho(segundo))
+                || vazio(iata(primeiro.getOrigem())) || vazio(iata(primeiro.getDestino()))
+                || !iata(primeiro.getOrigem()).equals(iata(segundo.getDestino()))
+                || !iata(primeiro.getDestino()).equals(iata(segundo.getOrigem()))) return List.of();
+        LocalDateTime primeiraPartida = limiteTrecho(primeiro.getVoos(), true);
+        LocalDateTime primeiraChegada = limiteTrecho(primeiro.getVoos(), false);
+        LocalDateTime segundaPartida = limiteTrecho(segundo.getVoos(), true);
+        LocalDateTime segundaChegada = limiteTrecho(segundo.getVoos(), false);
+        if (primeiraPartida == null || primeiraChegada == null || segundaPartida == null
+                || segundaChegada == null) return List.of();
+        // Cada comparacao ocorre no mesmo aeroporto; horarios de cidades distintas
+        // podem usar fusos diferentes e nao determinam a duracao do voo.
+        boolean primeiroAntes = segundaPartida.isAfter(primeiraChegada);
+        boolean segundoAntes = primeiraPartida.isAfter(segundaChegada);
+        if (primeiroAntes && !segundoAntes) return List.copyOf(elegiveis);
+        if (segundoAntes && !primeiroAntes) return List.of(elegiveis.get(1), elegiveis.get(0));
+        return List.of();
+    }
+
+    private LocalDateTime limiteTrecho(List<Voo> voos, boolean partida) {
+        if (voos == null || voos.isEmpty()) return null;
+        Voo voo = voos.get(partida ? 0 : voos.size() - 1);
+        if (voo == null) return null;
+        Date data = partida ? voo.getDataPartida() : voo.getDataChegada();
+        String hora = partida ? voo.getHoraPartida() : voo.getHoraChegada();
+        if (data == null || vazio(hora)) return null;
+        try {
+            String digitos = hora.trim().replace(":", "");
+            if (!digitos.matches("\\d{4}(\\d{2})?")) return null;
+            LocalTime horario = LocalTime.of(Integer.parseInt(digitos.substring(0, 2)),
+                    Integer.parseInt(digitos.substring(2, 4)),
+                    digitos.length() == 6 ? Integer.parseInt(digitos.substring(4, 6)) : 0);
+            return Instant.ofEpochMilli(data.getTime()).atZone(ZoneId.systemDefault())
+                    .toLocalDate().atTime(horario);
+        } catch (java.time.DateTimeException | NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private LocalDate dataMinimaTrechoAtual(SimulacaoRemarcacao simulacao) {
+        LocalDate minima = LocalDate.now();
+        List<Integer> indices = indicesTrechosSimulacao(simulacao);
+        int ordem = indices.indexOf(simulacao.getTrechoIndice());
+        if (ordem <= 0) return minima;
+        for (SelecaoTrechoPersistida item : selecaoPersistida(simulacao).getTrechos()) {
+            if (indices.get(ordem - 1).equals(item.getTrechoIndice()) && item.getOpcao() != null
+                    && !vazio(simulacao.getOrigem())
+                    && simulacao.getOrigem().equals(iata(item.getOpcao().getDestino()))) {
+                LocalDateTime chegada = limiteTrecho(item.getOpcao().getVoos(), false);
+                if (chegada != null && chegada.toLocalDate().isAfter(minima)) minima = chegada.toLocalDate();
+            }
+        }
+        return minima;
+    }
+
+    private void ajustarDataMinimaConjunta(RemarcacaoSimulacaoResponse response,
+                                           SimulacaoRemarcacao simulacao) {
+        if (response.getCriterios() == null) return;
+        LocalDate minima = dataMinimaTrechoAtual(simulacao);
+        response.getCriterios().setDataMinima(minima);
+        response.getCriterios().setDataMaxima(LocalDate.now().plusDays(330));
+        if (response.getCriterios().getDataSugerida() == null
+                || response.getCriterios().getDataSugerida().isBefore(minima)) {
+            response.getCriterios().setDataSugerida(minima);
+        }
+    }
+
+    private boolean cronologiaOpcaoCompativel(SimulacaoRemarcacao simulacao, Trecho opcao) {
+        try {
+            validarCronologiaSelecao(simulacao, selecaoPersistida(simulacao), opcao);
+            return true;
+        } catch (RegraDeNegocioException ex) {
+            return false;
+        }
+    }
+
+    private void validarCronologiaSelecao(SimulacaoRemarcacao simulacao,
+                                          SelecaoPersistida selecao, Trecho opcao) {
+        List<Integer> indices = indicesTrechosSimulacao(simulacao);
+        if (indices.size() < 2) return;
+        LocalDateTime partida = opcao == null ? null : limiteTrecho(opcao.getVoos(), true);
+        LocalDateTime chegada = opcao == null ? null : limiteTrecho(opcao.getVoos(), false);
+        if (partida == null || chegada == null) {
+            throw regra(409, "O voo nao retornou datas e horarios validos para a remarcacao de ida e volta.");
+        }
+        int ordem = indices.indexOf(simulacao.getTrechoIndice());
+        if (ordem < 0) throw regra(409, "O trecho ativo nao pertence a remarcacao atual.");
+        for (SelecaoTrechoPersistida item : selecao.getTrechos()) {
+            int ordemSalva = indices.indexOf(item.getTrechoIndice());
+            if (ordemSalva < 0 || ordemSalva == ordem) continue;
+            if (item.getOpcao() != null) {
+                String anteriorDestino = ordemSalva < ordem
+                        ? iata(item.getOpcao().getDestino()) : iata(opcao.getDestino());
+                String proximaOrigem = ordemSalva < ordem
+                        ? iata(opcao.getOrigem()) : iata(item.getOpcao().getOrigem());
+                if (vazio(anteriorDestino) || !anteriorDestino.equals(proximaOrigem)) continue;
+            }
+            LocalDateTime limite = item.getOpcao() == null ? null
+                    : limiteTrecho(item.getOpcao().getVoos(), ordemSalva > ordem);
+            if (limite == null || (ordemSalva < ordem && !partida.isAfter(limite))
+                    || (ordemSalva > ordem && !limite.isAfter(chegada))) {
+                throw regra(409, "A volta deve partir depois da chegada do voo de ida selecionado.");
+            }
+        }
+    }
+
     private List<Integer> indicesTrechosSimulacao(SimulacaoRemarcacao simulacao) {
         if (simulacao == null) {
             return new ArrayList<>();
@@ -2495,7 +2915,7 @@ public class ChatConfiancaRemarcacaoService {
         return selecao;
     }
 
-    private void adicionarSelecaoTrecho(
+    private SelecaoTrechoPersistida adicionarSelecaoTrecho(
             SelecaoPersistida selecao,
             Integer trechoIndice,
             Trecho opcao,
@@ -2518,6 +2938,7 @@ public class ChatConfiancaRemarcacaoService {
             selecao.setOpcao(opcaoView);
             selecao.setFamilia(familiaView);
         }
+        return item;
     }
 
     private Integer proximoTrechoPendente(
@@ -3381,6 +3802,8 @@ public class ChatConfiancaRemarcacaoService {
         private FamiliaPreco familia;
         private RemarcacaoSimulacaoResponse.OpcaoVoo opcaoView;
         private RemarcacaoSimulacaoResponse.Familia familiaView;
+        private RemarcacaoRequest.Pesquisar criteriosPesquisa;
+        private List<Trecho> resultadosPesquisa;
     }
 
     @Data
