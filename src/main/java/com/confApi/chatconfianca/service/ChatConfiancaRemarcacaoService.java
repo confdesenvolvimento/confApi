@@ -155,6 +155,14 @@ public class ChatConfiancaRemarcacaoService {
     @Value("${chat-confianca.remarcacao.ratear-valores-originais-por-trecho:false}")
     private boolean ratearValoresOriginaisPorTrecho;
 
+    /**
+     * A validade e persistida como LocalDateTime no Manager. Por isso, o
+     * calculo deve usar o mesmo fuso do ambiente que persiste a simulacao,
+     * sem depender do fuso da maquina onde a ConfAPI esta executando.
+     */
+    @Value("${chat-confianca.remarcacao.time-zone:America/Sao_Paulo}")
+    private String zonaHorariaRemarcacao;
+
     public ChatConfiancaRemarcacaoService(ChatConfiancaManagerClient manager,
                                           ChatConfiancaService chatService,
                                           AereoClient aereoClient,
@@ -224,7 +232,7 @@ public class ChatConfiancaRemarcacaoService {
         simulacao.setCodgUnidade(codgUnidade);
         simulacao.setCompanhiaIata(reservaSelecionada.getCompanhiaIata());
         simulacao.setStatus(VALIDANDO);
-        simulacao.setExpiraEm(LocalDateTime.now().plusMinutes(30));
+        simulacao.setExpiraEm(LocalDateTime.now(ZoneId.of(zonaHorariaRemarcacao)).plusMinutes(30));
         simulacao = salvar(simulacao);
         registrarEvento(simulacao, "REMARCACAO_SIMULACAO_INICIADA",
                 "Simulacao de alteracao iniciada para a reserva " + simulacao.getLocalizador() + ".", null);

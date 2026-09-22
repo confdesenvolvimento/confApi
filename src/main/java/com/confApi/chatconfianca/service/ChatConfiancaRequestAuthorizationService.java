@@ -17,12 +17,15 @@ import org.springframework.stereotype.Service;
 public class ChatConfiancaRequestAuthorizationService {
     private final ChatConfiancaConfigService configService;
     private final String loginClientePayara;
+    private final String loginClienteAppMobile;
 
     public ChatConfiancaRequestAuthorizationService(
             ChatConfiancaConfigService configService,
-            @Value("${chat-confianca.cliente-payara.login:api.confplus}") String loginClientePayara) {
+            @Value("${chat-confianca.cliente-payara.login:api.confplus}") String loginClientePayara,
+            @Value("${chat-confianca.cliente-app-mobile.login:api.mobile}") String loginClienteAppMobile) {
         this.configService = configService;
         this.loginClientePayara = loginClientePayara;
+        this.loginClienteAppMobile = loginClienteAppMobile;
     }
 
     public void validarUsuario(Authentication authentication, Integer codgUsuario) {
@@ -30,7 +33,7 @@ public class ChatConfiancaRequestAuthorizationService {
         if (codgUsuario == null) {
             throw new RegraDeNegocioException(400, "Informe o usuario.");
         }
-        if (ehClientePayara(authentication)) {
+        if (ehClienteIntegracao(authentication)) {
             return;
         }
 
@@ -49,7 +52,7 @@ public class ChatConfiancaRequestAuthorizationService {
         if (codgAgencia == null) {
             throw new RegraDeNegocioException(400, "Informe a agencia.");
         }
-        if (ehClientePayara(authentication) || ehAdministradorApi(authentication)) {
+        if (ehClienteIntegracao(authentication) || ehAdministradorApi(authentication)) {
             return;
         }
 
@@ -71,6 +74,13 @@ public class ChatConfiancaRequestAuthorizationService {
         }
     }
 
+    public void validarClienteIntegracao(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()
+                || isBlank(authentication.getName()) || !ehClienteIntegracao(authentication)) {
+            throw acessoNegado("Cliente nao autorizado para o fluxo de remarcacao do Chat Confianca.");
+        }
+    }
+
     private void validarAutenticacao(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()
                 || isBlank(authentication.getName())) {
@@ -81,6 +91,15 @@ public class ChatConfiancaRequestAuthorizationService {
     private boolean ehClientePayara(Authentication authentication) {
         return !isBlank(loginClientePayara)
                 && loginClientePayara.trim().equalsIgnoreCase(authentication.getName().trim());
+    }
+
+    private boolean ehClienteAppMobile(Authentication authentication) {
+        return !isBlank(loginClienteAppMobile)
+                && loginClienteAppMobile.trim().equalsIgnoreCase(authentication.getName().trim());
+    }
+
+    private boolean ehClienteIntegracao(Authentication authentication) {
+        return ehClientePayara(authentication) || ehClienteAppMobile(authentication);
     }
 
     private boolean ehAdministradorApi(Authentication authentication) {

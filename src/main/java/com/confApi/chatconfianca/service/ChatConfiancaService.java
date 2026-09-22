@@ -150,7 +150,7 @@ public class ChatConfiancaService {
         if (usuario.getCodgAgencia() != null) {
             if (codgAgenciaSessao != null
                     && !Objects.equals(usuario.getCodgAgencia(), codgAgenciaSessao)) {
-              //  throw regra(403, "A agencia informada nao pertence ao usuario.");
+                throw regra(403, "A agencia informada nao pertence ao usuario.");
             }
             agencia = buscarOuSincronizarAgencia(usuario.getCodgAgencia());
             validarAgenciaAtiva(agencia, usuario.getCodgAgencia(), 403);
@@ -3139,6 +3139,9 @@ public class ChatConfiancaService {
         if (usuario == null || agencia == null) {
             throw regra(403, "Nao foi possivel validar a agencia da sessao.");
         }
+        if (ehUsuarioGeralSolicitante(usuario)) {
+            return;
+        }
         if (usuario.getCodgUnidade() != null
                 && Objects.equals(usuario.getCodgUnidade(), agencia.getCodgUnidade())) {
             return;
@@ -3151,7 +3154,23 @@ public class ChatConfiancaService {
                 usuario.getCodgUsuario(), agencia.getCodgUnidade())) {
             return;
         }
-       // throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
+        throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
+    }
+
+    /**
+     * Replica o contexto temporario do FrontPayara: usuarios gerais escolhem
+     * unidade e agencia na sessao sem alterar o vinculo persistente do usuario.
+     * Esta permissao vale apenas para o solicitante e nao concede perfil de
+     * atendente, gestor ou administrador do Chat Confianca.
+     */
+    private boolean ehUsuarioGeralSolicitante(RefUsuario usuario) {
+        if (usuario.getCodgUnidade() != null || usuario.getCodgAgencia() != null
+                || isBlank(usuario.getTipoUsuario())) {
+            return false;
+        }
+        String tipoUsuario = usuario.getTipoUsuario().trim();
+        return "Administrativo".equalsIgnoreCase(tipoUsuario)
+                || "Operacional".equalsIgnoreCase(tipoUsuario);
     }
 
     private void validarTextoObrigatorio(String valor, String mensagem) {

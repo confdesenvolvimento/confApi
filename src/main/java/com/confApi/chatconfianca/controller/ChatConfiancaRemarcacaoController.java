@@ -4,8 +4,7 @@ import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
 import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
 import com.confApi.chatconfianca.service.ChatConfiancaRemarcacaoService;
-import com.confApi.exception.RegraDeNegocioException;
-import org.springframework.beans.factory.annotation.Value;
+import com.confApi.chatconfianca.service.ChatConfiancaRequestAuthorizationService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,13 +21,13 @@ import java.time.LocalDate;
 @RequestMapping("/v1/chat-confianca/remarcacoes")
 public class ChatConfiancaRemarcacaoController {
     private final ChatConfiancaRemarcacaoService service;
-    private final String loginClientePayara;
+    private final ChatConfiancaRequestAuthorizationService authorizationService;
 
-    public ChatConfiancaRemarcacaoController(ChatConfiancaRemarcacaoService service,
-                                             @Value("${chat-confianca.cliente-payara.login:api.confplus}")
-                                             String loginClientePayara) {
+    public ChatConfiancaRemarcacaoController(
+            ChatConfiancaRemarcacaoService service,
+            ChatConfiancaRequestAuthorizationService authorizationService) {
         this.service = service;
-        this.loginClientePayara = loginClientePayara;
+        this.authorizationService = authorizationService;
     }
 
     @GetMapping("/reservas-emitidas")
@@ -43,7 +42,7 @@ public class ChatConfiancaRemarcacaoController {
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "10") Integer size,
             Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.listarReservasEmitidas(
                 conversaId,
                 codgUsuario,
@@ -57,7 +56,7 @@ public class ChatConfiancaRemarcacaoController {
     @PostMapping("/iniciar")
     public RemarcacaoSimulacaoResponse iniciar(@RequestBody RemarcacaoRequest.Iniciar request,
                                                Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.iniciar(request);
     }
 
@@ -65,7 +64,7 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse selecionarTrecho(@PathVariable Long id,
                                                         @RequestBody RemarcacaoRequest.SelecionarTrecho request,
                                                         Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.selecionarTrecho(id, request);
     }
 
@@ -74,7 +73,7 @@ public class ChatConfiancaRemarcacaoController {
             @PathVariable Long id,
             @RequestBody RemarcacaoRequest.SelecionarPassageiros request,
             Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.selecionarPassageiros(id, request);
     }
 
@@ -82,7 +81,7 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse pesquisar(@PathVariable Long id,
                                                  @RequestBody RemarcacaoRequest.Pesquisar request,
                                                  Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.pesquisar(id, request);
     }
 
@@ -90,7 +89,7 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse simular(@PathVariable Long id,
                                                @RequestBody RemarcacaoRequest.Simular request,
                                                Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.simular(id, request);
     }
 
@@ -99,7 +98,7 @@ public class ChatConfiancaRemarcacaoController {
             @PathVariable Long id,
             @RequestBody RemarcacaoRequest.SelecionarFormaPagamento request,
             Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.selecionarFormaPagamento(id, request);
     }
 
@@ -107,7 +106,7 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse encaminhar(@PathVariable Long id,
                                                   @RequestBody RemarcacaoRequest.Encaminhar request,
                                                   Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.encaminhar(id, request);
     }
 
@@ -115,7 +114,7 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse voltar(@PathVariable Long id,
                                               @RequestBody RemarcacaoRequest.Voltar request,
                                               Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.voltar(id, request);
     }
 
@@ -123,21 +122,7 @@ public class ChatConfiancaRemarcacaoController {
     public RemarcacaoSimulacaoResponse consultar(@PathVariable Long id,
                                                  @RequestParam Integer codgUsuario,
                                                  Authentication authentication) {
-        validarClientePayara(authentication);
+        authorizationService.validarClienteIntegracao(authentication);
         return service.consultar(id, codgUsuario);
-    }
-
-    private void validarClientePayara(Authentication authentication) {
-        if (authentication == null || !authentication.isAuthenticated()
-                || authentication.getName() == null || authentication.getName().isBlank()
-                || loginClientePayara == null || loginClientePayara.isBlank()
-                || !loginClientePayara.trim().equalsIgnoreCase(authentication.getName().trim())) {
-            throw acessoNegado();
-        }
-    }
-
-    private RegraDeNegocioException acessoNegado() {
-        return new RegraDeNegocioException(403,
-                "Cliente nao autorizado para o fluxo de remarcacao do Chat Confianca.");
     }
 }

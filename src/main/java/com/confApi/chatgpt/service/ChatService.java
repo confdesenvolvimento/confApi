@@ -43,7 +43,6 @@ import com.confApi.db.confManager.faturas.dto.FaturaSicaRS;
 import com.confApi.db.confManager.faturas.dto.model.FaturaResponseIA;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
 import com.confApi.db.confManager.regraAereaReembolso.dto.RegraAereaReembolsoConsultaResponse;
-import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.hub.limites.LimitesService;
 import com.confApi.hub.limites.dto.Disponibilidade;
 import com.confApi.hub.limites.dto.LimiteCreditoRQ;
@@ -77,14 +76,14 @@ public class ChatService {
     private static final int STATUS_RESERVA_WOOBA_EMITIDA = 2;
     private static final String ORIENTACAO_DATAS_RESERVA =
             "As datas de criacao e emissao da reserva e dos bilhetes ja estao no formato dd/MM/yyyy HH:mm, "
-            + "no fuso America/Sao_Paulo, o mesmo da tela da reserva. Preserve o dia, mes, ano e horario informados; "
-            + "nao recalcule o fuso nem substitua essas datas por hoje ou pela data da conversa. "
-            + "O prazo de emissao tambem ja esta formatado no horario de Brasilia; preserve a data e a hora, "
-            + "sem aplicar outra conversao. Quando houver somente a data do prazo, nao invente um horario. "
-            + "As datas de partida e chegada dos voos ja estao em dd/MM/yyyy, iguais as datas da tela da reserva. "
-            + "Apresente cada data com seu respectivo horario dos campos horaPartida e horaChegada, sem recalcular esses horarios. "
-            + "Nao deduza a chegada pela duracao do voo nem copie a data de partida para a chegada. "
-            + "Quando uma data ou horario estiver ausente, informe nao informado, sem deduzir de outro campo. ";
+                    + "no fuso America/Sao_Paulo, o mesmo da tela da reserva. Preserve o dia, mes, ano e horario informados; "
+                    + "nao recalcule o fuso nem substitua essas datas por hoje ou pela data da conversa. "
+                    + "O prazo de emissao tambem ja esta formatado no horario de Brasilia; preserve a data e a hora, "
+                    + "sem aplicar outra conversao. Quando houver somente a data do prazo, nao invente um horario. "
+                    + "As datas de partida e chegada dos voos ja estao em dd/MM/yyyy, iguais as datas da tela da reserva. "
+                    + "Apresente cada data com seu respectivo horario dos campos horaPartida e horaChegada, sem recalcular esses horarios. "
+                    + "Nao deduza a chegada pela duracao do voo nem copie a data de partida para a chegada. "
+                    + "Quando uma data ou horario estiver ausente, informe nao informado, sem deduzir de outro campo. ";
     private static final int LIMITE_PASSAGEIROS_RESUMO = 5;
     private static final int LIMITE_TRECHOS_RESUMO = 4;
     private static final int LIMITE_VOOS_RESUMO = 8;
@@ -104,7 +103,6 @@ public class ChatService {
     private final ChatConfiancaReservaAereaService chatConfiancaReservaAereaService;
     private final AereoClient aereoClient;
     private final AereoRegrasReservaService regrasReservaService;
-    private final ReservaAereoApi reservaAereoApi;
 
 
     private final ObjectMapper mapper = new ObjectMapper()
@@ -128,7 +126,7 @@ public class ChatService {
     }
 
     private ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords, List<ChatMessageDTO> history,
-            boolean somenteTextoTi) throws IOException {
+                                 boolean somenteTextoTi) throws IOException {
         String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
         ObjectMapper om = new ObjectMapper().findAndRegisterModules();
 
@@ -190,9 +188,9 @@ public class ChatService {
                 if (forcarConsultaMelhoresTarifas) {
                     payload.put("tool_choice", collectedToolCalls.isEmpty()
                             ? Map.of(
-                                    "type", "function",
-                                    "function", Map.of(
-                                            "name", ferramentaMelhoresTarifas))
+                            "type", "function",
+                            "function", Map.of(
+                                    "name", ferramentaMelhoresTarifas))
                             : "none");
                 }
             }
@@ -441,14 +439,14 @@ public class ChatService {
             List<AlertaTarifaDTO> alertaTarifaDTOList = alertaTarifaService.listarPorUsuario(req.codgUsuario().intValue());
             AlertaTarifaIAResponse alertaTarifaIAResponse = new AlertaTarifaIAResponse();
             alertaTarifaIAResponse.getTarifas().addAll(alertaTarifaDTOList);
-           // System.out.println("AlertaTarifaDTO: " + alertaTarifaIAResponse.toString());
+            // System.out.println("AlertaTarifaDTO: " + alertaTarifaIAResponse.toString());
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + alertaTarifaIAResponse.toString()));
         }
 
         if (keyword.equals("desconhecido") && !keywords.contains(keyword)) {
             List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
             for (ChatMemoria chtMemoria : chatMemorias) {
-             //   System.out.println("Memoria: " + chtMemoria.getText());
+                //   System.out.println("Memoria: " + chtMemoria.getText());
                 messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
             }
         }
@@ -464,7 +462,7 @@ public class ChatService {
 
         if (keyword.equals("limites") && !keywords.contains(keyword) && !consultaFinanceiraBloqueada) {
             /*Consultar limites de credito*/
-           // System.out.println("Limite Erp: " + req.idErp());
+            // System.out.println("Limite Erp: " + req.idErp());
             Disponibilidade limitesDisponiveis = limitesService.consultaLimiteApi(new LimiteCreditoRQ(req.idErp()));
             messages.add(new ChatMessageDTO("system", "Dado do sistema: " + limitesDisponiveis.gerarResumoLimites()));
 
@@ -501,7 +499,7 @@ public class ChatService {
             if (partes.length >= 2 && !partes[1].trim().isEmpty()) {
                 messages.add(listarFamilias(req, partes[1].trim()));
             } else {
-               // System.out.println("Keyword em formato inválido para familias: " + keyword);
+                // System.out.println("Keyword em formato inválido para familias: " + keyword);
             }
         }
 
@@ -1007,8 +1005,8 @@ public class ChatService {
         request.setLocalizador(localizador);
 
         com.confApi.aereo.dto.Agencia agencia = new com.confApi.aereo.dto.Agencia();
-       agencia.setCodgAgencia(req.codgAgencia() == null ? null : String.valueOf(req.codgAgencia()));
-      //  agencia.setCodgAgencia(req.idErp() == null ? null : String.valueOf(req.idErp()));
+        agencia.setCodgAgencia(req.codgAgencia() == null ? null : String.valueOf(req.codgAgencia()));
+        //  agencia.setCodgAgencia(req.idErp() == null ? null : String.valueOf(req.idErp()));
         agencia.setCodgSistemaBackoffice(req.idErp());
         agencia.setNome(req.codgAgencia() == null ? null : String.valueOf(req.codgAgencia()));
         agencia.setUnidade(req.unidade());
@@ -1897,37 +1895,11 @@ public class ChatService {
             if (req.codgAgencia() == null) {
                 return mensagemErroReservasRecentes(
                         "A agencia da sessao nao foi identificada para consultar as reservas.");
-
             }
-            if (req.codgUsuario() == null) {
-                return new ChatMessageDTO("system", "Dado do sistema: {\"erro\":\"Usuario nao informado para consultar reservas aereas.\"}");
-            }
-            Integer codgUsuario = req.codgUsuario().intValue();
-            Integer codgAgencia = req.codgAgencia() == null ? null : req.codgAgencia().intValue();
-            String localizador =null;// extrairLocalizador(req.input());
-            List<ReservaAereo> reservas = reservaAereoApi.consultarReservasUsuario(codgUsuario, codgAgencia, localizador);
-
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("tipo", "ultimas_reservas_aereas_usuario");
-            response.put("fonte", "/reservaAereo/consultarReservas/localizador");
-            response.put("codgUsuario", codgUsuario);
-            putIfNotNull(response, "codgAgencia", codgAgencia);
-            putIfNotBlank(response, "localizadorConsultado", localizador);
-            response.put("filtroMinhasReservas", true);
-            response.put("filtroMinhaAgencia", true);
-            response.put("quantidadeRetornada", reservas == null ? 0 : reservas.size());
-            response.put("limiteContexto", LIMITE_ULTIMAS_RESERVAS_AEREAS);
-            List<Map<String, Object>> reservasResumo = resumirReservasAereasUsuario(reservas);
-            response.put("reservas", reservasResumo);
-            String localizadorContexto = extrairPrimeiroLocalizadorResumo(reservasResumo);
-            if (localizadorContexto != null && !localizadorContexto.isBlank()) {
-                response.put("localizadorContexto", localizadorContexto);
-                response.put("acoesDisponiveis", montarAcoesDisponiveisLocalizador(localizadorContexto));
-            }
-            Integer codgAgencia1 = req.codgAgencia().intValue();
+            Integer codgAgencia = req.codgAgencia().intValue();
             ReservasAereasRecentesResponse recentes =
                     chatConfiancaReservaAereaService.listarRecentes(
-                            codgAgencia1, LIMITE_ULTIMAS_RESERVAS_AEREAS);
+                            codgAgencia, LIMITE_ULTIMAS_RESERVAS_AEREAS);
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("schema", ChatConfiancaReservaAereaService.SCHEMA_RESERVAS_RECENTES);
             payload.put("reservasRecentes", recentes);
@@ -2256,10 +2228,10 @@ public class ChatService {
             // 4) Serializa o OBJETO (não toString)
             resultadoJson = mapper.writeValueAsString(fResponse);
 
-           // System.out.println("[buscarCheckinsProximos] itens convertidos: " + fResponse.getReservaCheckInIA().size());
+            // System.out.println("[buscarCheckinsProximos] itens convertidos: " + fResponse.getReservaCheckInIA().size());
 
         } catch (Exception e) {
-         //   System.out.println("[buscarCheckinsProximos] Erro ao montar resposta" + e);
+            //   System.out.println("[buscarCheckinsProximos] Erro ao montar resposta" + e);
             // fallback mínimo para não quebrar o fluxo
             resultadoJson = "{\"reservaCheckInIA\":[]}";
         }
@@ -3150,7 +3122,7 @@ Formato esperado:
                 || ultimaRespostaAssistente.contains("data mais barata de ")
                 || ultimaRespostaAssistente.contains("datas mais baratas de ")
                 || ultimaRespostaAssistente.contains(
-                        "comparacao das menores tarifas por cabine de ")
+                "comparacao das menores tarifas por cabine de ")
                 || ultimaRespostaAssistente.contains("melhor dia de cada mes de ")
                 || ultimaRespostaAssistente.contains("nao encontrei tarifas de ");
     }
