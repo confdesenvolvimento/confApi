@@ -73,6 +73,25 @@ class ReservaAereoApiTest {
         server.verify();
     }
 
+    @Test
+    void divisaoDeveUsarEndpointIsoladoEExigirConfirmacao() {
+        RestTemplate rest = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.createServer(rest);
+        ReservaAereoApi api = authenticatedApi(rest);
+        var destination = new com.confApi.db.confManager.reservaAereo.ReservaAereo();
+        destination.setLocalizador("GKPXNT");
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
+                        "http://localhost/manager/reservaAereo/wooba/divisoes"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath("$.codgReservaOrigem").value(256643))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath("$.destino.localizador").value("GKPXNT"))
+                .andRespond(withSuccess("999", MediaType.APPLICATION_JSON));
+        server.expect(method(HttpMethod.POST)).andRespond(withNoContent());
+        org.junit.jupiter.api.Assertions.assertEquals(999, api.reconciliarDivisaoWooba(256643, destination));
+        assertThrows(IllegalStateException.class, () -> api.reconciliarDivisaoWooba(256643, destination));
+        server.verify();
+    }
+
     private ReservaAereoApi authenticatedApi(RestTemplate rest) {
         ReservaAereoApi api = new ReservaAereoApi(rest);
         ConfAppService auth = mock(ConfAppService.class);

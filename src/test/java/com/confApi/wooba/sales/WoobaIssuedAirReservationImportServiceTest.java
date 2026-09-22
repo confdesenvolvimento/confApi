@@ -104,12 +104,13 @@ class WoobaIssuedAirReservationImportServiceTest {
     }
 
     @Test
-    void deveManterPendenteSeBilheteAindaPertencerAoLocalizadorAnterior() throws Exception {
+    void deveManterPendenteSeNaoConseguirConferirDetailsDaDivisao() throws Exception {
         WoobaSalesDetailsResponse original = details(100, "AATQKC", "VALERIA", "1272312361467");
         database.put("AATQKC", mapper.toReservaAereo(original, null));
         when(client.details("TKT-ATPXGW")).thenReturn(details(100, "ATPXGW", "VALERIA", "1272312361467"));
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.processar("TKT-ATPXGW", 100));
-        assertTrue(error.getMessage().contains("ainda vinculado"));
+        assertTrue(error.getMessage().contains("details"));
+        verify(reservas, never()).reconciliarDivisaoWooba(any(), any());
         verifyNoInteractions(resolver, sync);
         assertNull(database.get("ATPXGW"));
     }
@@ -211,6 +212,113 @@ class WoobaIssuedAirReservationImportServiceTest {
         when(client.details("AIR-ATPXGW")).thenReturn(parent);
         assertThrows(IllegalStateException.class, () -> service.processar("AIR-ATPXGW", 1));
         verifyNoInteractions(sync);
+    }
+
+    @Test
+    void deveReconciliarGkpxntPorBilheteSemDuplicarNaReexecucao() throws Exception {
+        prepararDivisaoGkpxnt();
+        service.processar("TKT-GKPXNT", 100);
+        service.processar("TKT-GKPXNT", 100);
+        service.processar("AIR-GKPXNT", 1);
+        verificarDivisaoGkpxnt();
+    }
+
+    @Test
+    void deveReconciliarGkpxntPeloAirSemBilhetesNosPassageiros() throws Exception {
+        prepararDivisaoGkpxnt();
+        service.processar("AIR-GKPXNT", 1);
+        verificarDivisaoGkpxnt();
+    }
+
+    @Test
+    void naoDeveTransferirEnquantoPassageiroAindaConstarNoDetailsOriginal() throws Exception {
+        prepararDivisaoGkpxnt();
+        when(client.details("AIR-AEFIBN")).thenReturn(details(1, "AEFIBN", "DIVIDIDO", null));
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.processar("AIR-GKPXNT", 1));
+        assertTrue(error.getMessage().contains("ainda consta"));
+        verify(reservas, never()).reconciliarDivisaoWooba(any(), any());
+        verifyNoInteractions(sync);
+    }
+
+    @Test
+    void naoDeveTransferirComAgenciaDiferenteNoBilhete() throws Exception {
+        prepararDivisaoGkpxnt();
+        var ticket = client.details("TKT-GKPXNT");
+        ((ObjectNode) ticket.getTransaction().path("Context").path("Agency")).put("Id", 999);
+        assertThrows(IllegalStateException.class, () -> service.processar("AIR-GKPXNT", 1));
+        verify(reservas, never()).reconciliarDivisaoWooba(any(), any());
+    }
+
+    @Test
+    void falhaDaApiDeDivisaoNaoDeveCairNaCriacaoNormal() throws Exception {
+        prepararDivisaoGkpxnt();
+        when(reservas.reconciliarDivisaoWooba(any(), any())).thenThrow(new IllegalStateException("Manager indisponivel"));
+        assertThrows(IllegalStateException.class, () -> service.processar("AIR-GKPXNT", 1));
+        assertNull(database.get("GKPXNT"));
+        assertEquals(2, database.get("AEFIBN").getPassageiros().size());
+        verifyNoInteractions(sync);
+    }
+
+    @Test
+    void deveManterPendenteSeApiDivisaoResponderSemTransferir() throws Exception {
+        prepararDivisaoGkpxnt();
+        when(reservas.reconciliarDivisaoWooba(any(), any())).thenReturn(999);
+        assertThrows(IllegalStateException.class, () -> service.processar("AIR-GKPXNT", 1));
+        verifyNoInteractions(sync);
+    }
+
+    private void prepararDivisaoGkpxnt() throws Exception {
+        var ticket = details(100, "GKPXNT", "DIVIDIDO", "1272312369758");
+        var parent = details(1, "GKPXNT", "DIVIDIDO", null);
+        for (var response : List.of(ticket, parent)) {
+            var product = response.getTransaction().path("ProductDetail");
+            var air = product.path(response == parent ? "AirReservationDetail" : "AirTicketDetail");
+            ((ObjectNode) air.path("Flights").get(0)).put("AirlineLocator", "AEFIBN");
+        }
+        ((ObjectNode) parent.getTransaction()).putArray("Payments");
+        ((ObjectNode) parent.getTransaction()).withArray("Links").addObject().put("TransactionType", 100)
+                .put("TransactionState", 4).put("Ticket", "1272312369758").put("UniqueId", "TKT-GKPXNT");
+        ReservaAereo source = mapper.toReservaAereo(details(1, "AEFIBN", "ORIGINAL", "1272312369757"), null);
+        source.setCodgReservaAereo(256643);
+        source.setPassageiros(new java.util.ArrayList<>(source.getPassageiros()));
+        var moved = mapper.toReservaAereo(ticket, null).getPassageiros().get(0);
+        moved.setCodgPassageiro(42);
+        moved.setIdPassageiroCia("2.1");
+        source.getPassageiros().add(moved);
+        source.setRecebimentos(mapper.toReservaAereo(ticket, null).getRecebimentos());
+        database.put("AEFIBN", source);
+        when(client.details("AIR-AEFIBN")).thenReturn(details(1, "AEFIBN", "ORIGINAL", null));
+        when(client.details("TKT-GKPXNT")).thenReturn(ticket);
+        when(client.details("AIR-GKPXNT")).thenReturn(parent);
+        when(reservas.reconciliarDivisaoWooba(eq(256643), any())).thenAnswer(invocation -> {
+            ReservaAereo destination = invocation.getArgument(1);
+            assertEquals("1272312369758", destination.getPassageiros().get(0).getBilhetes().get(0).getNumrBilhete());
+            assertEquals(1, destination.getRecebimentos().size());
+            moved.setIdPassageiroCia(destination.getPassageiros().get(0).getIdPassageiroCia());
+            destination.setPassageiros(List.of(moved));
+            destination.setCodgReservaAereo(999);
+            source.getPassageiros().remove(moved);
+            source.setRecebimentos(List.of());
+            database.put("GKPXNT", destination);
+            return 999;
+        });
+    }
+
+    @Test
+    void deveConferirOriginalCriadaPorWebhookTktUsandoWoobaAirUniqueId() throws Exception {
+        prepararDivisaoGkpxnt();
+        database.get("AEFIBN").setRegraReserva("WoobaUniqueId=TKT-ANTIGO; WoobaAirUniqueId=AIR-AEFIBN");
+        service.processar("AIR-GKPXNT", 1);
+        verificarDivisaoGkpxnt();
+    }
+
+    private void verificarDivisaoGkpxnt() {
+        verify(reservas, times(1)).reconciliarDivisaoWooba(eq(256643), any());
+        verifyNoInteractions(sync);
+        assertEquals(42, database.get("GKPXNT").getPassageiros().get(0).getCodgPassageiro());
+        assertEquals(1, database.get("GKPXNT").getRecebimentos().size());
+        assertEquals(1, database.get("AEFIBN").getPassageiros().size());
+        assertEquals("1272312369757", database.get("AEFIBN").getPassageiros().get(0).getBilhetes().get(0).getNumrBilhete());
     }
 
     private WoobaSalesDetailsResponse details(int type, String locator, String name, String ticket) throws Exception {

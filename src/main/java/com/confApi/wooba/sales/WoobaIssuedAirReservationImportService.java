@@ -10,6 +10,7 @@ import com.confApi.wooba.sales.dto.WoobaSalesDetailsResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -53,7 +54,7 @@ public class WoobaIssuedAirReservationImportService {
                     || (type == 100 && completa(existing, expected)))) {
                 return;
             }
-            verificarVinculosAnteriores(expected, details.getTransaction().path("Links"));
+            reconciliarDivisao(details, expected);
 
             if (type == 100) {
                 // O details de um bilhete nao representa a lista completa de passageiros.
@@ -92,6 +93,9 @@ public class WoobaIssuedAirReservationImportService {
     }
 
     private boolean elegivel(WoobaSalesDetailsResponse details, int type) {
+        if (details == null || details.getTransaction() == null) {
+            throw new IllegalStateException("Wooba nao retornou details da transacao vinculada.");
+        }
         JsonNode transaction = details.getTransaction();
         return WoobaSalesListTransactions.matches(transaction.path("Header"), type, 4)
                 && !transaction.path("Context").hasNonNull("Customer");
@@ -208,6 +212,14 @@ public class WoobaIssuedAirReservationImportService {
     }
 
     private void verificarVinculosAnteriores(ReservaAereo expected, JsonNode links) {
+        ReservaAereo original = buscarVinculoAnterior(expected, links);
+        if (original != null) {
+            throw new IllegalStateException("Bilhete ainda vinculado a " + original.getLocalizador()
+                    + ". Divisao nao reconciliada para " + expected.getLocalizador());
+        }
+    }
+
+    private ReservaAereo buscarVinculoAnterior(ReservaAereo expected, JsonNode links) {
         Set<String> tickets = numerosBilhetes(expected);
         for (JsonNode link : links) {
             if (link.path("TransactionType").asInt() == 100 && !link.path("Ticket").asText("").isBlank()) {
@@ -215,6 +227,7 @@ public class WoobaIssuedAirReservationImportService {
             }
         }
         Set<String> checked = new HashSet<>();
+        List<ReservaAereo> originals = new ArrayList<>();
         list(expected.getTrechos()).forEach(trecho -> list(trecho.getVoos()).forEach(voo -> {
             String locator = normalize(voo.getLocalizadorCia());
             if (!tickets.isEmpty() && !locator.isBlank() && !locator.equals(normalize(expected.getLocalizador()))
@@ -224,12 +237,106 @@ public class WoobaIssuedAirReservationImportService {
                     Set<String> duplicates = numerosBilhetes(original);
                     duplicates.retainAll(tickets);
                     if (!duplicates.isEmpty()) {
-                        throw new IllegalStateException("Bilhete(s) " + duplicates + " ainda vinculado(s) a " + locator
-                                + ". Conferir transferencia para " + expected.getLocalizador() + " antes de gravar.");
+                        originals.add(original);
                     }
                 }
             }
         }));
+        if (originals.size() > 1) {
+            throw new IllegalStateException("Bilhetes da divisao vinculados a mais de uma reserva original.");
+        }
+        return originals.isEmpty() ? null : originals.get(0);
+    }
+
+    private void reconciliarDivisao(WoobaSalesDetailsResponse details, ReservaAereo expected) {
+        ReservaAereo original = buscarVinculoAnterior(expected, details.getTransaction().path("Links"));
+        if (original == null) return;
+        WoobaSalesDetailsResponse air = details;
+        if (details.getTransaction().path("Header").path("TransactionType").asInt() == 100) {
+            air = null;
+            for (JsonNode link : details.getTransaction().path("Links")) {
+                if (link.path("TransactionType").asInt() == 1) {
+                    if (air != null) throw new IllegalStateException("Bilhete com mais de um vinculo AIR.");
+                    air = client.details(requiredUniqueId(link));
+                }
+            }
+        }
+        if (!elegivel(air, 1)) throw new IllegalStateException("Divisao sem AIR emitida elegivel.");
+        ReservaAereo destination = mapper.toReservaAereo(air, null);
+        validarMesmaReserva(expected, destination);
+        destination.setRecebimentos(new ArrayList<>());
+        for (Passageiro passenger : list(destination.getPassageiros())) passenger.setBilhetes(new ArrayList<>());
+        Set<String> loaded = new HashSet<>();
+        for (JsonNode link : air.getTransaction().path("Links")) {
+            if (!WoobaSalesListTransactions.matches(link, 100, 4) || !loaded.add(requiredUniqueId(link))) continue;
+            WoobaSalesDetailsResponse ticket = client.details(requiredUniqueId(link));
+            if (!elegivel(ticket, 100)) throw new IllegalStateException("Bilhete da divisao nao esta emitido/elegivel.");
+            ReservaAereo ticketReservation = mapper.toReservaAereo(ticket, null);
+            validarMesmaReserva(destination, ticketReservation);
+            validarAgenciaWooba(air, ticket);
+            for (Passageiro ticketPassenger : list(ticketReservation.getPassageiros())) {
+                Passageiro passenger = encontrarPassageiro(destination, ticketPassenger);
+                if (passenger == null) throw new IllegalStateException("Passageiro do TKT nao pertence ao AIR da divisao.");
+                passenger.getBilhetes().addAll(list(ticketPassenger.getBilhetes()));
+            }
+            destination.getRecebimentos().addAll(list(ticketReservation.getRecebimentos()));
+        }
+        if (list(destination.getPassageiros()).isEmpty() || destination.getPassageiros().stream()
+                .anyMatch(p -> list(p.getBilhetes()).isEmpty())) {
+            throw new IllegalStateException("Details da divisao sem bilhetes de todos os passageiros.");
+        }
+        // A referencia do voo e apenas uma pista. A original atual deve confirmar a saida do passageiro.
+        String originalId = regra(original.getRegraReserva(), "WoobaUniqueId");
+        if (!originalId.startsWith("AIR-")) originalId = regra(original.getRegraReserva(), "WoobaAirUniqueId");
+        if (!originalId.startsWith("AIR-")) throw new IllegalStateException("Original sem referencia AIR para conferir divisao.");
+        WoobaSalesDetailsResponse originalDetails = client.details(originalId);
+        if (originalDetails == null || originalDetails.getTransaction() == null
+                || originalDetails.getTransaction().path("Header").path("TransactionType").asInt() != 1
+                || originalDetails.getTransaction().path("Context").hasNonNull("Customer")) {
+            throw new IllegalStateException("Details da original indisponivel ou nao elegivel para divisao.");
+        }
+        ReservaAereo originalNow = mapper.toReservaAereo(originalDetails, null);
+        if (list(originalNow.getPassageiros()).isEmpty()) {
+            throw new IllegalStateException("AIR original sem passageiros para conferir a divisao.");
+        }
+        validarMesmaReserva(original, originalNow);
+        validarAgenciaWooba(air, originalDetails);
+        for (Passageiro passenger : destination.getPassageiros()) {
+            if (list(originalNow.getPassageiros()).stream().anyMatch(p ->
+                    normalize(p.getNomePassageiro()).equals(normalize(passenger.getNomePassageiro()))
+                            && normalize(p.getSobrenomePassageiro()).equals(normalize(passenger.getSobrenomePassageiro())))) {
+                throw new IllegalStateException("Passageiro ainda consta no AIR original. Aguardar confirmacao da divisao.");
+            }
+        }
+        Set<String> movedTickets = numerosBilhetes(destination);
+        Set<String> originalTickets = numerosBilhetes(originalNow);
+        for (JsonNode link : originalDetails.getTransaction().path("Links")) {
+            if (link.path("TransactionType").asInt() == 100) originalTickets.add(link.path("Ticket").asText());
+        }
+        if (originalTickets.stream().anyMatch(movedTickets::contains)) {
+            throw new IllegalStateException("Bilhete ainda consta nos vinculos do AIR original.");
+        }
+        reservas.reconciliarDivisaoWooba(original.getCodgReservaAereo(), resolver.resolverReferenciasManager(destination));
+        ReservaAereo saved = buscar(destination);
+        ReservaAereo sourceAfter = buscar(original);
+        if (saved == null || !completa(saved, destination) || sourceAfter == null
+                || numerosBilhetes(sourceAfter).stream().anyMatch(movedTickets::contains)) {
+            throw new IllegalStateException("Manager nao confirmou os vinculos apos a divisao.");
+        }
+    }
+
+    private void validarAgenciaWooba(WoobaSalesDetailsResponse first, WoobaSalesDetailsResponse second) {
+        long agency = first.getTransaction().path("Context").path("Agency").path("Id").asLong();
+        if (agency <= 0 || agency != second.getTransaction().path("Context").path("Agency").path("Id").asLong()) {
+            throw new IllegalStateException("Agencia divergente nos details da divisao.");
+        }
+    }
+
+    private String regra(String message, String key) {
+        for (String part : normalizeMessage(message).split(";")) {
+            if (part.trim().startsWith(key + "=")) return part.trim().substring(key.length() + 1).trim();
+        }
+        return "";
     }
 
     private Set<String> numerosBilhetes(ReservaAereo reservation) {

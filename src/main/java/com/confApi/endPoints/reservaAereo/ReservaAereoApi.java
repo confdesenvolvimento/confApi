@@ -170,6 +170,19 @@ public class ReservaAereoApi {
         return encontradas.isEmpty() ? null : encontradas.get(0);
     }
 
+    public Integer reconciliarDivisaoWooba(Integer codgReservaOrigem, ReservaAereo destino) {
+        ConfAppResp token = confAppService.token();
+        String url = UriComponentsBuilder.fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                .path("/reservaAereo/wooba/divisoes").toUriString();
+        ResponseEntity<Integer> response = restTemplate.exchange(url, HttpMethod.POST,
+                new HttpEntity<>(Map.of("codgReservaOrigem", codgReservaOrigem, "destino", destino),
+                        defaultHeaders(token.getToken())), Integer.class);
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null || response.getBody() <= 0) {
+            throw new IllegalStateException("Manager nao confirmou a divisao para " + destino.getLocalizador());
+        }
+        return response.getBody();
+    }
+
     public List<ReservaAereo> consultarReservasUsuario(Integer codgUsuario, Integer codgAgencia, String localizador) {
         if (codgUsuario == null) {
             return Collections.emptyList();
