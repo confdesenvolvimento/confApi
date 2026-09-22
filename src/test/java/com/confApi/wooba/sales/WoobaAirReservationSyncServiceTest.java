@@ -44,10 +44,10 @@ class WoobaAirReservationSyncServiceTest {
         ReservaAereo reservaWooba = reservaWooba("ABC123", 3);
 
         ReservaAereo reservaDb = reservaDb("ABC123", 3);
-        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any(CompanhiaAerea.class)))
                 .thenReturn(null, reservaDb, reservaDb);
         when(reservaAereoApi.criar(any())).thenReturn(reservaDb);
-        when(recebimentoApi.findByReservaAereo(999)).thenReturn(List.of());
+        when(recebimentoApi.findByReservaAereoParaSincronizacao(999)).thenReturn(List.of());
 
         WoobaAirReservationSyncResult result = service.sincronizar(reservaWooba);
 
@@ -81,7 +81,7 @@ class WoobaAirReservationSyncServiceTest {
 
         ReservaAereo reservaDb = reservaDb("ATV123", 1);
         reservaDb.setDataEmissao(null);
-        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ATV123"), any(CompanhiaAerea.class)))
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ATV123"), any(CompanhiaAerea.class)))
                 .thenReturn(null, reservaDb, reservaDb);
         when(reservaAereoApi.criar(any())).thenReturn(reservaDb);
 
@@ -124,7 +124,7 @@ class WoobaAirReservationSyncServiceTest {
         recebimentoDb.setCodgRecebimento(88);
         reservaDb.setRecebimentos(List.of(recebimentoDb));
 
-        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any(CompanhiaAerea.class)))
                 .thenReturn(reservaDb, reservaDb);
 
         WoobaAirReservationSyncResult result = service.sincronizar(reservaWooba);
@@ -144,7 +144,7 @@ class WoobaAirReservationSyncServiceTest {
         reservaWooba.setDataCancelamento(new Date());
         ReservaAereo reservaDb = reservaDb("ABC123", 1);
 
-        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any(CompanhiaAerea.class)))
                 .thenReturn(reservaDb, reservaDb);
 
         service.sincronizar(reservaWooba);
@@ -174,7 +174,7 @@ class WoobaAirReservationSyncServiceTest {
         bilheteDb.setDataEmissao(dataEmissaoOriginal);
         reservaDb.getPassageiros().get(0).setBilhetes(List.of(bilheteDb));
 
-        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any(CompanhiaAerea.class)))
                 .thenReturn(reservaDb, reservaDb);
 
         service.sincronizar(reservaWooba);
@@ -201,7 +201,7 @@ class WoobaAirReservationSyncServiceTest {
         recebimentoDb.setValrCancelado(0.0);
         reservaDb.setRecebimentos(List.of(recebimentoDb));
 
-        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any(CompanhiaAerea.class)))
                 .thenReturn(reservaDb, reservaDb);
 
         service.sincronizar(reservaWooba);
@@ -227,9 +227,9 @@ class WoobaAirReservationSyncServiceTest {
         recebimentoDb.setValrRecebimento(854.64);
         recebimentoDb.setValrCancelado(0.0);
 
-        when(reservaAereoApi.findByLocalizadorCompanhia(eq("ABC123"), any(CompanhiaAerea.class)))
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any(CompanhiaAerea.class)))
                 .thenReturn(reservaDb, reservaDb);
-        when(recebimentoApi.findByReservaAereo(999)).thenReturn(List.of(recebimentoDb));
+        when(recebimentoApi.findByReservaAereoParaSincronizacao(999)).thenReturn(List.of(recebimentoDb));
 
         WoobaAirReservationSyncResult result = service.sincronizar(reservaWooba);
 
@@ -263,7 +263,7 @@ class WoobaAirReservationSyncServiceTest {
 
         assertEquals("IGNORED", result.getAction());
         assertTrue(result.getReason().contains("Context.Customer informado"));
-        verify(reservaAereoApi, never()).findByLocalizadorCompanhia(any(), any(CompanhiaAerea.class));
+        verify(reservaAereoApi, never()).findByLocalizadorCompanhiaParaSincronizacao(any(), any(CompanhiaAerea.class));
         verify(reservaAereoApi, never()).criar(any());
         verify(reservaAereoApi, never()).atualizar(any(), any());
         verify(recebimentoApi, never()).gravar(any());

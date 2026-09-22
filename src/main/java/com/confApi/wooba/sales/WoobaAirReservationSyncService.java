@@ -55,7 +55,7 @@ public class WoobaAirReservationSyncService {
         this.notificacaoApi = notificacaoApi;
     }
 
-    public WoobaAirReservationSyncResult sincronizar(ReservaAereo reservaWooba) {
+    public synchronized WoobaAirReservationSyncResult sincronizar(ReservaAereo reservaWooba) {
         String motivoIgnorar = motivoIgnorar(reservaWooba);
         if (motivoIgnorar != null) {
             alertarErro("Reserva Wooba ignorada. Localizador: "
@@ -76,7 +76,7 @@ public class WoobaAirReservationSyncService {
         Map<String, List<BilheteAereo>> bilhetesWooba = bilhetesPorPassageiro(reservaWooba);
         List<Recebimento> recebimentosWooba = new ArrayList<>(safeList(reservaWooba.getRecebimentos()));
 
-        ReservaAereo reservaDb = reservaAereoApi.findByLocalizadorCompanhia(
+        ReservaAereo reservaDb = reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(
                 reservaWooba.getLocalizador(),
                 reservaWooba.getCodgCompanhiaAerea()
         );
@@ -197,7 +197,7 @@ public class WoobaAirReservationSyncService {
     }
 
     private ReservaAereo recarregarReserva(ReservaAereo reservaDb, ReservaAereo reservaWooba) {
-        ReservaAereo recarregada = reservaAereoApi.findByLocalizadorCompanhia(
+        ReservaAereo recarregada = reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(
                 reservaWooba.getLocalizador(),
                 reservaWooba.getCodgCompanhiaAerea()
         );
@@ -388,7 +388,7 @@ public class WoobaAirReservationSyncService {
     private List<Recebimento> carregarRecebimentosDb(ReservaAereo reservaDb) {
         List<Recebimento> recebimentosDb = new ArrayList<>(safeList(reservaDb.getRecebimentos()));
         if (recebimentosDb.isEmpty()) {
-            recebimentosDb.addAll(safeList(recebimentoApi.findByReservaAereo(reservaDb.getCodgReservaAereo())));
+            recebimentosDb.addAll(safeList(recebimentoApi.findByReservaAereoParaSincronizacao(reservaDb.getCodgReservaAereo())));
         }
         return recebimentosDb;
     }
