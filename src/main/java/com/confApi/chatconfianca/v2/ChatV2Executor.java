@@ -109,6 +109,11 @@ public class ChatV2Executor {
         }
         List<ChatMessageDTO> dados=new ArrayList<>();
         List<String> keywords=chat.actionApis(dados,req,action,true);
+        ChatResponseDTO bloqueio=chat.respostaBloqueioRemarcacao(dados,keywords);
+        if(bloqueio!=null) {
+            finish(p,d,resultadoDados(bloqueio.history()),bloqueio.content());
+            return bloqueio;
+        }
         List<ChatActionDTO> actions=chat.extrairAcoesDisponiveis(dados);
         if(c==ChatV2Capability.REMARCACAO) {
             finish(p,d,"ACAO_PREPARADA","");
@@ -150,6 +155,7 @@ public class ChatV2Executor {
                 JsonNode consulta=root.has("reservasRecentes")?root.path("reservasRecentes"):root;
                 String status=consulta.path("statusConsulta").asText(consulta.path("status").asText(""));
                 if(status.startsWith("ERRO")||status.equals("ERROR"))return "ERRO_INTEGRACAO";
+                if(status.equals("NAO_ENCONTRADA"))return "SEM_RESULTADO";
                 for(String campo:List.of("reservas","faturas","reservaCheckInIA")) {
                     if(consulta.path(campo).isArray()&&consulta.path(campo).isEmpty())return "SEM_RESULTADO";
                 }

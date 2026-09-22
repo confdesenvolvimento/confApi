@@ -175,7 +175,8 @@ class ChatServiceRemarcacaoActionTest {
     }
 
     @Test
-    void deveUsarLocalizadorSomenteComoPreenchimentoDoSeletor() {
+    void deveValidarLocalizadorAntesDePreservarAcaoDoSeletor() {
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(consultaReserva(" abc123 ", false));
         List<ChatMessageDTO> messages = new ArrayList<>();
 
         List<String> keywords = service.actionApis(
@@ -189,7 +190,110 @@ class ChatServiceRemarcacaoActionTest {
         assertEquals("ABC123", actions.get(0).localizador());
         assertTrue(actions.get(0).prompt().contains("preencher a busca"));
         assertTrue(actions.get(0).prompt().contains("Nao inicie"));
-        verifyNoInteractions(aereoClient);
+        ArgumentCaptor<ConsultarLocalizadorRequest> consulta = ArgumentCaptor.forClass(ConsultarLocalizadorRequest.class);
+        verify(aereoClient).carregarReservaEstrita(consulta.capture());
+        assertEquals("ABC123", consulta.getValue().getLocalizador());
+        assertEquals("321", consulta.getValue().getAgencia().getCodgAgencia());
+        assertEquals("1", consulta.getValue().getAgencia().getCodgSistemaBackoffice());
+        assertNull(service.respostaBloqueioRemarcacao(messages, keywords));
+        verifyNoInteractions(openAiClient, regrasReservaService, reservasService);
+    }
+
+    @Test
+    void localizadorInexistenteRetornaSomenteAvisoSemAcaoHistorica() {
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(new ConsultarLocalizadorResponse());
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        messages.add(new ChatMessageDTO("system", "Dado: {\"tipoConsulta\":\"seletor_remarcacao\","
+                + "\"localizadorContexto\":\"ABC123\",\"acoesDisponiveis\":[{\"codigo\":\"simular_remarcacao\"}]}"));
+
+        List<String> keywords = service.actionApis(messages, request("simular remarcacao DQFDHL"));
+        ChatResponseDTO bloqueio = service.respostaBloqueioRemarcacao(messages, keywords);
+
+        assertEquals("Nao encontrei a reserva DQFDHL na sua agencia.", bloqueio.content());
+        assertTrue(bloqueio.actions().isEmpty());
+        assertTrue(bloqueio.toolCalls().isEmpty());
+        assertEquals(1, bloqueio.history().size());
+        assertTrue(bloqueio.history().get(0).content().contains("\"statusConsulta\":\"NAO_ENCONTRADA\""));
+        assertTrue(service.extrairAcoesDisponiveis(messages).isEmpty());
+        verify(aereoClient).carregarReservaEstrita(any());
+        verifyNoInteractions(openAiClient, regrasReservaService, reservasService);
+    }
+
+    @Test
+    void decisaoPreviaDoSeletorTambemValidaLocalizador() {
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(new ConsultarLocalizadorResponse());
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        List<String> keywords = service.actionApis(messages, request("remarcacao DQFDHL"),
+                "selecionar_reserva_remarcacao", true);
+        assertEquals("Nao encontrei a reserva DQFDHL na sua agencia.",
+                service.respostaBloqueioRemarcacao(messages, keywords).content());
+        assertTrue(service.extrairAcoesDisponiveis(messages).isEmpty());
+        verifyNoInteractions(openAiClient);
+    }
+
+    @Test
+    void reservaDiferenteNaoValidaOLocalizadorSolicitado() {
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(consultaReserva("ABC123", false));
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        List<String> keywords = service.actionApis(messages, request("simular remarcacao DQFDHL"));
+        assertEquals("Nao encontrei a reserva DQFDHL na sua agencia.",
+                service.respostaBloqueioRemarcacao(messages, keywords).content());
+        assertTrue(service.extrairAcoesDisponiveis(messages).isEmpty());
+    }
+
+    @Test
+    void falhaDeIntegracaoNaoPodeSerTratadaComoLocalizadorInexistente() {
+        when(aereoClient.carregarReservaEstrita(any())).thenThrow(new IllegalStateException("timeout"));
+        assertBloqueioDeIntegracao(request("simular remarcacao DQFDHL"));
+        verifyNoInteractions(openAiClient, regrasReservaService, reservasService);
+    }
+
+    @Test
+    void respostaNulaOuListaNulaNaoConfirmaInexistencia() {
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(null);
+        assertBloqueioDeIntegracao(request("simular remarcacao DQFDHL"));
+        ConsultarLocalizadorResponse incompleta = new ConsultarLocalizadorResponse();
+        incompleta.setReservas(null);
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(incompleta);
+        assertBloqueioDeIntegracao(request("simular remarcacao DQFDHL"));
+    }
+
+    @Test
+    void respostaComExceptionNaoPreparaAcaoMesmoTrazendoReserva() {
+        ConsultarLocalizadorResponse erro = consultaReserva("DQFDHL", false);
+        erro.setException("Falha ao consultar provedor");
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(erro);
+        assertBloqueioDeIntegracao(request("simular remarcacao DQFDHL"));
+    }
+
+    @Test
+    void semIdentidadeDaAgenciaNaoConsultaNemPreparaRemarcacao() {
+        assertBloqueioDeIntegracao(new ConversationRequestDTO("confia", "Confianca", null,
+                321L, 101L, "simular remarcacao DQFDHL", new ArrayList<>(), null, false, new ArrayList<>()));
+        assertBloqueioDeIntegracao(new ConversationRequestDTO("confia", "Confianca", "1",
+                0L, 101L, "simular remarcacao DQFDHL", new ArrayList<>(), null, false, new ArrayList<>()));
+        verifyNoInteractions(aereoClient, openAiClient);
+    }
+
+    @Test
+    void consultaBemSucedidaPosteriorNaoReutilizaBloqueioAntigo() {
+        when(aereoClient.carregarReservaEstrita(any()))
+                .thenReturn(new ConsultarLocalizadorResponse(), consultaReserva("DQFDHL", false));
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        service.actionApis(messages, request("simular remarcacao DQFDHL"));
+        service.actionApis(messages, request("simular remarcacao DQFDHL"));
+        assertNull(service.respostaBloqueioRemarcacao(messages, List.of()));
+        assertEquals(1, service.extrairAcoesDisponiveis(messages).size());
+    }
+
+    private void assertBloqueioDeIntegracao(ConversationRequestDTO request) {
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        List<String> keywords = service.actionApis(messages, request);
+        ChatResponseDTO bloqueio = service.respostaBloqueioRemarcacao(messages, keywords);
+        assertEquals("Nao foi possivel consultar a reserva DQFDHL agora. Tente novamente mais tarde.", bloqueio.content());
+        assertTrue(bloqueio.history().get(0).content().contains("\"statusConsulta\":\"ERRO_CONSULTA\""));
+        assertTrue(bloqueio.actions().isEmpty());
+        assertTrue(service.extrairAcoesDisponiveis(messages).isEmpty());
     }
 
     @Test

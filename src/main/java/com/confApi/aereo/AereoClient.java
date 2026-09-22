@@ -137,6 +137,18 @@ public class AereoClient {
         );
     }
 
+    /** Read-only lookup that never reports an integration failure as an empty reservation list. */
+    public ConsultarLocalizadorResponse carregarReservaEstrita(ConsultarLocalizadorRequest consultarRequest) {
+        return post(
+                "Aéreo - Validar Localizador",
+                API_AEREO + "/consultar",
+                consultarRequest,
+                ConsultarLocalizadorResponse.class,
+                null,
+                true
+        );
+    }
+
     public ReservarResponse reserva(ReservarRequest reservarRequest) {
         return post(
                 "Aéreo - Reservar",
@@ -184,6 +196,17 @@ public class AereoClient {
             Class<RES> responseClass,
             RES retornoPadrao
     ) {
+        return post(operacao, endpoint, request, responseClass, retornoPadrao, false);
+    }
+
+    private <REQ, RES> RES post(
+            String operacao,
+            String endpoint,
+            REQ request,
+            Class<RES> responseClass,
+            RES retornoPadrao,
+            boolean resultadoEstrito
+    ) {
         String url = montarUrl(endpoint);
         long inicio = System.currentTimeMillis();
 
@@ -218,8 +241,14 @@ public class AereoClient {
 
         } catch (Exception e) {
             tratarErro(operacao, url, inicio, e);
+            if (resultadoEstrito) {
+                throw new IllegalStateException("Nao foi possivel consultar a reserva no HUB.", e);
+            }
         }
 
+        if (resultadoEstrito) {
+            throw new IllegalStateException("A consulta da reserva retornou uma resposta invalida.");
+        }
         return retornoPadrao;
     }
 

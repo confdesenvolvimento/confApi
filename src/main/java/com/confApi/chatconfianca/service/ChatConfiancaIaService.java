@@ -395,7 +395,16 @@ public class ChatConfiancaIaService {
             } else {
                 keywords = chatService.actionApis(messages, conversation);
             }
-            var actions = chatService.extrairAcoesDisponiveis(messages.subList(firstActionMessageIndex, messages.size()));
+            List<ChatMessageDTO> dadosDoTurno = messages.subList(firstActionMessageIndex, messages.size());
+            ChatResponseDTO bloqueioRemarcacao = chatService.respostaBloqueioRemarcacao(dadosDoTurno, keywords);
+            if (bloqueioRemarcacao != null) {
+                boolean erroConsulta = bloqueioRemarcacao.history().stream()
+                        .anyMatch(dado -> dado.content().contains("\"statusConsulta\":\"ERRO_CONSULTA\""));
+                decisao.setStatusResultado(erroConsulta ? "ERRO" : "FALLBACK");
+                if (erroConsulta) decisao.setErroCodigo("CONSULTA_FALHOU");
+                return bloqueioRemarcacao;
+            }
+            var actions = chatService.extrairAcoesDisponiveis(dadosDoTurno);
             messages.add(new ChatMessageDTO("user", request.getMensagem()));
 
             Map<String, Object> metadata = new HashMap<>();

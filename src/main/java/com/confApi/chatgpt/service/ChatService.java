@@ -412,7 +412,8 @@ public class ChatService {
         boolean contextoReservaAerea = keywords.contains("reserva_aerea_detalhes") || keywords.contains("reserva_aerea_regras");
         if (isKeywordSeletorRemarcacao(keyword)) {
             localizadorReserva = extrairLocalizadorDeterministico(req.input());
-            messages.add(montarMensagemSeletorRemarcacao(localizadorReserva));
+            ChatMessageDTO bloqueio = validarLocalizadorRemarcacao(req, localizadorReserva);
+            messages.add(bloqueio == null ? montarMensagemSeletorRemarcacao(localizadorReserva) : bloqueio);
         } else if (deveTentarCarregarReservaAerea(req.input(), keyword) || contextoReservaAerea) {
             localizadorReserva = intencaoDeterministica
                     ? extrairLocalizadorDeterministico(req.input())
@@ -594,6 +595,10 @@ public class ChatService {
         List<ChatActionDTO> actions = new ArrayList<>();
         Set<String> adicionadas = new HashSet<>();
         if (messages == null) {
+            return actions;
+        }
+        // A blocked current lookup must not inherit actions from older reservation messages.
+        if (respostaBloqueioRemarcacao(messages, List.of()) != null) {
             return actions;
         }
 
@@ -1029,6 +1034,76 @@ public class ChatService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private ChatMessageDTO validarLocalizadorRemarcacao(ConversationRequestDTO req, String localizador) {
+        if (localizador == null) {
+            return null;
+        }
+        if (req.codgAgencia() == null || req.codgAgencia() <= 0 || req.idErp() == null
+                || req.idErp().isBlank() || "confia".equalsIgnoreCase(req.idErp().trim())) {
+            return mensagemBloqueioRemarcacao(localizador, "ERRO_CONSULTA");
+        }
+
+        ConsultarLocalizadorResponse consulta;
+        try {
+            consulta = aereoClient.carregarReservaEstrita(montarRequestConsultaLocalizador(req, localizador));
+        } catch (Exception ex) {
+            return mensagemBloqueioRemarcacao(localizador, "ERRO_CONSULTA");
+        }
+        if (consulta == null || consulta.getException() != null || consulta.getReservas() == null) {
+            return mensagemBloqueioRemarcacao(localizador, "ERRO_CONSULTA");
+        }
+        boolean encontrada = consulta.getReservas().stream().filter(Objects::nonNull)
+                .anyMatch(reserva -> reserva.getLocalizador() != null
+                        && localizador.equalsIgnoreCase(reserva.getLocalizador().trim()));
+        return encontrada ? null : mensagemBloqueioRemarcacao(localizador, "NAO_ENCONTRADA");
+    }
+
+    private ChatMessageDTO mensagemBloqueioRemarcacao(String localizador, String status) {
+        Map<String, Object> contexto = new LinkedHashMap<>();
+        contexto.put("tipoConsulta", "validacao_remarcacao");
+        contexto.put("localizadorConsultado", localizador);
+        contexto.put("statusConsulta", status);
+        contexto.put("mensagem", "NAO_ENCONTRADA".equals(status)
+                ? "Nao encontrei a reserva " + localizador + " na sua agencia."
+                : "Nao foi possivel consultar a reserva " + localizador + " agora. Tente novamente mais tarde.");
+        contexto.put("acoesDisponiveis", List.of());
+        try {
+            return new ChatMessageDTO("system", "Dado do sistema (validacao_remarcacao): "
+                    + mapper.writeValueAsString(contexto));
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Nao foi possivel informar o resultado da consulta da reserva.", ex);
+        }
+    }
+
+    /** Only current-turn lookup data should be supplied; no model or historical actions are used. */
+    public ChatResponseDTO respostaBloqueioRemarcacao(List<ChatMessageDTO> dados, List<String> keywords) {
+        if (dados == null) {
+            return null;
+        }
+        for (int indice = dados.size() - 1; indice >= 0; indice--) {
+            ChatMessageDTO dado = dados.get(indice);
+            if (dado == null || !"system".equals(dado.role()) || dado.content() == null) {
+                continue;
+            }
+            JsonNode consulta = extrairJsonDadoSistema(dado.content());
+            if (consulta == null) {
+                continue;
+            }
+            String tipoConsulta = consulta.path("tipoConsulta").asText();
+            if (Set.of("seletor_remarcacao", "reserva_aerea_detalhes", "reserva_aerea_regras")
+                    .contains(tipoConsulta)) {
+                return null;
+            }
+            if (!"validacao_remarcacao".equals(tipoConsulta)) continue;
+            String status = consulta.path("statusConsulta").asText();
+            if ("NAO_ENCONTRADA".equals(status) || "ERRO_CONSULTA".equals(status)) {
+                return new ChatResponseDTO(null, consulta.path("mensagem").asText(), List.of(), null,
+                        keywords == null ? List.of() : new ArrayList<>(keywords), List.of(dado), List.of());
+            }
+        }
+        return null;
     }
 
     private ChatMessageDTO montarMensagemSeletorRemarcacao(String localizador) {
