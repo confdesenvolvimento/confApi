@@ -11,6 +11,7 @@ import java.util.List;
 public class Trecho implements Serializable {
 
     private String sistema;
+    private Boolean isNdc;
     private Companhia companhia;
     private Aeroporto destino;
     private Integer duracao;
