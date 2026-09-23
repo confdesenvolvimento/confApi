@@ -3,12 +3,10 @@ package com.confApi.chatconfianca.controller;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
 import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
-import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
-import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
 import org.mockito.ArgumentCaptor;
 import com.confApi.chatconfianca.service.ChatConfiancaRemarcacaoService;
-import com.confApi.db.confManager.usuario.Usuario;
-import com.confApi.endPoints.usuario.UsuarioApi;
+import com.confApi.chatconfianca.service.ChatConfiancaConfigService;
+import com.confApi.chatconfianca.service.ChatConfiancaRequestAuthorizationService;
 import com.confApi.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +28,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -42,7 +39,7 @@ class ChatConfiancaRemarcacaoControllerTest {
     @Mock
     private ChatConfiancaRemarcacaoService service;
     @Mock
-    private UsuarioApi usuarioApi;
+    private ChatConfiancaConfigService configService;
 
     private MockMvc mockMvc;
     private Authentication clientePayaraAutenticado;
@@ -53,7 +50,8 @@ class ChatConfiancaRemarcacaoControllerTest {
                 "api.confplus", null, List.of());
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new ChatConfiancaRemarcacaoController(
-                        service, "api.confplus", "api.mobile", usuarioApi))
+                        service, new ChatConfiancaRequestAuthorizationService(
+                                configService, "api.confplus", "api.mobile")))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -184,12 +182,9 @@ class ChatConfiancaRemarcacaoControllerTest {
     }
 
     @Test
-    void deveRejeitarJwtMobileQuandoCodgUsuarioNaoPertenceAoPrincipal() throws Exception {
+    void deveRejeitarJwtDeUsuarioFinalEmTodasAsRotas() throws Exception {
         Authentication clienteNaoAutorizado = new UsernamePasswordAuthenticationToken(
                 "usuario.teste", null, List.of());
-        Usuario usuarioAutenticado = new Usuario();
-        usuarioAutenticado.setCodgUsuario(303);
-        when(usuarioApi.consultaUsuarioByLogin("usuario.teste")).thenReturn(usuarioAutenticado);
         List<RequestBuilder> requisicoes = List.of(
                 get("/v1/chat-confianca/remarcacoes/reservas-emitidas")
                         .param("conversaId", "20")
@@ -239,42 +234,31 @@ class ChatConfiancaRemarcacaoControllerTest {
     }
 
     @Test
-    void deveAceitarJwtMobileQuandoCodgUsuarioPertenceAoPrincipal() throws Exception {
+    void deveRejeitarJwtDeUsuarioFinalAoListarReservas() throws Exception {
         Authentication clienteMobile = new UsernamePasswordAuthenticationToken(
                 "usuario.mobile", null, List.of());
-        Usuario usuarioAutenticado = new Usuario();
-        usuarioAutenticado.setCodgUsuario(202);
-        when(usuarioApi.consultaUsuarioByLogin("usuario.mobile")).thenReturn(usuarioAutenticado);
-        ReservasEmitidasRemarcacaoResponse response = new ReservasEmitidasRemarcacaoResponse();
-        when(service.listarReservasEmitidas(20L, 202, null, null, null, 0, 10))
-                .thenReturn(response);
 
         mockMvc.perform(get("/v1/chat-confianca/remarcacoes/reservas-emitidas")
                         .param("conversaId", "20")
                         .param("codgUsuario", "202")
                         .principal(clienteMobile))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
 
-        verify(service).listarReservasEmitidas(20L, 202, null, null, null, 0, 10);
+        verifyNoInteractions(service, configService);
     }
 
     @Test
-    void deveAceitarJwtMobileAoIniciarSimulacaoDoProprioUsuario() throws Exception {
+    void deveRejeitarJwtDeUsuarioFinalAoIniciarSimulacao() throws Exception {
         Authentication clienteMobile = new UsernamePasswordAuthenticationToken(
                 "usuario.mobile", null, List.of());
-        Usuario usuarioAutenticado = new Usuario();
-        usuarioAutenticado.setCodgUsuario(202);
-        when(usuarioApi.consultaUsuarioByLogin("usuario.mobile")).thenReturn(usuarioAutenticado);
-        when(service.iniciar(any(RemarcacaoRequest.Iniciar.class)))
-                .thenReturn(new RemarcacaoSimulacaoResponse());
 
         mockMvc.perform(post("/v1/chat-confianca/remarcacoes/iniciar")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"conversaId\":20,\"codgUsuario\":202,\"reservaId\":501,\"localizador\":\"ABC123\"}")
                         .principal(clienteMobile))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
 
-        verify(service).iniciar(any(RemarcacaoRequest.Iniciar.class));
+        verifyNoInteractions(service, configService);
     }
 
     @Test
@@ -291,14 +275,13 @@ class ChatConfiancaRemarcacaoControllerTest {
                 .andExpect(status().isOk());
 
         verify(service).iniciar(any(RemarcacaoRequest.Iniciar.class));
-        verifyNoInteractions(usuarioApi);
+        verifyNoInteractions(configService);
     }
 
     @Test
-    void deveRejeitarJwtMobileQuandoUsuarioNaoForLocalizado() throws Exception {
+    void deveRejeitarPrincipalDesconhecidoSemConsultarCadastro() throws Exception {
         Authentication clienteMobile = new UsernamePasswordAuthenticationToken(
                 "usuario.inexistente", null, List.of());
-        when(usuarioApi.consultaUsuarioByLogin("usuario.inexistente")).thenReturn(new Usuario());
 
         mockMvc.perform(get("/v1/chat-confianca/remarcacoes/reservas-emitidas")
                         .param("conversaId", "20")

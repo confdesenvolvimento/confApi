@@ -23,7 +23,7 @@ class ChatConfiancaRequestAuthorizationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ChatConfiancaRequestAuthorizationService(configService, "api.confplus");
+        service = new ChatConfiancaRequestAuthorizationService(configService, "api.confplus", "api.mobile");
     }
 
     @Test

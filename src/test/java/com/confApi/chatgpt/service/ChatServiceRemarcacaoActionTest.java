@@ -19,7 +19,6 @@ import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.familia.FamiliaService;
 import com.confApi.db.confManager.faturas.FaturasService;
 import com.confApi.db.wooba.checkin.CheckinService;
-import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 
 import com.confApi.hub.aereo.dto.Bilhete;
 import com.confApi.hub.aereo.dto.Companhia;
@@ -75,8 +74,7 @@ class ChatServiceRemarcacaoActionTest {
                 mock(AlertaTarifaService.class),
                 reservasService,
                 aereoClient,
-                regrasReservaService,
-                mock(ReservaAereoApi.class));
+                regrasReservaService);
     }
 
     @Test

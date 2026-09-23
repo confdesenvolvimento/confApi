@@ -47,6 +47,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -102,6 +103,7 @@ class ChatConfiancaRemarcacaoServiceTest {
                 limitesService,
                 mapper,
                 reservaAereoApi);
+        ReflectionTestUtils.setField(service, "zonaHorariaRemarcacao", "America/Sao_Paulo");
 
         simulacao = new SimulacaoRemarcacao();
         simulacao.setId(SIMULACAO_ID);

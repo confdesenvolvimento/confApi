@@ -15,7 +15,6 @@ import com.confApi.db.confManager.chatMemoria.ChatMemoriaService;
 import com.confApi.db.confManager.familia.FamiliaService;
 import com.confApi.db.confManager.faturas.FaturasService;
 import com.confApi.db.wooba.checkin.CheckinService;
-import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.hub.limites.LimitesService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -328,8 +327,7 @@ class ChatServiceToolProtocolTest {
                 mock(AlertaTarifaService.class),
                 mock(ChatConfiancaReservaAereaService.class),
                 mock(AereoClient.class),
-                mock(AereoRegrasReservaService.class),
-                mock(ReservaAereoApi.class));
+                mock(AereoRegrasReservaService.class));
 
         ChatResponseDTO response = service.chat(
                 new ChatRequestDTO(
