@@ -154,43 +154,65 @@ public class HotelClient {
                     );
 
             ReservaHotel reservaHotel = response.getBody();
-            System.out.println("Resultado consulta db: " + reservaHotel.getStatus());
+            if (reserva == null || reservaHotel == null
+                    || reservaHotel.getCodgReservaHotel() == null
+                    || reserva.getReservasHotelRsList() == null
+                    || reserva.getReservasHotelRsList().isEmpty()) {
+                throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Não foi possível validar a reserva retornada pelo fornecedor.");
+            }
+            Integer status = null;
+            for (var item : reserva.getReservasHotelRsList()) {
+                if (item == null || !java.util.Objects.equals(item.getIdentificador(), reservaHotel.getLocalizador())) {
+                    throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "O localizador retornado pelo fornecedor não corresponde à reserva salva.");
+                }
+                int atual = StatusReservaHotelFornecedor.codigo(item.getStatus());
+                if (status != null && status != atual) {
+                    throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "A reserva possui status divergentes; o status salvo foi preservado.");
+                }
+                status = atual;
+                item.setStatus(StatusReservaHotelFornecedor.canonico(atual));
+            }
 
-            String statusStr = reserva.getReservasHotelRsList().get(0).getStatus();
-
-            int status = 0;
-
-            if (statusStr != null) {
-                if (statusStr.contains("Cancel")) {
-                    status = 2;
-                } else if (statusStr.contains("Rejected")) {
-                    status = 3;
-                } else if (statusStr.contains("Confirmed")) {
-                    status = 1;
+            // O status financeiro é mantido pelo Manager; confirmar o fornecedor não significa pagar.
+            if (!status.equals(reservaHotel.getStatus())) {
+                var atualizacao = new ReservaHotelAtualizarReservaRQ(reservaHotel.getCodgReservaHotel(), status);
+                restTemplate.exchange(
+                        UrlConfig.URL_CONFIANCA_MANAGER + "/reservaHotel/atualizarReserva/"
+                                + reservaHotel.getCodgReservaHotel(),
+                        HttpMethod.PUT, new HttpEntity<>(atualizacao, headers), Object.class);
+            }
+            if (reservaHotel.getCodgHotel() != null) {
+                var hotel = reservaHotel.getCodgHotel();
+                if (reserva.getUrlImagem() == null || reserva.getUrlImagem().isBlank()) {
+                    reserva.setUrlImagem(hotel.getUrlImagemHotel());
+                }
+                if (reserva.getDescricao() == null || reserva.getDescricao().isBlank()) {
+                    reserva.setDescricao(hotel.getDescricao());
                 }
             }
 
-            ReservaHotelAtualizarReservaRQ reservaHotelAtualizarReservaRQ =
-                    new ReservaHotelAtualizarReservaRQ(reservaHotel.getCodgReservaHotel(), status);
-
-            HttpEntity<ReservaHotelAtualizarReservaRQ> requestEntity1 =
-                    new HttpEntity<>(reservaHotelAtualizarReservaRQ, headers);
-
-            ResponseEntity<?> responseUpdate =
-                    restTemplate.exchange(
-                            UrlConfig.URL_CONFIANCA_MANAGER + "/reservaHotel/atualizarReserva/"
-                                    + reservaHotel.getCodgReservaHotel(),
-                            HttpMethod.PUT,
-                            requestEntity1,
-                            Object.class
-                    );
-
             return reserva;
 
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            throw e;
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            boolean timeout = e.getRawStatusCode() == 504;
+            throw new org.springframework.web.server.ResponseStatusException(
+                    timeout ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY,
+                    timeout ? "O fornecedor excedeu o tempo de resposta ao consultar a reserva. Tente novamente."
+                            : "O serviço de reservas não conseguiu concluir a consulta.", e);
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            boolean timeout = e.getMostSpecificCause() instanceof java.net.SocketTimeoutException;
+            throw new org.springframework.web.server.ResponseStatusException(
+                    timeout ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY,
+                    "Não foi possível consultar o serviço de reservas. Tente novamente.", e);
         } catch (Exception e) {
             e.printStackTrace();
             logErro("Erro ao carregar reserva hotel", e);
-            throw new RuntimeException("Erro ao efetuar reserva de hotel no HUB", e);
+            throw new RuntimeException("Erro ao consultar reserva de hotel no HUB", e);
         }
     }
 
