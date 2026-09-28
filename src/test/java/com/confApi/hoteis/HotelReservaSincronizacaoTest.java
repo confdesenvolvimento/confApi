@@ -41,7 +41,10 @@ class HotelReservaSincronizacaoTest {
     }
 
     @AfterEach void cleanup() {
-        try { server.verify(); } finally {
+        try {
+            server.verify();
+            verifyNoInteractions(client.telegramService);
+        } finally {
             UrlConfig.URL_CONFIANCA_HUB = oldHub;
             UrlConfig.URL_CONFIANCA_MANAGER = oldManager;
         }
@@ -49,7 +52,8 @@ class HotelReservaSincronizacaoTest {
 
     @ParameterizedTest
     @CsvSource({"Confirmed,1,Reserved", "confirmed,1,Reserved", "Reserved,1,Reserved",
-        "Cancelled,2,Cancelled", "RequestDenied,3,RequestDenied", "Rejected,3,RequestDenied", "Modified,4,Modified"})
+        "Cancelled,2,Cancelled", "Canceled,2,Cancelled", "RequestDenied,3,RequestDenied",
+        "Rejected,3,RequestDenied", "Modified,4,Modified"})
     void gravaStatusCorretoAntesDeRetornarReserva(String fornecedor, int codigo, String canonico) {
         consulta(fornecedor, 0, "501");
         server.expect(requestTo("https://manager.invalid/reservaHotel/atualizarReserva/42"))
@@ -59,6 +63,7 @@ class HotelReservaSincronizacaoTest {
         var result = client.carregarReserva(request());
         assertEquals(canonico, result.getReservasHotelRsList().get(0).getStatus());
         assertEquals("https://example.test/salva.jpg", result.getUrlImagem());
+        assertEquals("Descrição salva", result.getDescricao());
     }
 
     @Test void statusIgualNaoGeraAtualizacaoRedundante() {
@@ -69,21 +74,22 @@ class HotelReservaSincronizacaoTest {
     @ParameterizedTest @NullAndEmptySource
     @ValueSource(strings = {"Pending", "Mixed", "Cancellation Failed", "Unconfirmed"})
     void statusDesconhecidoNaoGravaZeroNemModificada(String status) {
-        consulta(status, 1, "501");
-        assertEquals(HttpStatus.BAD_GATEWAY, assertThrows(ResponseStatusException.class,
-                () -> client.carregarReserva(request())).getStatus());
+        fornecedor(status, "501");
+        assertFalha(HttpStatus.BAD_GATEWAY);
     }
 
     @Test void localizadorDivergenteNaoAtualizaOutraReserva() {
-        consulta("Confirmed", 4, "outra-reserva");
-        assertThrows(ResponseStatusException.class, () -> client.carregarReserva(request()));
+        fornecedor("Confirmed", "outra-reserva");
+        assertFalha(HttpStatus.BAD_GATEWAY);
     }
 
     @Test void falhaDePersistenciaNaoRetornaSucesso() {
         consulta("Confirmed", 4, "501");
         server.expect(requestTo("https://manager.invalid/reservaHotel/atualizarReserva/42"))
-                .andRespond(withServerError());
-        assertThrows(RuntimeException.class, () -> client.carregarReserva(request()));
+                .andExpect(method(HttpMethod.PUT))
+                .andRespond(withServerError().body("fixture-privada-nao-imprimir"));
+        var erro = assertFalha(HttpStatus.BAD_GATEWAY);
+        assertFalse(erro.getMessage().contains("fixture-privada"));
     }
 
     @Test void timeoutDoHubChegaComo504SemConsultarOuAtualizarManager() {
@@ -91,8 +97,7 @@ class HotelReservaSincronizacaoTest {
                 .andRespond(withStatus(HttpStatus.GATEWAY_TIMEOUT)
                         .body("{\"status\":504,\"message\":\"Tempo excedido\"}")
                         .contentType(MediaType.APPLICATION_JSON));
-        var erro = assertThrows(ResponseStatusException.class, () -> client.carregarReserva(request()));
-        assertEquals(HttpStatus.GATEWAY_TIMEOUT, erro.getStatus());
+        var erro = assertFalha(HttpStatus.GATEWAY_TIMEOUT);
         var resposta = new com.confApi.exception.GlobalExceptionHandler().handleResponseStatus(erro);
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, resposta.getStatusCode());
         assertTrue(resposta.getBody().getMensagem().contains("tempo de resposta"));
@@ -101,8 +106,66 @@ class HotelReservaSincronizacaoTest {
     @Test void timeoutDaConexaoComHubPreserva504() {
         server.expect(requestTo("https://hub.invalid/api/hotel/carregarReserva"))
                 .andRespond(request -> { throw new java.net.SocketTimeoutException("Read timed out"); });
-        assertEquals(HttpStatus.GATEWAY_TIMEOUT, assertThrows(ResponseStatusException.class,
-                () -> client.carregarReserva(request())).getStatus());
+        assertFalha(HttpStatus.GATEWAY_TIMEOUT);
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void timeoutDoManagerPreserva504SemAtualizar(boolean timeoutDeConexao) {
+        fornecedor("Confirmed", "501");
+        var consulta = server.expect(requestTo("https://manager.invalid/reservaHotel/localizador/501"))
+                .andExpect(method(HttpMethod.GET));
+        if (timeoutDeConexao) {
+            consulta.andRespond(request -> { throw new java.net.SocketTimeoutException("fixture-privada"); });
+        } else {
+            consulta.andRespond(withStatus(HttpStatus.GATEWAY_TIMEOUT).body("fixture-privada"));
+        }
+        var erro = assertFalha(HttpStatus.GATEWAY_TIMEOUT);
+        assertFalse(erro.getMessage().contains("fixture-privada"));
+    }
+
+    @Test void timeoutAoSincronizarNaoRetornaReservaComoSeTivessePersistido() {
+        consulta("Confirmed", 4, "501");
+        server.expect(requestTo("https://manager.invalid/reservaHotel/atualizarReserva/42"))
+                .andExpect(method(HttpMethod.PUT))
+                .andRespond(request -> { throw new java.net.SocketTimeoutException("fixture-privada"); });
+        var erro = assertFalha(HttpStatus.GATEWAY_TIMEOUT);
+        assertFalse(erro.getMessage().contains("fixture-privada"));
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void imagemEDescricaoSalvasComplementamFornecedorInclusiveEmPacote(boolean pacote) {
+        fornecedorJson("{\"urlImagem\":\" \",\"descricao\":\"\",\"reservasHotelRsList\":["
+                + "{\"identificador\":\"501\",\"status\":\"Confirmed\"}]}");
+        vinculo(1, pacote);
+        var reserva = client.carregarReserva(request());
+        assertEquals("https://example.test/salva.jpg", reserva.getUrlImagem());
+        assertEquals("Descrição salva", reserva.getDescricao());
+        assertEquals("Reserved", reserva.getReservasHotelRsList().get(0).getStatus());
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void imagemEDescricaoDoFornecedorSaoPreservadasInclusiveEmPacote(boolean pacote) {
+        fornecedorJson("{\"urlImagem\":\"https://example.test/fornecedor.jpg\","
+                + "\"descricao\":\"Descrição do fornecedor\",\"reservasHotelRsList\":["
+                + "{\"identificador\":\"501\",\"status\":\"Confirmed\"}]}");
+        vinculo(1, pacote);
+        var reserva = client.carregarReserva(request());
+        assertEquals("https://example.test/fornecedor.jpg", reserva.getUrlImagem());
+        assertEquals("Descrição do fornecedor", reserva.getDescricao());
+    }
+
+    @Test void avulsoComVariosItensEquivalentesSincronizaUmaUnicaVez() {
+        fornecedorJson("{\"reservasHotelRsList\":[{\"identificador\":\"501\",\"status\":\"confirmed\"},"
+                + "{\"identificador\":\"501\",\"status\":\"Reserved\"}]}");
+        vinculo(0, false);
+        server.expect(requestTo("https://manager.invalid/reservaHotel/atualizarReserva/42"))
+                .andExpect(method(HttpMethod.PUT))
+                .andExpect(jsonPath("$.reservaStatus").value(1))
+                .andExpect(jsonPath("$.statusPagamento").doesNotExist())
+                .andRespond(withSuccess());
+        var itens = client.carregarReserva(request()).getReservasHotelRsList();
+        assertEquals(2, itens.size());
+        assertTrue(itens.stream().allMatch(item -> "Reserved".equals(item.getStatus())));
     }
 
     @Test void cancelamentoPreservaCodigoAlfanumericoAteHub() {
@@ -118,16 +181,38 @@ class HotelReservaSincronizacaoTest {
     }
 
     private void consulta(String status, int statusDB, String localizador) {
+        fornecedor(status, localizador);
+        vinculo(statusDB, false);
+    }
+
+    private void fornecedor(String status, String localizador) {
         String valor = status == null ? "null" : "\"" + status + "\"";
+        fornecedorJson("{\"reservasHotelRsList\":[{\"identificador\":\"" + localizador
+                + "\",\"status\":" + valor + "}]}");
+    }
+
+    private void fornecedorJson(String body) {
         server.expect(requestTo("https://hub.invalid/api/hotel/carregarReserva"))
                 .andExpect(method(HttpMethod.POST))
-                .andRespond(withSuccess("{\"reservasHotelRsList\":[{\"identificador\":\"" + localizador
-                        + "\",\"status\":" + valor + "}]}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+    }
+
+    private void vinculo(int statusDB, boolean pacote) {
+        String vinculo = pacote ? "{\"codgPacote\":131,\"estadoEmissao\":\"INICIADA\"}" : "null";
         server.expect(requestTo("https://manager.invalid/reservaHotel/localizador/501"))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"codgReservaHotel\":42,\"localizador\":\"501\",\"status\":" + statusDB
-                        + ",\"statusPagamento\":1,\"codgHotel\":{\"urlImagemHotel\":\"https://example.test/salva.jpg\"}}",
+                        + ",\"statusPagamento\":1,\"codgReservaPacote\":" + vinculo
+                        + ",\"codgHotel\":{\"urlImagemHotel\":\"https://example.test/salva.jpg\","
+                        + "\"descricao\":\"Descrição salva\"}}",
                         MediaType.APPLICATION_JSON));
+    }
+
+    private ResponseStatusException assertFalha(HttpStatus status) {
+        var erro = assertThrows(ResponseStatusException.class, () -> client.carregarReserva(request()));
+        assertEquals(status, erro.getStatus());
+        assertNull(erro.getCause());
+        return erro;
     }
 
     private HotelCarregaModelFront request() {

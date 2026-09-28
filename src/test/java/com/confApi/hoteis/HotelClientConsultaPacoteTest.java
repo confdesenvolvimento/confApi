@@ -23,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.server.ResponseStatusException;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
@@ -59,28 +60,30 @@ class HotelClientConsultaPacoteTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Confirmed", "Reserved", "Cancelled"})
-    void pacoteEmEmissaoConsultaFornecedorSemPutNemEmissao(String status) {
+    @CsvSource({"Confirmed,Reserved", "confirmed,Reserved", "Reserved,Reserved", "Cancelled,Cancelled",
+        "Canceled,Cancelled", "RequestDenied,RequestDenied", "Rejected,RequestDenied", "Modified,Modified"})
+    void pacoteEmEmissaoConsultaFornecedorSemPutNemEmissao(String status, String canonico) {
         fornecedor(status);
         vinculo("{\"codgReservaHotel\":42,\"localizador\":\"HOT-42\","
                 + "\"codgReservaPacote\":{\"codgPacote\":131,\"estadoEmissao\":\"INICIADA\"}}");
         var reserva = client.carregarReserva(request);
         assertNotNull(reserva);
         assertEquals("HOT-42", reserva.getReservasHotelRsList().get(0).getIdentificador());
-        assertEquals(status, reserva.getReservasHotelRsList().get(0).getStatus());
+        assertEquals(canonico, reserva.getReservasHotelRsList().get(0).getStatus());
         verify(auth).token();
         // O MockRestServiceServer aceita somente as duas consultas; qualquer PUT/POST adicional falha.
     }
 
     @ParameterizedTest
-    @CsvSource({"Confirmed,1", "Cancelled,2", "Rejected,3", "Reserved,0"})
-    void avulsoExplicitamenteSemPacotePreservaSincronizacaoLegada(String status, int esperado) {
+    @CsvSource({"Confirmed,1", "Cancelled,2", "Rejected,3", "Reserved,1"})
+    void avulsoExplicitamenteSemPacoteSincronizaStatusOperacional(String status, int esperado) {
         fornecedor(status);
         vinculo("{\"codgReservaHotel\":42,\"localizador\":\"HOT-42\",\"codgReservaPacote\":null}");
         server.expect(requestTo("https://manager.test/reservaHotel/atualizarReserva/42"))
                 .andExpect(method(HttpMethod.PUT))
                 .andExpect(jsonPath("$.codgReservaHotel").value(42))
                 .andExpect(jsonPath("$.reservaStatus").value(esperado))
+                .andExpect(jsonPath("$.statusPagamento").doesNotExist())
                 .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
         assertNotNull(client.carregarReserva(request));
     }
@@ -102,17 +105,34 @@ class HotelClientConsultaPacoteTest {
     void vinculoNuloOmitidoOuInvalidoNaoEInterpretadoComoAvulso(String body) {
         fornecedor("Confirmed");
         vinculo(body);
-        assertThrows(IllegalStateException.class, () -> client.carregarReserva(request));
+        assertFalhaDeConsulta();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"null", "{}", "{\"reservasHotelRsList\":[]}",
         "{\"reservasHotelRsList\":[{\"identificador\":\"OUTRO\",\"status\":\"Confirmed\"}]}",
         "{\"reservasHotelRsList\":[{\"identificador\":\"HOT-42\"}]}",
-        "{\"reservasHotelRsList\":[null]}"})
+        "{\"reservasHotelRsList\":[null]}",
+        "{\"reservasHotelRsList\":[{\"identificador\":\"HOT-42\",\"status\":\"Pending\"}]}",
+        "{\"reservasHotelRsList\":[{\"identificador\":\"HOT-42\",\"status\":\"Confirmed\"},"
+            + "{\"identificador\":\"HOT-42\",\"status\":\"Cancelled\"}]}",
+        "{\"reservasHotelRsList\":[{\"identificador\":\"HOT-42\",\"status\":\"Confirmed\"},"
+            + "{\"identificador\":\"OUTRO\",\"status\":\"Confirmed\"}]}"})
     void fornecedorSemIdentidadeEEstadoNaoConsultaVinculoNemSincroniza(String body) {
         server.expect(requestTo(HUB)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
-        assertThrows(IllegalStateException.class, () -> client.carregarReserva(request));
+        assertFalhaDeConsulta();
+    }
+
+    @Test void pacoteComVariosItensDoMesmoEstadoNormalizaTodosSemGravar() {
+        server.expect(requestTo(HUB)).andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"reservasHotelRsList\":["
+                        + "{\"identificador\":\"HOT-42\",\"status\":\"Confirmed\"},"
+                        + "{\"identificador\":\"HOT-42\",\"status\":\"Reserved\"}]}", MediaType.APPLICATION_JSON));
+        vinculo("{\"codgReservaHotel\":42,\"localizador\":\"HOT-42\",\"status\":0,"
+                + "\"codgReservaPacote\":{\"codgPacote\":131,\"estadoEmissao\":\"INICIADA\"}}");
+        var itens = client.carregarReserva(request).getReservasHotelRsList();
+        assertEquals(2, itens.size());
+        assertTrue(itens.stream().allMatch(item -> "Reserved".equals(item.getStatus())));
     }
 
     @Test void erroDoManagerPreservaFalhaSemPutELogaSomenteCategoriaTecnica() {
@@ -120,7 +140,7 @@ class HotelClientConsultaPacoteTest {
         server.expect(requestTo(MANAGER)).andRespond(withStatus(HttpStatus.CONFLICT)
                 .body("{\"mensagem\":\"fixture-privada-nao-imprimir\"}").contentType(MediaType.APPLICATION_JSON));
         try (Logs logs = new Logs()) {
-            var erro = assertThrows(IllegalStateException.class, () -> client.carregarReserva(request));
+            var erro = assertFalhaDeConsulta();
             assertNull(erro.getCause());
             assertFalse(erro.getMessage().contains("fixture-privada"));
             assertTrue(logs.textos.stream().anyMatch(s -> s.contains("fase=CONSULTA_VINCULO") && s.contains("HTTP=409")));
@@ -132,6 +152,13 @@ class HotelClientConsultaPacoteTest {
     @Test void pedidoSemIdentificadorNaoAutenticaNemConsulta() {
         assertThrows(IllegalStateException.class, () -> client.carregarReserva(new HotelCarregaModelFront(" ")));
         verifyNoInteractions(auth);
+    }
+
+    private ResponseStatusException assertFalhaDeConsulta() {
+        var erro = assertThrows(ResponseStatusException.class, () -> client.carregarReserva(request));
+        assertEquals(HttpStatus.BAD_GATEWAY, erro.getStatus());
+        assertNull(erro.getCause());
+        return erro;
     }
 
     private void fornecedor(String status) {

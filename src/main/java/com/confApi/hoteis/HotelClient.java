@@ -23,8 +23,11 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.SocketTimeoutException;
 import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
@@ -116,12 +119,11 @@ public class HotelClient {
     }
 
     public HotelReserva carregarReserva(HotelCarregaModelFront req) {
-        String fase = "VALIDACAO";
+        if (req == null || req.getIdentificador() == null || req.getIdentificador().isBlank()) {
+            throw new IllegalStateException("Identificador da reserva ausente.");
+        }
+        String fase = "AUTENTICACAO";
         try {
-            if (req == null || req.getIdentificador() == null || req.getIdentificador().isBlank()) {
-                throw new IllegalStateException("Identificador da reserva ausente.");
-            }
-            fase = "AUTENTICACAO";
             ConfAppResp token = confAppService.token();
 
             String url = UriComponentsBuilder
@@ -147,12 +149,7 @@ public class HotelClient {
             }
 
             HotelReserva reserva = hubResponse.getBody();
-            if (reserva == null || reserva.getReservasHotelRsList() == null || reserva.getReservasHotelRsList().isEmpty()
-                    || reserva.getReservasHotelRsList().stream().anyMatch(item -> item == null
-                    || !req.getIdentificador().equalsIgnoreCase(item.getIdentificador())
-                    || item.getStatus() == null || item.getStatus().isBlank())) {
-                throw new IllegalStateException("O fornecedor não confirmou a identidade da reserva.");
-            }
+            int status = validarStatusFornecedor(reserva, req.getIdentificador());
 
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
 
@@ -174,21 +171,22 @@ public class HotelClient {
                     || !persistida.path("localizador").isTextual()
                     || !req.getIdentificador().equalsIgnoreCase(persistida.path("localizador").asText())
                     || !persistida.has("codgReservaPacote")) {
-                throw new IllegalStateException("Não foi possível confirmar o vínculo da reserva.");
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Não foi possível confirmar o vínculo da reserva.");
             }
 
             JsonNode pacote = persistida.get("codgReservaPacote");
             if (!pacote.isNull()) {
                 if (!pacote.isObject() || !pacote.path("codgPacote").isIntegralNumber()
                         || !pacote.path("codgPacote").canConvertToInt() || pacote.path("codgPacote").asInt() <= 0) {
-                    throw new IllegalStateException("Vínculo do pacote inválido.");
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Vínculo do pacote inválido.");
                 }
                 // A conciliação do pacote consulta o fornecedor. Sua operação própria controla a persistência.
-                return reserva;
+            } else {
+                fase = "SINCRONIZACAO_AVULSA";
+                sincronizarReservaAvulsa(persistida, status, headers);
             }
-            fase = "SINCRONIZACAO_AVULSA";
-            sincronizarReservaAvulsa(persistida.path("codgReservaHotel").asInt(),
-                    reserva.getReservasHotelRsList().get(0).getStatus(), headers);
+            complementarDadosHotel(reserva, persistida.path("codgHotel"));
             return reserva;
 
         } catch (Exception e) {
@@ -196,24 +194,68 @@ public class HotelClient {
                     "Consulta hotel não confirmada: fase={0}, categoria={1}, HTTP={2}",
                     new Object[]{fase, e.getClass().getSimpleName(),
                         e instanceof HttpStatusCodeException http ? http.getRawStatusCode() : -1});
-            throw new IllegalStateException("Não foi possível consultar a reserva de hotel.");
+            if (e instanceof ResponseStatusException statusException) {
+                throw new ResponseStatusException(statusException.getStatus(), statusException.getReason());
+            }
+            boolean timeout = (e instanceof HttpStatusCodeException http && http.getRawStatusCode() == 504)
+                    || (e instanceof ResourceAccessException acesso
+                        && acesso.getMostSpecificCause() instanceof SocketTimeoutException);
+            // Não anexa a exceção remota: seu corpo e sua causa podem conter dados privados da reserva.
+            throw new ResponseStatusException(timeout ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY,
+                    timeout ? "O serviço de reservas excedeu o tempo de resposta ao consultar a reserva. Tente novamente."
+                            : "Não foi possível consultar a reserva de hotel.");
         }
     }
 
-    private void sincronizarReservaAvulsa(Integer codgReservaHotel, String statusStr, HttpHeaders headers) {
-        int status = 0;
-        if (statusStr != null) {
-            if (statusStr.contains("Cancel")) {
-                status = 2;
-            } else if (statusStr.contains("Rejected")) {
-                status = 3;
-            } else if (statusStr.contains("Confirmed")) {
-                status = 1;
-            }
+    private int validarStatusFornecedor(HotelReserva reserva, String identificador) {
+        if (reserva == null || reserva.getReservasHotelRsList() == null || reserva.getReservasHotelRsList().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Não foi possível validar a reserva retornada pelo fornecedor.");
         }
+        Integer status = null;
+        for (var item : reserva.getReservasHotelRsList()) {
+            if (item == null || !identificador.equalsIgnoreCase(item.getIdentificador())) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "O fornecedor não confirmou a identidade da reserva.");
+            }
+            int atual = StatusReservaHotelFornecedor.codigo(item.getStatus());
+            if (status != null && status != atual) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "A reserva possui status divergentes; o status salvo foi preservado.");
+            }
+            status = atual;
+        }
+        for (var item : reserva.getReservasHotelRsList()) {
+            item.setStatus(StatusReservaHotelFornecedor.canonico(status));
+        }
+        return status;
+    }
+
+    private void sincronizarReservaAvulsa(JsonNode persistida, int status, HttpHeaders headers) {
+        JsonNode statusSalvo = persistida.path("status");
+        if (statusSalvo.isIntegralNumber() && statusSalvo.canConvertToInt() && statusSalvo.asInt() == status) {
+            return;
+        }
+        int codgReservaHotel = persistida.path("codgReservaHotel").asInt();
+        // A consulta sincroniza somente o status operacional; o pagamento permanece sob controle do Manager.
         var request = new HttpEntity<>(new ReservaHotelAtualizarReservaRQ(codgReservaHotel, status), headers);
-        restTemplate.exchange(UrlConfig.URL_CONFIANCA_MANAGER + "/reservaHotel/atualizarReserva/" + codgReservaHotel,
+        var response = restTemplate.exchange(UrlConfig.URL_CONFIANCA_MANAGER + "/reservaHotel/atualizarReserva/" + codgReservaHotel,
                 HttpMethod.PUT, request, Object.class);
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Não foi possível atualizar o status da reserva de hotel.");
+        }
+    }
+
+    private void complementarDadosHotel(HotelReserva reserva, JsonNode hotel) {
+        if ((reserva.getUrlImagem() == null || reserva.getUrlImagem().isBlank())
+                && hotel.path("urlImagemHotel").isTextual()) {
+            reserva.setUrlImagem(hotel.path("urlImagemHotel").asText());
+        }
+        if ((reserva.getDescricao() == null || reserva.getDescricao().isBlank())
+                && hotel.path("descricao").isTextual()) {
+            reserva.setDescricao(hotel.path("descricao").asText());
+        }
     }
 
     public String cancelarReserva(CancelarReservaRequestHotelFront req) {
