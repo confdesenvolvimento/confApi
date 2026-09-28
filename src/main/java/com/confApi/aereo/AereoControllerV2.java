@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/v2/aereo")
@@ -51,6 +52,11 @@ public class AereoControllerV2 {
     @PostMapping("/obterInformacoesDaFamilia")
     public RegrasAereasReservaResponse obterInformacoesDaFamilia(@RequestBody AereoRegrasFamiliaRequest req) {
         return regrasReservaService.consultarRegrasFamilia(req);
+    }
+
+    @PostMapping("/iniciarEmissao")
+    public Map<String, Object> iniciarEmissao(@RequestBody ConsultarLocalizadorRequest req) {
+        return aereoClient.iniciarEmissao(req);
     }
 
     @PostMapping("/emitir")

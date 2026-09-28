@@ -18,6 +18,7 @@ import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -145,7 +146,17 @@ public class AereoClient {
                 consultarRequest,
                 ConsultarLocalizadorResponse.class,
                 null,
-                true
+                true);
+    }
+
+    /** Retorna as formas de pagamento permitidas pelo HUB para o localizador. */
+    public Map<String, Object> iniciarEmissao(ConsultarLocalizadorRequest consultarRequest) {
+        return post(
+                "Aéreo - Iniciar Emissão",
+                API_AEREO + "/iniciaremissao",
+                consultarRequest,
+                new ParameterizedTypeReference<Map<String, Object>>() {},
+                Collections.emptyMap()
         );
     }
 
@@ -299,7 +310,14 @@ public class AereoClient {
     }
 
     private String montarUrl(String endpoint) {
-        return UrlConfig.URL_CONFIANCA_HUB + endpoint;
+        String baseUrl = UrlConfig.URL_CONFIANCA_HUB;
+        if (baseUrl.endsWith("/") && endpoint.startsWith("/")) {
+            return baseUrl + endpoint.substring(1);
+        }
+        if (!baseUrl.endsWith("/") && !endpoint.startsWith("/")) {
+            return baseUrl + "/" + endpoint;
+        }
+        return baseUrl + endpoint;
     }
 
     private HttpHeaders defaultHeaders(String bearerToken) {

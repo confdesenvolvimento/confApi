@@ -11,7 +11,7 @@ import java.util.Date;
 @EqualsAndHashCode
 public class HotelCancelarModel {
     private String localizador;
-    private Integer codgHotel;
+    private String codgHotel;
     private Date dataEntrada;
     private Date dataSaida;
     private String motivoCancelamento;

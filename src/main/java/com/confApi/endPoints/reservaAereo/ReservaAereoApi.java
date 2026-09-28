@@ -256,7 +256,7 @@ public class ReservaAereoApi {
             return response.getBody();
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Erro ao criar reserva aerea no Manager. Localizador: " + safeLocalizador(reservaAereo), e);
-            alertarErro("Erro ao criar reserva aerea no Manager. Localizador " + safeLocalizador(reservaAereo), e);
+            alertarErro("POST /reservaAereo no Manager. " + contextoReserva(reservaAereo), e);
             throw e;
         }
     }
@@ -427,6 +427,15 @@ public class ReservaAereoApi {
             return left.getCodgCompanhiaAerea().equals(right.getCodgCompanhiaAerea());
         }
         return false;
+    }
+
+    private String contextoReserva(ReservaAereo reserva) {
+        if (reserva == null) return "Reserva nula";
+        return "Localizador=" + reserva.getLocalizador()
+                + "; agencia=" + (reserva.getCodgAgencia() == null ? null : reserva.getCodgAgencia().getCodgAgencia())
+                + "; usuario=" + (reserva.getCodgUsuarioCriacao() == null ? null : reserva.getCodgUsuarioCriacao().getCodgUsuario())
+                + "; sistema=" + (reserva.getCodgSistema() == null ? null : reserva.getCodgSistema().getCodgSistema())
+                + "; companhia=" + (reserva.getCodgCompanhiaAerea() == null ? null : reserva.getCodgCompanhiaAerea().getIataCia());
     }
 
     private String safeLocalizador(ReservaAereo reservaAereo) {
