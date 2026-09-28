@@ -51,6 +51,10 @@ class ChatV2SemanticClientTest {
         assertEquals(28,format.path("schema").path("properties").path("intencao").path("enum").size());
         assertFalse(sent.get().has("tools"));
         assertFalse(sent.get().toString().contains("123456"));assertFalse(sent.get().toString().contains("654321"));
+        String prompt=sent.get().path("messages").path(0).path("content").asText();
+        assertTrue(prompt.contains("explicitamente de HOTEL"));
+        assertTrue(prompt.contains("Reservas AEREAS nunca pedem tipo de data"));
+        assertTrue(prompt.contains("janeiro de 2027"));
     }
     @Test void negaIdentificadorDeAgenciaNoPlano()throws Exception {
         ChatV2SemanticClient client=client(200,"{}");

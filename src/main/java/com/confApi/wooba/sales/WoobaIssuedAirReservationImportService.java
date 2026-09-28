@@ -39,9 +39,14 @@ public class WoobaIssuedAirReservationImportService {
     }
 
     public void processar(String uniqueId, int type) {
+        synchronized (sync) {
+            processarDetails(client.details(uniqueId), type);
+        }
+    }
+
+    void processarDetails(WoobaSalesDetailsResponse details, int type) {
         // Compartilha a exclusao mutua com o webhook e o polling de reservadas nesta instancia.
         synchronized (sync) {
-            WoobaSalesDetailsResponse details = client.details(uniqueId);
             if (!elegivel(details, type)) {
                 return;
             }

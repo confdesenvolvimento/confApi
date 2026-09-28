@@ -314,8 +314,9 @@ public class ChatConfiancaService {
             return atendentes.stream()
                     .filter(Objects::nonNull)
                     .filter(item -> item.getCodgUsuario() != null)
-                    .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
-                    .filter(item -> !Boolean.FALSE.equals(item.getRecebeChamados()))
+                    .filter(item -> Objects.equals(item.getDepartamentoUnidadeId(), departamentoUnidade.getId()))
+                    .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
+                    .filter(item -> Boolean.TRUE.equals(item.getRecebeChamados()))
                     .collect(Collectors.toList());
         } catch (RuntimeException ex) {
             LOGGER.log(Level.FINE,
@@ -330,7 +331,7 @@ public class ChatConfiancaService {
             DepartamentoUnidade departamentoUnidade) {
         return atendente != null
                 && atendente.getCodgUsuario() != null
-                && atendenteOnline(atendente.getCodgUsuario())
+                && atendenteOnlineParaDistribuicao(atendente.getCodgUsuario())
                 && !limiteAtingido(
                         atendente.getCodgUsuario(),
                         limiteEfetivo(atendente, departamentoUnidade));
@@ -640,23 +641,9 @@ public class ChatConfiancaService {
             throw regra(409, "Conversa nao aceita encaminhamento para atendimento humano.");
         }
 
-        DepartamentoUnidade departamentoUnidade = manager.get(
-                "chat-confianca/persistencia/departamento-unidades/" + conversa.getDepartamentoUnidadeId(),
-                DepartamentoUnidade.class
-        );
-        if (departamentoUnidade == null) {
-            throw regra(404, "Departamento da conversa nao encontrado.");
-        }
-        if (isDepartamentoConfiaGeral(departamentoUnidade)) {
-            throw regra(400, "Selecione a equipe desejada antes de solicitar atendimento humano.");
-        }
-        validarHorarioAtendimento(departamentoUnidade);
-        if (!possuiAtendenteHumano(departamentoUnidade)) {
-            throw regra(400, "Este departamento nao possui atendente humano disponivel no momento.");
-        }
-
-        return encaminharConversaParaAtendente(
-                conversa, departamentoUnidade, codgUsuario, motivo, false);
+        // A sugestao da IA (ou um departamento antigo da conversa) nao equivale
+        // a uma escolha confirmada pelo cliente. Clientes legados devem abrir o seletor.
+        throw regra(400, "Selecione ou confirme a equipe desejada antes de solicitar atendimento humano.");
     }
 
     public Conversa encaminharConversaParaAtendente(Long conversaId,
@@ -685,9 +672,12 @@ public class ChatConfiancaService {
                 DepartamentoUnidade.class
         );
         if (departamentoUnidade == null
+                || !Objects.equals(departamentoUnidade.getId(), departamentoUnidadeId)
                 || !Objects.equals(departamentoUnidade.getCodgUnidade(), conversa.getCodgUnidade())
-                || Boolean.FALSE.equals(departamentoUnidade.getAtivo())
-                || Boolean.FALSE.equals(departamentoUnidade.getPermiteChamadoAgencia())
+                || !Boolean.TRUE.equals(departamentoUnidade.getAtivo())
+                || !(conversa.getCodgAgencia() == null
+                    ? Boolean.TRUE.equals(departamentoUnidade.getPermiteChamadoInterno())
+                    : Boolean.TRUE.equals(departamentoUnidade.getPermiteChamadoAgencia()))
                 || isDepartamentoConfiaGeral(departamentoUnidade)) {
             throw regra(400, "A equipe selecionada nao esta disponivel para esta conversa.");
         }
@@ -975,9 +965,9 @@ public class ChatConfiancaService {
         if (departamentoUnidade.getCodgUnidade() != null) {
             conversa.setCodgUnidade(departamentoUnidade.getCodgUnidade());
         }
-        if (registrarTransferencia) {
-            conversa.setAtendenteResponsavelCodgUsuario(null);
-        }
+        // A fila de destino precisa comecar sem responsavel; nunca herdar o
+        // atendente de um departamento/contexto anterior da conversa assistida.
+        conversa.setAtendenteResponsavelCodgUsuario(null);
         conversa.setStatus(StatusConversa.AGUARDANDO_ATENDENTE);
         conversa.setUltimoEventoEm(agora);
         conversa = manager.post("chat-confianca/persistencia/conversas", conversa, Conversa.class);
@@ -1004,12 +994,17 @@ public class ChatConfiancaService {
             }
         }
         registrarEvento(conversa.getId(), "ATENDIMENTO_HUMANO_SOLICITADO", codgUsuario, descricao);
-        persistirResumoConfiaParaAtendimento(conversa, departamentoUnidade, descricao);
-        persistirMensagem(conversa, null,
-                "Certo, vou encaminhar voce para um atendente humano. A equipe recebera o contexto desta conversa.",
-                false, TipoMensagem.SISTEMA, null, RemetenteTipo.SISTEMA);
-
-        return distribuirAutomaticamenteSePossivel(conversa, fila, departamentoUnidade, agora);
+        boolean resumoGravado = persistirResumoConfiaParaAtendimento(conversa, departamentoUnidade, descricao);
+        conversa = distribuirAutomaticamenteSePossivel(conversa, fila, departamentoUnidade, agora);
+        String equipe = limparTextoResumo(nomeOpcaoDepartamento(departamentoUnidade));
+        String aviso = conversa.getStatus() == StatusConversa.EM_ATENDIMENTO
+                ? "Seu atendimento foi atribuido a um atendente da equipe " + equipe + "."
+                : "Sua solicitacao entrou na fila da equipe " + equipe + ". Aguarde um atendente dessa equipe.";
+        if (resumoGravado) {
+            aviso += " Um resumo desta conversa foi disponibilizado para a equipe.";
+        }
+        persistirMensagem(conversa, null, aviso, false, TipoMensagem.SISTEMA, null, RemetenteTipo.SISTEMA);
+        return conversa;
     }
 
     private void registrarTransferenciaAutomaticaRemarcacao(
@@ -1041,65 +1036,50 @@ public class ChatConfiancaService {
         }
     }
 
-    private void persistirResumoConfiaParaAtendimento(Conversa conversa,
+    private boolean persistirResumoConfiaParaAtendimento(Conversa conversa,
                                                        DepartamentoUnidade departamentoUnidade,
                                                        String motivoEncaminhamento) {
-        if (conversa == null || !metadadosOrigemConfia(conversa.getMetadadosJson())) {
-            return;
+        if (conversa == null || isBlank(conversa.getMetadadosJson())) {
+            return false;
         }
-        String resumo = montarResumoConfiaParaAtendente(conversa, departamentoUnidade, motivoEncaminhamento);
-        if (isBlank(resumo)) {
-            return;
+        try {
+            JsonNode origem=HORARIO_OBJECT_MAPPER.readTree(conversa.getMetadadosJson());
+            if(origem==null||!"CONFIA".equalsIgnoreCase(origem.path("origem").asText()))return false;
+        } catch(Exception ex) {return false;}
+        List<Mensagem> historico;
+        try {
+            historico = listarMensagensPublicasConversa(conversa.getId());
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.WARNING, "Historico indisponivel para resumo do handoff: {0}",
+                    ex.getClass().getSimpleName());
+            historico = null;
         }
-        persistirMensagem(conversa, null, resumo, true, TipoMensagem.SISTEMA, null, RemetenteTipo.SISTEMA);
-        registrarEvento(conversa.getId(), "CONFIA_RESUMO_ATENDENTE", null,
-                "Resumo da ConfIA gerado para atendimento humano.");
-    }
-
-    private String montarResumoConfiaParaAtendente(Conversa conversa,
-                                                   DepartamentoUnidade departamentoUnidade,
-                                                   String motivoEncaminhamento) {
-        List<Mensagem> historico = listarMensagensPublicasConversa(conversa.getId()).stream()
-                .filter(item -> item.getRemetenteTipo() == RemetenteTipo.USUARIO
-                || item.getRemetenteTipo() == RemetenteTipo.BOT)
-                .collect(Collectors.toList());
-
-        Mensagem primeiraCliente = historico.stream()
-                .filter(item -> item.getRemetenteTipo() == RemetenteTipo.USUARIO)
-                .findFirst()
-                .orElse(null);
-        Mensagem ultimaCliente = historico.stream()
-                .filter(item -> item.getRemetenteTipo() == RemetenteTipo.USUARIO)
-                .reduce((anterior, atual) -> atual)
-                .orElse(null);
-        Mensagem ultimaConfia = historico.stream()
-                .filter(item -> item.getRemetenteTipo() == RemetenteTipo.BOT)
-                .reduce((anterior, atual) -> atual)
-                .orElse(null);
-
-        StringBuilder resumo = new StringBuilder();
-        resumo.append("Resumo ConfIA para atendimento humano\n");
-        adicionarLinhaResumo(resumo, "Protocolo", conversa.getProtocolo());
-        adicionarLinhaResumo(resumo, "Departamento", departamentoUnidade == null ? null : departamentoUnidade.getNomeExibicao());
-        adicionarLinhaResumo(resumo, "Assunto", conversa.getAssunto());
-        adicionarLinhaResumo(resumo, "Motivo do encaminhamento", motivoEncaminhamento);
-        adicionarLinhaResumo(resumo, "Mensagem inicial do cliente", conteudoMensagemResumo(primeiraCliente, 280));
-        adicionarLinhaResumo(resumo, "Ultima mensagem do cliente", conteudoMensagemResumo(ultimaCliente, 280));
-        adicionarLinhaResumo(resumo, "Ultima resposta da ConfIA", conteudoMensagemResumo(ultimaConfia, 420));
-
-        if (!historico.isEmpty()) {
-            resumo.append("\nHistorico recente:\n");
-            int inicio = Math.max(0, historico.size() - 8);
-            for (Mensagem mensagem : historico.subList(inicio, historico.size())) {
-                resumo.append("- ")
-                        .append(labelResumoMensagem(mensagem))
-                        .append(": ")
-                        .append(conteudoMensagemResumo(mensagem, 360))
-                        .append("\n");
+        try {
+            ChatHandoffResumo.Resultado resumo = ChatHandoffResumo.gerar(
+                    conversa, departamentoUnidade, motivoEncaminhamento, historico, HORARIO_OBJECT_MAPPER);
+            if (resumo == null || isBlank(resumo.texto())) {
+                return false;
             }
+            Mensagem gravada = persistirMensagem(conversa, null, resumo.texto(), true, TipoMensagem.SISTEMA,
+                    resumo.conteudoJson(), RemetenteTipo.SISTEMA);
+            if (gravada == null || gravada.getId() == null) {
+                LOGGER.warning("Resumo do handoff sem confirmacao de persistencia.");
+                return false;
+            }
+        } catch (RuntimeException ex) {
+            // A solicitacao ja entrou na fila. Uma falha no complemento nao pode
+            // induzir o cliente a refazer o handoff ou afirmar que o resumo foi salvo.
+            LOGGER.log(Level.WARNING, "Resumo do handoff nao persistido: {0}", ex.getClass().getSimpleName());
+            return false;
         }
-        resumo.append("\nOrientacao: validar o que a ConfIA ja respondeu e continuar no mesmo contexto.");
-        return limitarTextoResumo(resumo.toString().trim(), 3800);
+        try {
+            registrarEvento(conversa.getId(), "CONFIA_RESUMO_ATENDENTE", null,
+                    "Resumo da ConfIA gerado para atendimento humano.");
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.WARNING, "Evento de resumo do handoff nao persistido: {0}",
+                    ex.getClass().getSimpleName());
+        }
+        return true;
     }
 
     private List<Mensagem> listarMensagensPublicasConversa(Long conversaId) {
@@ -1113,34 +1093,12 @@ public class ChatConfiancaService {
         }
         return mensagens.stream()
                 .filter(Objects::nonNull)
+                .filter(item -> Objects.equals(conversaId, item.getConversaId()))
                 .filter(item -> item.getStatus() != StatusMensagem.EXCLUIDA)
                 .filter(item -> item.getVisibilidade() == null || item.getVisibilidade() == VisibilidadeMensagem.PUBLICA)
                 .filter(item -> !isBlank(item.getConteudo()))
                 .sorted(Comparator.comparing(Mensagem::getEnviadaEm, Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.toList());
-    }
-
-    private void adicionarLinhaResumo(StringBuilder resumo, String label, String valor) {
-        if (!isBlank(valor)) {
-            resumo.append("- ").append(label).append(": ").append(limparTextoResumo(valor)).append("\n");
-        }
-    }
-
-    private String labelResumoMensagem(Mensagem mensagem) {
-        if (mensagem == null || mensagem.getRemetenteTipo() == null) {
-            return "Mensagem";
-        }
-        if (mensagem.getRemetenteTipo() == RemetenteTipo.BOT) {
-            return "ConfIA";
-        }
-        if (mensagem.getRemetenteTipo() == RemetenteTipo.SISTEMA) {
-            return "Sistema";
-        }
-        return "Cliente";
-    }
-
-    private String conteudoMensagemResumo(Mensagem mensagem, int limite) {
-        return mensagem == null ? null : limitarTextoResumo(limparTextoResumo(mensagem.getConteudo()), limite);
     }
 
     private String limparTextoResumo(String texto) {
@@ -2764,12 +2722,18 @@ public class ChatConfiancaService {
     }
 
     private DepartamentoAtendente selecionarAtendenteDistribuicao(DepartamentoUnidade departamentoUnidade) {
-        List<DepartamentoAtendente> candidatos = configService.listarAtendentesDepartamento(departamentoUnidade.getId())
-                .stream()
-                .filter(item -> item.getCodgUsuario() != null)
-                .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
-                .filter(item -> Boolean.TRUE.equals(item.getRecebeChamados()))
-                .filter(item -> atendenteOnline(item.getCodgUsuario()))
+        try {
+            return selecionarAtendenteDistribuicaoConfirmada(departamentoUnidade);
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.WARNING, "Distribuicao automatica indisponivel; solicitacao mantida na fila: {0}",
+                    ex.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    private DepartamentoAtendente selecionarAtendenteDistribuicaoConfirmada(DepartamentoUnidade departamentoUnidade) {
+        List<DepartamentoAtendente> candidatos = listarAtendentesAtivos(departamentoUnidade).stream()
+                .filter(item -> atendenteOnlineParaDistribuicao(item.getCodgUsuario()))
                 .filter(item -> !limiteAtingido(item.getCodgUsuario(), limiteEfetivo(item, departamentoUnidade)))
                 .collect(Collectors.toList());
         if (candidatos.isEmpty()) {
@@ -2795,6 +2759,12 @@ public class ChatConfiancaService {
 
     private Conversa assumirFila(FilaAtendimento fila, Conversa conversa, Integer codgAtendente,
                                 String motivoSaida, LocalDateTime agora) {
+        if (!Objects.equals(fila.getConversaId(), conversa.getId())
+                || !Objects.equals(fila.getDepartamentoUnidadeId(), conversa.getDepartamentoUnidadeId())
+                || !Objects.equals(fila.getCodgUnidade(), conversa.getCodgUnidade())
+                || !Objects.equals(fila.getCodgAgencia(), conversa.getCodgAgencia())) {
+            throw regra(409, "A fila nao corresponde ao departamento e contexto da conversa.");
+        }
         fila.setStatus(StatusFila.EM_ATENDIMENTO);
         fila.setAtendenteDestinoCodgUsuario(codgAtendente);
         fila.setChamadoEm(agora);
@@ -2817,6 +2787,19 @@ public class ChatConfiancaService {
         registrarEvento(conversa.getId(), "ATENDIMENTO_ASSUMIDO", codgAtendente, motivoSaida + ".");
         atualizarCargaAtendente(codgAtendente);
         return conversa;
+    }
+
+    private boolean atendenteOnlineParaDistribuicao(Integer codgAtendente) {
+        try {
+            AtendenteStatus status = configService.buscarAtendenteStatus(codgAtendente);
+            return status != null
+                    && Objects.equals(codgAtendente, status.getCodgUsuario())
+                    && status.getStatus() == StatusAtendente.ONLINE;
+        } catch (RuntimeException ex) {
+            LOGGER.log(Level.FINE, "Status nao confirmado para distribuicao automatica: {0}",
+                    ex.getClass().getSimpleName());
+            return false;
+        }
     }
 
     private boolean atendenteOnline(Integer codgAtendente) {
@@ -2908,8 +2891,11 @@ public class ChatConfiancaService {
     }
 
     private DepartamentoAtendente buscarVinculo(Long departamentoUnidadeId, Integer codgAtendente) {
-        return listarDepartamentosAtendente(codgAtendente).stream()
+        List<DepartamentoAtendente> vinculos = listarDepartamentosAtendente(codgAtendente);
+        return (vinculos == null ? List.<DepartamentoAtendente>of() : vinculos).stream()
+                .filter(Objects::nonNull)
                 .filter(item -> Objects.equals(item.getDepartamentoUnidadeId(), departamentoUnidadeId))
+                .filter(item -> Objects.equals(item.getCodgUsuario(), codgAtendente))
                 .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
                 .filter(item -> Boolean.TRUE.equals(item.getRecebeChamados()))
                 .findFirst()

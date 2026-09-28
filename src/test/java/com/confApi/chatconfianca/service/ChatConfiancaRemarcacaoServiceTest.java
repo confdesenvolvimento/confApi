@@ -773,6 +773,77 @@ class ChatConfiancaRemarcacaoServiceTest {
     }
 
     @Test
+    void falhaTecnicaDaRegraPermiteTentarNovamenteSemDeclararInelegibilidade() {
+        prepararReservaIdaVolta();
+        RegraAereaAlteracaoConsultaResponse erro = new RegraAereaAlteracaoConsultaResponse();
+        erro.setStatus("ERRO_CONSULTA");
+        when(regraService.simular(any())).thenReturn(erro);
+        simulacao.setResultadosJson("dados antigos");
+        simulacao.setCalculoJson("previa antiga");
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
+        assertEquals("AGUARDANDO_TRECHO", response.getStatus());
+        assertEquals(2, response.getTrechos().size());
+        assertTrue(response.getMensagem().contains("Selecione novamente"));
+        assertNull(simulacao.getTrechoIndice());
+        assertNull(simulacao.getRegraId());
+        assertNull(simulacao.getResultadosJson());
+        assertNull(simulacao.getCalculoJson());
+        assertNull(simulacao.getPassageirosJson());
+        RemarcacaoRequest.Pesquisar pesquisa = new RemarcacaoRequest.Pesquisar();
+        pesquisa.setCodgUsuario(USUARIO_ID);
+        pesquisa.setData(LocalDate.now().plusDays(10));
+        assertThrows(RegraDeNegocioException.class,
+                () -> service.pesquisar(SIMULACAO_ID, pesquisa));
+        verify(aereoClient, never()).tarifar(any());
+        when(regraService.simular(any())).thenReturn(regraPermitida(false));
+        assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))).getStatus());
+        assertNull(simulacao.getMotivoBloqueio());
+    }
+
+    @Test
+    void falhaNaRegraDoSegundoTrechoNaoDeveVirarRegrasComerciaisDiferentes() {
+        prepararReservaIdaVolta();
+        RegraAereaAlteracaoConsultaResponse erro = new RegraAereaAlteracaoConsultaResponse();
+        erro.setStatus("ERRO_CONSULTA");
+        when(regraService.simular(any())).thenReturn(regraPermitida(false), erro);
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
+        assertEquals("AGUARDANDO_TRECHO", response.getStatus());
+        assertFalse(response.getMensagem().contains("regras diferentes"));
+        assertNull(simulacao.getRegraSnapshotJson());
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void respostaNulaDaConsultaDeRegraNaoDeveSerInelegibilidadeComercial() {
+        prepararReservaIdaVolta();
+        when(regraService.simular(any())).thenReturn(null);
+        assertEquals("AGUARDANDO_TRECHO", service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))).getStatus());
+    }
+
+    @Test
+    void selecaoComConexaoMantemTodosOsVoosDoTrecho() {
+        Reserva reserva = prepararReservaIdaVolta();
+        reserva.getViagens().get(0).setVoos(List.of(voo("CGB", "GRU", "1111"), voo("GRU", "BSB", "2222")));
+        simulacao.setStatus("AGUARDANDO_TRECHO");
+        RemarcacaoSimulacaoResponse card = service.consultar(SIMULACAO_ID, USUARIO_ID);
+        assertEquals(2, card.getTrechos().size());
+        assertEquals(2, card.getTrechos().get(0).getVoos().size());
+        assertEquals("CGB", card.getTrechos().get(0).getOrigem());
+        assertEquals("BSB", card.getTrechos().get(0).getDestino());
+        when(regraService.simular(any())).thenReturn(regraPermitida(false));
+        RemarcacaoRequest.SelecionarTrecho request = new RemarcacaoRequest.SelecionarTrecho();
+        request.setCodgUsuario(USUARIO_ID); request.setTrechoIndice(0);
+        assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(SIMULACAO_ID, request).getStatus());
+        assertTrue(simulacao.getTrechoOriginalJson().contains("1111"));
+        assertTrue(simulacao.getTrechoOriginalJson().contains("2222"));
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
     void devePreservarExigenciaConjuntaAoEscolherSomenteVolta() {
         prepararReservaIdaVolta();
         when(regraService.simular(any())).thenReturn(regraPermitida(true));

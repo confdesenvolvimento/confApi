@@ -4,7 +4,6 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.hotel.model.HotelResponse;
-import com.confApi.db.confManager.reservaHotel.dto.ReservaHotel;
 import com.confApi.hoteis.model.pesquisa.HotelPesquisaModelFront;
 import com.confApi.hoteis.model.reserva.CancelarReservaRequestHotelFront;
 import com.confApi.hoteis.model.reserva.HotelCarregaModelFront;
@@ -17,15 +16,19 @@ import com.confApi.hub.hotel.mapper.HotelPesquisaMapper;
 import com.confApi.hub.hotel.mapper.HotelReservaMapper;
 import com.confApi.hub.telegram.TelegramService;
 import com.confApi.hub.telegram.dto.MensagemRequest;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 @Component
 public class HotelClient {
@@ -113,8 +116,12 @@ public class HotelClient {
     }
 
     public HotelReserva carregarReserva(HotelCarregaModelFront req) {
+        String fase = "VALIDACAO";
         try {
-            System.out.println("HotelCarregaModelFront: " + req);
+            if (req == null || req.getIdentificador() == null || req.getIdentificador().isBlank()) {
+                throw new IllegalStateException("Identificador da reserva ausente.");
+            }
+            fase = "AUTENTICACAO";
             ConfAppResp token = confAppService.token();
 
             String url = UriComponentsBuilder
@@ -122,13 +129,12 @@ public class HotelClient {
                     .path(API_ACTION + "/carregarReserva") // ajuste aqui se o HUB usar outro path
                     .toUriString();
 
-            System.out.println("URL RESERVA: " + url);
-
             HttpHeaders headers = defaultHeaders(token.getToken());
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<HotelCarregaModelFront> entity = new HttpEntity<>(req, headers);
 
+            fase = "CONSULTA_FORNECEDOR";
             ResponseEntity<HotelReserva> hubResponse = restTemplate.exchange(
                     url,
                     HttpMethod.POST,
@@ -141,57 +147,73 @@ public class HotelClient {
             }
 
             HotelReserva reserva = hubResponse.getBody();
-            System.out.println("Resultado consulda API: " + reserva);
+            if (reserva == null || reserva.getReservasHotelRsList() == null || reserva.getReservasHotelRsList().isEmpty()
+                    || reserva.getReservasHotelRsList().stream().anyMatch(item -> item == null
+                    || !req.getIdentificador().equalsIgnoreCase(item.getIdentificador())
+                    || item.getStatus() == null || item.getStatus().isBlank())) {
+                throw new IllegalStateException("O fornecedor não confirmou a identidade da reserva.");
+            }
 
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
 
-            ResponseEntity<ReservaHotel> response =
+            fase = "CONSULTA_VINCULO";
+            ResponseEntity<JsonNode> response =
                     restTemplate.exchange(
                             UrlConfig.URL_CONFIANCA_MANAGER + "/reservaHotel/localizador/" + req.getIdentificador(),
                             HttpMethod.GET,
                             requestEntity,
-                            ReservaHotel.class
+                            JsonNode.class
                     );
 
-            ReservaHotel reservaHotel = response.getBody();
-            System.out.println("Resultado consulta db: " + reservaHotel.getStatus());
-
-            String statusStr = reserva.getReservasHotelRsList().get(0).getStatus();
-
-            int status = 0;
-
-            if (statusStr != null) {
-                if (statusStr.contains("Cancel")) {
-                    status = 2;
-                } else if (statusStr.contains("Rejected")) {
-                    status = 3;
-                } else if (statusStr.contains("Confirmed")) {
-                    status = 1;
-                }
+            JsonNode persistida = response.getBody();
+            // O vínculo precisa estar presente no contrato. Campo omitido não significa reserva avulsa.
+            if (!response.getStatusCode().is2xxSuccessful() || persistida == null || !persistida.isObject()
+                    || !persistida.path("codgReservaHotel").isIntegralNumber()
+                    || !persistida.path("codgReservaHotel").canConvertToInt()
+                    || persistida.path("codgReservaHotel").asInt() <= 0
+                    || !persistida.path("localizador").isTextual()
+                    || !req.getIdentificador().equalsIgnoreCase(persistida.path("localizador").asText())
+                    || !persistida.has("codgReservaPacote")) {
+                throw new IllegalStateException("Não foi possível confirmar o vínculo da reserva.");
             }
 
-            ReservaHotelAtualizarReservaRQ reservaHotelAtualizarReservaRQ =
-                    new ReservaHotelAtualizarReservaRQ(reservaHotel.getCodgReservaHotel(), status);
-
-            HttpEntity<ReservaHotelAtualizarReservaRQ> requestEntity1 =
-                    new HttpEntity<>(reservaHotelAtualizarReservaRQ, headers);
-
-            ResponseEntity<?> responseUpdate =
-                    restTemplate.exchange(
-                            UrlConfig.URL_CONFIANCA_MANAGER + "/reservaHotel/atualizarReserva/"
-                                    + reservaHotel.getCodgReservaHotel(),
-                            HttpMethod.PUT,
-                            requestEntity1,
-                            Object.class
-                    );
-
+            JsonNode pacote = persistida.get("codgReservaPacote");
+            if (!pacote.isNull()) {
+                if (!pacote.isObject() || !pacote.path("codgPacote").isIntegralNumber()
+                        || !pacote.path("codgPacote").canConvertToInt() || pacote.path("codgPacote").asInt() <= 0) {
+                    throw new IllegalStateException("Vínculo do pacote inválido.");
+                }
+                // A conciliação do pacote consulta o fornecedor. Sua operação própria controla a persistência.
+                return reserva;
+            }
+            fase = "SINCRONIZACAO_AVULSA";
+            sincronizarReservaAvulsa(persistida.path("codgReservaHotel").asInt(),
+                    reserva.getReservasHotelRsList().get(0).getStatus(), headers);
             return reserva;
 
         } catch (Exception e) {
-            e.printStackTrace();
-            logErro("Erro ao carregar reserva hotel", e);
-            throw new RuntimeException("Erro ao efetuar reserva de hotel no HUB", e);
+            Logger.getLogger(HotelClient.class.getName()).log(Level.WARNING,
+                    "Consulta hotel não confirmada: fase={0}, categoria={1}, HTTP={2}",
+                    new Object[]{fase, e.getClass().getSimpleName(),
+                        e instanceof HttpStatusCodeException http ? http.getRawStatusCode() : -1});
+            throw new IllegalStateException("Não foi possível consultar a reserva de hotel.");
         }
+    }
+
+    private void sincronizarReservaAvulsa(Integer codgReservaHotel, String statusStr, HttpHeaders headers) {
+        int status = 0;
+        if (statusStr != null) {
+            if (statusStr.contains("Cancel")) {
+                status = 2;
+            } else if (statusStr.contains("Rejected")) {
+                status = 3;
+            } else if (statusStr.contains("Confirmed")) {
+                status = 1;
+            }
+        }
+        var request = new HttpEntity<>(new ReservaHotelAtualizarReservaRQ(codgReservaHotel, status), headers);
+        restTemplate.exchange(UrlConfig.URL_CONFIANCA_MANAGER + "/reservaHotel/atualizarReserva/" + codgReservaHotel,
+                HttpMethod.PUT, request, Object.class);
     }
 
     public String cancelarReserva(CancelarReservaRequestHotelFront req) {

@@ -957,6 +957,9 @@ public class ChatConfiancaRemarcacaoService {
                 montarRequestRegra(reserva, trecho, null, null));
         simulacao.setRegraSnapshotJson(json(regra));
         simulacao.setRegraId(regra == null || regra.getRegra() == null ? null : regra.getRegra().getId());
+        if (falhaTecnicaRegra(regra)) {
+            return recuperarFalhaConsultaRegra(simulacao, reserva);
+        }
         if (!regraPermite(regra)) {
             String motivo = regra == null || vazio(regra.getMensagem())
                     ? "Nao foi possivel confirmar uma regra aprovada para esse trecho."
@@ -989,6 +992,9 @@ public class ChatConfiancaRemarcacaoService {
                 RegraAereaAlteracaoConsultaResponse regraTrecho = indiceConjunto.equals(indice)
                         ? regra : regraService.simular(montarRequestRegra(
                                 reserva, trecho(reserva, indiceConjunto), null, null));
+                if (falhaTecnicaRegra(regraTrecho)) {
+                    return recuperarFalhaConsultaRegra(simulacao, reserva);
+                }
                 if (!regrasCompativeis(regra, regraTrecho)) {
                     return bloquear(simulacao,
                             "Os trechos possuem regras diferentes ou nao homologadas para calculo conjunto. "
@@ -1020,6 +1026,39 @@ public class ChatConfiancaRemarcacaoService {
                 "Trecho " + simulacao.getOrigem() + " - " + simulacao.getDestino() + " selecionado.",
                 json(dadosEvento));
         return prepararPassageiros(simulacao, reserva, trecho);
+    }
+
+    private boolean falhaTecnicaRegra(RegraAereaAlteracaoConsultaResponse regra) {
+        return regra == null || "ERRO_CONSULTA".equalsIgnoreCase(regra.getStatus());
+    }
+
+    /** A transport failure is not a commercial denial. Retry must validate the rules again. */
+    private RemarcacaoSimulacaoResponse recuperarFalhaConsultaRegra(
+            SimulacaoRemarcacao simulacao, Reserva reserva) {
+        limparResultadosPosteriores(simulacao);
+        simulacao.setPassageirosJson(null);
+        simulacao.setTrechoIndice(null);
+        simulacao.setOrigem(null);
+        simulacao.setDestino(null);
+        simulacao.setTrechoOriginalJson(null);
+        simulacao.setTrechosIndicesJson(null);
+        simulacao.setTrechosOriginaisJson(null);
+        simulacao.setRegraId(null);
+        simulacao.setRegraSnapshotJson(null);
+        simulacao.setStatus(AGUARDANDO_TRECHO);
+        String mensagem = "Nao foi possivel consultar as regras da companhia agora. "
+                + "Isso nao confirma que a reserva seja inelegivel. Selecione novamente o trecho "
+                + "para tentar a consulta; se persistir, use Falar com atendente no chat. "
+                + "Nenhuma alteracao ou cobranca foi realizada.";
+        simulacao.setMotivoBloqueio(mensagem);
+        simulacao = salvar(simulacao);
+        registrarEvento(simulacao, "REMARCACAO_ERRO_CONSULTA_REGRA", mensagem, null);
+        List<Integer> elegiveis = indicesTrechosElegiveis(reserva);
+        RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
+                "Consulta de regras indisponivel", mensagem);
+        response.setTrechos(montarTrechos(reserva, elegiveis, null));
+        preencherSelecaoIdaVolta(response, reserva, elegiveis);
+        return response;
     }
 
     private RemarcacaoSimulacaoResponse prepararPassageiros(

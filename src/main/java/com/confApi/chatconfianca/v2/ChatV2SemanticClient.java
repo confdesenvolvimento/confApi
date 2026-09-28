@@ -15,6 +15,7 @@ import java.util.*;
 @Component
 public class ChatV2SemanticClient {
     public static final List<String> PARAMS=List.of("origem","destino","localizador","companhia",
+        "faturaPagamento","faturaTipoData","faturaInicio","faturaFim","faturaProduto","faturaNumero","faturaDocumento",
         "dataEmissao","produto","modalidade","mes","mesIda","mesVolta","dataIda","dataVolta",
         "dataInicio","dataFim","dataIdaInicio","dataIdaFim","dataVoltaInicio","dataVoltaFim",
         "duracaoMinimaDias","duracaoMaximaDias","duracaoDias","duracaoNoites","cabine","adt",
@@ -45,11 +46,25 @@ public class ChatV2SemanticClient {
             continuar=true somente se o pedido continua o mesmo assunto. Em mudanca de assunto, false.
             Preserve parametros do contexto apenas em continuacoes. Localizador isolado completa reserva/regras. Localizadores aereos podem ter de 5 a 13 caracteres alfanumericos; preserve o codigo completo, sem truncar.
             Retorne o estado COMPLETO dos parametros que continuam validos. null remove um parametro antigo.
+            Uma resposta curta de mes/ano, data ou ocupacao a uma pergunta pendente continua a pesquisa: preserve origem, destino e os demais dados nao alterados.
+            Exemplo: contexto origem=CGB, destino=BSB, mes=2026-01; mensagem 'janeiro de 2027' mantém CGB/BSB e altera somente o periodo para 2027-01.
+            Nao pergunte novamente origem/destino ja preenchidos. Consulte cache sem exigir mes se o contrato aceita consulta sem periodo; 'todos os meses' remove somente o filtro de periodo.
             Ao trocar ida e volta por somente ida, remova a volta. Ao trocar data exata por mes, remova a data exata.
             Ao abrir pesquisa convencional depois do cache, preserve rota mas peca datas exatas quando faltarem.
             Nao consulte reserva aerea para cancelar boleto, nem infira pedido de cancelamento de uma negacao.
             Limite de quantidade em busca aerea NAO e limite financeiro. Mais barato NAO implica pacote.
             PDF depois de fatura continua financeiro.faturas; contato de TI continua contatos, nao problema tecnico.
+            Faturas e historico financeiro usam financeiro.faturas, boletos usam financeiro.boletos. Nunca sao totais de vendas.
+            Use exclusivamente faturaPagamento=ABERTO/PAGO/AMBOS, faturaTipoData=DATA_EMISSAO/DATA_VENCIMENTO,
+            faturaInicio/faturaFim ISO inclusivos, faturaProduto=TODOS/AEREO/TERRESTRE, faturaNumero inteiro positivo,
+            faturaDocumento=PDF/CSV/BOLETO quando solicitado. Nao use parametros de viagem para faturas.
+            Nao existe data efetiva de pagamento nessa integracao. 'Pagas em setembro' pede confirmacao de emissao ou vencimento;
+            nao suponha vencimento nem afirme quando foram pagas. DATA_PAGAMENTO nao e suportada.
+            Sem periodo em abertas, deixe datas null: o servidor informa o intervalo padrao. Pagas/ambas exigem periodo.
+            Periodo de faturas tem no maximo 400 dias. Ano omitido no historico financeiro usa ano atual, nao proxima ocorrencia futura.
+            'E as pagas?' ou resposta de periodo/tipo de data continua faturas, preservando somente filtros financeiros validos.
+            Somente AEREO e TERRESTRE sao filtraveis; hotel/carro/seguro isolados exigem esclarecer a limitacao do agrupamento TERRESTRE.
+            Pagamento, baixa, cancelamento e comprovante de pagamento NAO sao executaveis. Nao prometa gerar documento.
             Ida e volta ja informada nao deve ser perguntada novamente. Mes/periodo e suficiente para consulta de cache.
             Varios destinos: peca qual consultar primeiro; nao escolha silenciosamente so um.
             Para cidades, converta IATA conhecido; Rio sem aeroporto e RIO, Sao Paulo e SAO, Cuiaba e CGB.
@@ -70,7 +85,9 @@ public class ChatV2SemanticClient {
             reservaHotelOpcao e somente o numero escolhido na ultima lista de reservas. Nunca escolha automaticamente.
             Ao continuar na mesma reserva, preserve os filtros de reservaHotel. Ao trocar hospede, hotel ou localizador, remova os filtros anteriores nao reafirmados.
             Voucher, alteracao, cancelamento, reembolso e regras da tarifa reservada de HOTEL ainda nao estao implementados: orientacao_geral, nunca acao aerea.
-            Listar reservas recentes, por hospede/hotel/cidade/periodo usa hotel.reservas_recentes. Nao exigir localizador.
+            Pedido generico de ultimas reservas ou reservas da agencia usa aereo.reservas_recentes, conforme o atalho existente; hotel somente se explicito ou continuacao de contexto valido de reservas de hotel.
+            Reservas AEREAS nunca pedem tipo de data CRIACAO/ENTRADA/SAIDA, hospede ou dados de hospedagem. A pergunta deve pertencer a capacidade escolhida.
+            Listar reservas explicitamente de HOTEL, por hospede/hotel/cidade/periodo usa hotel.reservas_recentes. Nao exigir localizador.
             Use somente listaHotelHospede, listaHotelNome, listaHotelCidade (nome, nao IATA), listaHotelTipoData, listaHotelInicio, listaHotelFim, listaHotelComando, listaHotelOpcao.
             TipoData CRIACAO para reservas criadas/vendidas; ENTRADA para hospedagens/check-ins/entrada; SAIDA para check-outs/saida. Periodo ambiguo: pergunte qual tipo de data.
             Inicio/fim ISO inclusivos, periodo maximo 366 dias. Sem periodo deixe tipo/inicio/fim null: o servidor aplica e informa 30 dias de criacao, mesmo com filtro por cidade/hospede/hotel.
