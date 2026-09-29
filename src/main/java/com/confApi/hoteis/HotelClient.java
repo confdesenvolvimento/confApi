@@ -37,6 +37,13 @@ import java.util.logging.Logger;
 public class HotelClient {
 
     private final RestTemplate restTemplate;
+    private final RestTemplate pesquisaHttp = criarPesquisaHttp();
+    private static RestTemplate criarPesquisaHttp() {
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000); factory.setReadTimeout(175000);
+        return new RestTemplate(factory);
+    }
+
 
     private static final String API_ACTION = "api/hotel";
     @Autowired
@@ -53,13 +60,17 @@ public class HotelClient {
      * Chama o HUB: POST {baseUrl}/api/hotel/disponibilidade
      */
     public List<HotelResponse> pesquisar(HotelPesquisaModelFront req) {
+        return pesquisar(req, null);
+    }
+
+    public List<HotelResponse> pesquisar(HotelPesquisaModelFront req, String fornecedor) {
         try {
             HotelPesquisaModel hubRequest = HotelPesquisaMapper.toHub(req);
             System.out.println("URL: " + UrlConfig.URL_CONFIANCA_HUB + " - " + API_ACTION);
             ConfAppResp token = confAppService.token();
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_HUB)
-                    .path(API_ACTION + "/disponibilidade")
+                    .path(API_ACTION + (fornecedor == null ? "/disponibilidade" : "/disponibilidade/rapida/" + fornecedor))
                     .toUriString();
             System.out.println("URL DOIDA: " + url);
             HttpHeaders headers = defaultHeaders(token.getToken());
@@ -68,7 +79,7 @@ public class HotelClient {
                     new HttpEntity<>(hubRequest, headers);
 
             ResponseEntity<List<HotelResponse>> hubResponse =
-                    restTemplate.exchange(
+                    (fornecedor == null ? restTemplate : pesquisaHttp).exchange(
                             url,
                             HttpMethod.POST,
                             entity,
@@ -85,6 +96,15 @@ public class HotelClient {
         }
     }
 
+
+    public HotelResponse carregarConteudo(HotelPesquisaModelFront pesquisa, HotelResponse hotel) {
+        var token = confAppService.token();
+        var pedido = new java.util.HashMap<String,Object>();
+        pedido.put("fornecedor", hotel.getNomeSistema()); pedido.put("codigo", hotel.getCodigoHotelSistema());
+        pedido.put("nome", hotel.getNome()); pedido.put("pesquisa", HotelPesquisaMapper.toHub(pesquisa));
+        return restTemplate.postForObject(UrlConfig.URL_CONFIANCA_HUB + API_ACTION + "/conteudo",
+                new HttpEntity<>(pedido, defaultHeaders(token.getToken())), HotelResponse.class);
+    }
 
     public HotelReserva efetuarReserva(ReservarRequestFront req) {
         try {

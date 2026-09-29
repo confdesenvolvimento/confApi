@@ -7,8 +7,10 @@ import com.confApi.hub.hotel.dto.HotelPesquisaIdadeCrianca;
 import com.confApi.hub.hotel.dto.HotelPesquisaModel;
 import com.confApi.hub.hotel.dto.HotelPesquisaQuarto;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -71,13 +73,13 @@ public class HotelPesquisaMapper {
     private static Integer nullSafeInt(Integer v, int def) {
         return v == null ? def : v;
     }
-    private static final SimpleDateFormat DF =
-            new SimpleDateFormat("yyyy-MM-dd");
+    private static final DateTimeFormatter DF = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private static Date parse(String value) {
         try {
-            return value == null ? null : DF.parse(value);
-        } catch (ParseException e) {
+            return value == null ? null : Date.from(LocalDate.parse(value, DF)
+                    .atStartOfDay(ZoneId.systemDefault()).toInstant());
+        } catch (DateTimeParseException e) {
             throw new IllegalArgumentException(
                     "Data inválida (esperado yyyy-MM-dd): " + value
             );

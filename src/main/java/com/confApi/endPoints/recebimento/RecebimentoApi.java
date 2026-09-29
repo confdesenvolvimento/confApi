@@ -101,6 +101,9 @@ public class RecebimentoApi {
 
     public void atualizar(Integer codgRecebimento, Recebimento recebimento) {
         try {
+            if (codgRecebimento == null) {
+                throw new IllegalArgumentException("codgRecebimento obrigatorio para atualizar recebimento.");
+            }
             ConfAppResp token = confAppService.token();
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)

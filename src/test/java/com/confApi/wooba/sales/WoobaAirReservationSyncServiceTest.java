@@ -40,6 +40,70 @@ class WoobaAirReservationSyncServiceTest {
             new WoobaAirReservationSyncService(reservaAereoApi, recebimentoApi, notificacaoApi);
 
     @Test
+    void deveConsultarIdQuandoRecebimentoDaReservaVierSemId() {
+        ReservaAereo wooba = reservaWooba("ABC123", 3);
+        ReservaAereo db = reservaDb("ABC123", 3);
+        db.setRecebimentos(List.of(recebimento("1234567890", 2)));
+        Recebimento persistido = recebimento("1234567890", 2);
+        persistido.setCodgRecebimento(88);
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any()))
+                .thenReturn(db);
+        when(recebimentoApi.findByReservaAereoParaSincronizacao(999)).thenReturn(List.of(persistido));
+
+        service.sincronizar(wooba);
+
+        verify(recebimentoApi).atualizar(eq(88), any());
+        verify(recebimentoApi, never()).gravar(any());
+    }
+
+    @Test
+    void deveRecuperarIdDoPagamentoGravadoAntesDeAtualizarNaMesmaSincronizacao() {
+        ReservaAereo wooba = reservaWooba("ABC123", 3);
+        wooba.setRecebimentos(List.of(recebimento("1234567890", 2), recebimento("1234567890", 1)));
+        ReservaAereo db = reservaDb("ABC123", 3);
+        Recebimento persistido = recebimento("1234567890", 2);
+        persistido.setCodgRecebimento(88);
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any()))
+                .thenReturn(db);
+        when(recebimentoApi.findByReservaAereoParaSincronizacao(999))
+                .thenReturn(List.of(), List.of(persistido));
+
+        service.sincronizar(wooba);
+
+        verify(recebimentoApi, times(1)).gravar(any());
+        verify(recebimentoApi).atualizar(eq(88), any());
+    }
+
+    @Test
+    void deveFalharSemAtualizarOuDuplicarQuandoManagerNaoConfirmarId() {
+        ReservaAereo wooba = reservaWooba("ABC123", 3);
+        wooba.setRecebimentos(List.of(recebimento("1234567890", 2), recebimento("1234567890", 1)));
+        ReservaAereo db = reservaDb("ABC123", 3);
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any()))
+                .thenReturn(db);
+        when(recebimentoApi.findByReservaAereoParaSincronizacao(999)).thenReturn(List.of());
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> service.sincronizar(wooba));
+
+        verify(recebimentoApi, times(1)).gravar(any());
+        verify(recebimentoApi, never()).atualizar(any(), any());
+    }
+
+    @Test
+    void deveRejeitarConsultaComRecebimentoSemId() {
+        ReservaAereo db = reservaDb("ABC123", 3);
+        when(reservaAereoApi.findByLocalizadorCompanhiaParaSincronizacao(eq("ABC123"), any()))
+                .thenReturn(db);
+        when(recebimentoApi.findByReservaAereoParaSincronizacao(999))
+                .thenReturn(List.of(recebimento("1234567890", 2)));
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> service.sincronizar(reservaWooba("ABC123", 3)));
+
+        verify(recebimentoApi, never()).gravar(any());
+        verify(recebimentoApi, never()).atualizar(any(), any());
+    }
+    @Test
     void deveCriarReservaSincronizarBilhetePagamentoENotificar() throws Exception {
         ReservaAereo reservaWooba = reservaWooba("ABC123", 3);
 
