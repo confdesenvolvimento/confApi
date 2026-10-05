@@ -133,8 +133,10 @@ public class ChatService {
 
     private ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords, List<ChatMessageDTO> history,
             boolean somenteTextoTi) throws IOException {
-        String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
+        String model = OpenAIResponsesAdapter.model(req.model(), props);
         ObjectMapper om = new ObjectMapper().findAndRegisterModules();
+        OpenAIResponsesAdapter responses = OpenAIResponsesAdapter.usesResponses(model)
+                ? new OpenAIResponsesAdapter(om) : null;
 
         // 0) Normaliza e aplica trim no histórico
         List<ChatMessageDTO> baseHistory = (history != null) ? history : new ArrayList<>();
@@ -201,8 +203,10 @@ public class ChatService {
                 }
             }
 
+            if (responses != null) payload = responses.request(payload, props);
             Request request = new Request.Builder()
-                    .url(props.getBaseUrl() + "/v1/chat/completions")
+                    .url(props.getBaseUrl().replaceAll("/+$", "")
+                            + (responses == null ? "/v1/chat/completions" : "/v1/responses"))
                     .post(RequestBody.create(
                             MediaType.parse("application/json"),
                             om.writeValueAsBytes(payload)))
@@ -213,8 +217,11 @@ public class ChatService {
                     .retryOnConnectionFailure(false).build() : client;
             try (Response r = clienteTurno.newCall(request).execute()) {
                 if (somenteTextoTi && !r.isSuccessful()) throw new IOException("TI_GERACAO_INDISPONIVEL");
+                if (responses != null && (!r.isSuccessful() || r.body() == null))
+                    throw new IOException("OPENAI_RESPONSES_HTTP_" + r.code());
                 String json = Objects.requireNonNull(r.body()).string();
                 JsonNode root = om.readTree(json);
+                if (responses != null) root = responses.completion(root);
                 completionId = root.path("id").asText();
 
                 JsonNode choice = root.path("choices").get(0);
@@ -345,14 +352,16 @@ public class ChatService {
         return Flux.create(sink -> {
             try {
                 Map<String, Object> body = new HashMap<>();
-                body.put("model", Optional.ofNullable(req.model()).orElse(props.getChatModel()));
+                body.put("model", OpenAIResponsesAdapter.model(req.model(), props));
                 body.put("stream", true);
                 body.put("messages", req.messages().stream()
                         .map(m -> Map.of("role", m.role(), "content", m.content()))
                         .toList());
+                // This public SSE path is text-only and retains the Chat Completions event contract.
+                OpenAIResponsesAdapter.configureTextCompletion(body, props, 8192);
 
                 Request request = new Request.Builder()
-                        .url(props.getBaseUrl() + "/v1/chat/completions")
+                        .url(props.getBaseUrl().replaceAll("/+$", "") + "/v1/chat/completions")
                         .post(RequestBody.create(
                                 MediaType.parse("application/json"),
                                 new ObjectMapper().writeValueAsBytes(body)))
@@ -1110,6 +1119,27 @@ public class ChatService {
                 return new ChatResponseDTO(null, consulta.path("mensagem").asText(), List.of(), null,
                         keywords == null ? List.of() : new ArrayList<>(keywords), List.of(dado), List.of());
             }
+        }
+        return null;
+    }
+
+    /** Return only a current-turn selector already prepared by the authorized reservation lookup. */
+    public ChatResponseDTO respostaSeletorRemarcacao(List<ChatMessageDTO> dados, List<String> keywords) {
+        ChatResponseDTO bloqueio = respostaBloqueioRemarcacao(dados, keywords);
+        if (bloqueio != null) return bloqueio;
+        if (dados == null) return null;
+        for (int indice = dados.size() - 1; indice >= 0; indice--) {
+            ChatMessageDTO dado = dados.get(indice);
+            if (dado == null || !"system".equals(dado.role()) || dado.content() == null) continue;
+            JsonNode consulta = extrairJsonDadoSistema(dado.content());
+            if (consulta == null || !"seletor_remarcacao".equals(consulta.path("tipoConsulta").asText())) continue;
+            List<ChatActionDTO> acoes = extrairAcoesDisponiveis(List.of(dado)).stream()
+                    .filter(acao -> isKeywordSeletorRemarcacao(acao.code())).toList();
+            if (acoes.isEmpty()) return null;
+            return new ChatResponseDTO(null,
+                    "Use o seletor para escolher a reserva emitida e simular a remarcacao. "
+                            + "Nenhuma alteracao ou cobranca foi realizada; a conclusao depende de validacao humana.",
+                    List.of(), null, keywords == null ? List.of() : new ArrayList<>(keywords), List.of(dado), acoes);
         }
         return null;
     }

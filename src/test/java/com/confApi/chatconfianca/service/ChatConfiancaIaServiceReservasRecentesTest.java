@@ -856,6 +856,61 @@ class ChatConfiancaIaServiceReservasRecentesTest {
         verify(chatConfiancaService).encaminharConversaParaAtendente(eq(10L),eq(7),eq(20L),anyString());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "quero simular a remarcacao do localizador LA9578682RZQD",
+            "Quero simular a remarcacao da reserva LA9578682RZQD",
+            "Quero simular uma remarcação"})
+    void solAbreSeletorNoLegadoSemDependerDaOpenAi(String mensagem) throws Exception {
+        var request = request(mensagem);
+        prepararContexto(request);
+        var sessao = new SessaoChatResponse();
+        var agencia = new com.confApi.chatconfianca.dto.model.RefAgencia();
+        agencia.setCodgAgencia(321); agencia.setCodgSistemaBackoffice("987"); sessao.setAgencia(agencia);
+        when(chatConfiancaService.montarSessao(7, 321)).thenReturn(sessao);
+        when(profiles.systemPrompt(anyString(), anyLong(), anyLong())).thenReturn("prompt");
+        when(chatConfiancaService.registrarMensagemBot(eq(10L), anyString(), anyString())).thenReturn(new Mensagem());
+
+        var openAi = mock(okhttp3.OkHttpClient.class);
+        var call = mock(okhttp3.Call.class);
+        when(openAi.newCall(any())).thenReturn(call);
+        when(call.execute()).thenThrow(new java.io.IOException("falha simulada do provedor"));
+        var props = new com.confApi.chatgpt.config.OpenAIProperties();
+        props.setChatModel("gpt-6.1-sol"); props.setBaseUrl("https://provider.invalid"); props.setApiKey("unused-test");
+        var aereo = mock(com.confApi.aereo.AereoClient.class);
+        var reserva = new com.confApi.aereo.dto.Reserva(); reserva.setLocalizador("LA9578682RZQD"); reserva.setStatus("EMITIDA");
+        var consulta = new com.confApi.aereo.dto.ConsultarLocalizadorResponse(); consulta.setReservas(List.of(reserva));
+        when(aereo.carregarReservaEstrita(any())).thenReturn(consulta);
+        var realChat = new ChatService(openAi, props, mock(com.confApi.chatgpt.tools.ToolRouter.class),
+                mock(com.confApi.db.confManager.chatMemoria.ChatMemoriaService.class),
+                mock(com.confApi.hub.limites.LimitesService.class), mock(com.confApi.db.confManager.faturas.FaturasService.class),
+                mock(com.confApi.db.wooba.checkin.CheckinService.class), mock(com.confApi.db.confManager.familia.FamiliaService.class),
+                mock(com.confApi.db.confManager.alertaTarifa.AlertaTarifaService.class), mock(ChatConfiancaReservaAereaService.class),
+                aereo, mock(com.confApi.aereo.AereoRegrasReservaService.class));
+        service = new ChatConfiancaIaService(chatConfiancaService, realChat, profiles, mapper, chatIntencaoShadowService,
+                new ChatConfiancaDecisaoIaService(chatIntencaoShadowService, realChat, decisionProperties),
+                chatMemoriaRecuperacaoAuditService, chatIaDecisaoAuditService);
+
+        var response = service.perguntar(request);
+        assertEquals(1, response.getActions().size());
+        assertTrue(response.getResposta().contains("Nenhuma alteracao ou cobranca"));
+        assertTrue(!response.isSugerirAtendente());
+        if (mensagem.contains("LA9578682RZQD")) {
+            assertEquals("simular_remarcacao", response.getAcaoSolicitada());
+            assertEquals("LA9578682RZQD", response.getActions().get(0).localizador());
+            var captura = ArgumentCaptor.forClass(com.confApi.aereo.dto.ConsultarLocalizadorRequest.class);
+            verify(aereo).carregarReservaEstrita(captura.capture());
+            assertEquals("321", captura.getValue().getAgencia().getCodgAgencia());
+        } else {
+            assertEquals("selecionar_reserva_remarcacao", response.getActions().get(0).code());
+            assertNull(response.getAcaoSolicitada()); verifyNoInteractions(aereo);
+        }
+        var conteudo = ArgumentCaptor.forClass(String.class);
+        verify(chatConfiancaService).registrarMensagemBot(eq(10L), anyString(), conteudo.capture());
+        assertEquals(1, mapper.readTree(conteudo.getValue()).path("actions").size());
+        verifyNoInteractions(openAi, call);
+    }
+
     private PerguntarConfiaRequest request(String mensagem) {
         PerguntarConfiaRequest request = new PerguntarConfiaRequest();
         request.setConversaId(10L);

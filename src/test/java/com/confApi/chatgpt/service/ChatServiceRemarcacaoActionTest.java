@@ -578,6 +578,64 @@ class ChatServiceRemarcacaoActionTest {
         assertEquals(77, response.actions().get(0).reservaId());
     }
 
+    @Test
+    void seletorValidadoComLocalizadorLongoNaoDependeDoModelo() {
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(consultaReservaEmitidaElegivel("LA9578682RZQD"));
+        List<ChatMessageDTO> dados = new ArrayList<>();
+        List<String> keywords = service.actionApis(dados, request("quero simular a remarcacao do localizador LA9578682RZQD"));
+        ChatResponseDTO resposta = service.respostaSeletorRemarcacao(dados, keywords);
+        assertEquals(1, resposta.actions().size());
+        assertEquals("simular_remarcacao", resposta.actions().get(0).code());
+        assertEquals("LA9578682RZQD", resposta.actions().get(0).localizador());
+        assertTrue(resposta.content().contains("Nenhuma alteracao ou cobranca"));
+        assertEquals(dados, resposta.history());
+        ArgumentCaptor<ConsultarLocalizadorRequest> consulta = ArgumentCaptor.forClass(ConsultarLocalizadorRequest.class);
+        verify(aereoClient).carregarReservaEstrita(consulta.capture());
+        assertEquals("321", consulta.getValue().getAgencia().getCodgAgencia());
+        verifyNoInteractions(openAiClient);
+    }
+
+    @Test
+    void semLocalizadorAbreSelecaoSemInventarReservaOuChamarIa() {
+        List<ChatMessageDTO> dados = new ArrayList<>();
+        List<String> keywords = service.actionApis(dados, request("Quero simular uma remarcacao"));
+        ChatResponseDTO resposta = service.respostaSeletorRemarcacao(dados, keywords);
+        assertEquals("selecionar_reserva_remarcacao", resposta.actions().get(0).code());
+        assertNull(resposta.actions().get(0).localizador());
+        verifyNoInteractions(openAiClient, aereoClient);
+    }
+
+    @Test
+    void erroDeConsultaDaAgenciaNaoAbreSeletorMesmoSemIa() {
+        when(aereoClient.carregarReservaEstrita(any())).thenThrow(new IllegalStateException("falha simulada"));
+        List<ChatMessageDTO> dados = new ArrayList<>();
+        List<String> keywords = service.actionApis(dados, request("Simular remarcacao LA9578682RZQD"));
+        ChatResponseDTO resposta = service.respostaSeletorRemarcacao(dados, keywords);
+        assertTrue(resposta.actions().isEmpty());
+        assertTrue(resposta.content().contains("Nao foi possivel consultar"));
+        verifyNoInteractions(openAiClient);
+    }
+
+    @Test
+    void reservaAusenteNaAgenciaNaoAbreSeletorMesmoSemIa() {
+        when(aereoClient.carregarReservaEstrita(any())).thenReturn(consultaReserva("OUT123", false));
+        List<ChatMessageDTO> dados = new ArrayList<>();
+        List<String> keywords = service.actionApis(dados, request("Simular remarcacao LA9578682RZQD"));
+        ChatResponseDTO resposta = service.respostaSeletorRemarcacao(dados, keywords);
+        assertTrue(resposta.actions().isEmpty());
+        assertTrue(resposta.content().contains("Nao encontrei"));
+        verifyNoInteractions(openAiClient);
+    }
+
+    @Test
+    void dadosSemSeletorValidadoNaoGeramBotaoDeRemarcacao() {
+        assertNull(service.respostaSeletorRemarcacao(List.of(new ChatMessageDTO("system",
+                "{\"tipoConsulta\":\"reserva_aerea_detalhes\",\"actions\":[]}")), List.of("simular_remarcacao")));
+        assertNull(service.respostaSeletorRemarcacao(List.of(new ChatMessageDTO("system",
+                "{\"tipoConsulta\":\"seletor_remarcacao\",\"acoesDisponiveis\":[]}")), List.of("simular_remarcacao")));
+        verifyNoInteractions(openAiClient, aereoClient);
+    }
+
     private int contarOcorrencias(String texto, String trecho) {
         int quantidade = 0;
         int indice = 0;

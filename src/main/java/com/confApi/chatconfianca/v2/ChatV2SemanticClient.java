@@ -117,6 +117,8 @@ public class ChatV2SemanticClient {
             Map.of("role","user","content",mapper.writeValueAsString(Map.of("mensagem",mensagem,"contexto",ctx)))));
         payload.put("response_format",Map.of("type","json_schema","json_schema",
             Map.of("name","confia_decisao_v2","strict",true,"schema",schema())));
+        // No tools here: preserve the strict planner schema and use bounded GPT-6.1 reasoning.
+        com.confApi.chatgpt.service.OpenAIResponsesAdapter.configureTextCompletion(payload,openAI,4096);
         Request request=new Request.Builder().url(openAI.getBaseUrl().replaceAll("/+$","")+"/v1/chat/completions")
             .post(RequestBody.create(MediaType.parse("application/json"),mapper.writeValueAsBytes(payload))).build();
         OkHttpClient bounded=client.newBuilder().callTimeout(Duration.ofSeconds(Math.max(1,Math.min(30,properties.getTimeoutSeconds())))).build();

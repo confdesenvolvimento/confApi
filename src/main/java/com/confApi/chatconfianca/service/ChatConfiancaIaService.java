@@ -493,6 +493,13 @@ public class ChatConfiancaIaService {
                 if (erroConsulta) decisao.setErroCodigo("CONSULTA_FALHOU");
                 return bloqueioRemarcacao;
             }
+            // Opening an authorized selector is deterministic, not a text-generation operation.
+            // Keep this legacy path independent of provider/model failures, as in the V2 executor.
+            ChatResponseDTO seletorRemarcacao = chatService.respostaSeletorRemarcacao(dadosDoTurno, keywords);
+            if (seletorRemarcacao != null) {
+                marcarResultadoIa(decisao, seletorRemarcacao);
+                return seletorRemarcacao;
+            }
             var actions = chatService.extrairAcoesDisponiveis(dadosDoTurno);
             messages.add(new ChatMessageDTO("user", request.getMensagem()));
 
