@@ -139,16 +139,24 @@ public class AereoClient {
         );
     }
 
-    /**
-     * Expõe ao cliente apenas a configuração de emissão retornada pelo HUB.
-     * Ela contém as formas de pagamento permitidas para o PNR consultado.
-     */
+    /** Read-only lookup that never reports an integration failure as an empty reservation list. */
+    public ConsultarLocalizadorResponse carregarReservaEstrita(ConsultarLocalizadorRequest consultarRequest) {
+        return post(
+                "Aéreo - Validar Localizador",
+                API_AEREO + "/consultar",
+                consultarRequest,
+                ConsultarLocalizadorResponse.class,
+                null,
+                true);
+    }
+
+    /** Retorna as formas de pagamento permitidas pelo HUB para o localizador. */
     public Map<String, Object> iniciarEmissao(ConsultarLocalizadorRequest consultarRequest) {
         return post(
                 "Aéreo - Iniciar Emissão",
                 API_AEREO + "/iniciaremissao",
                 consultarRequest,
-                Map.class,
+                new ParameterizedTypeReference<Map<String, Object>>() {},
                 new LinkedHashMap<>()
         );
     }
@@ -183,6 +191,31 @@ public class AereoClient {
         );
     }
 
+    /** A remarcacao precisa distinguir uma consulta vazia de uma falha tecnica. */
+    public List<PesquisaResponse> pesquisarDisponibilidadeEstrita(PesquisaRequestDTO pesquisaRequestDTO) {
+        return post(
+                "Aereo - Pesquisar Disponibilidade Remarcacao",
+                API_AEREO + "/pesquisa",
+                pesquisaRequestDTO,
+                new ParameterizedTypeReference<List<PesquisaResponse>>() {},
+                Collections.emptyList(),
+                true
+        );
+    }
+
+    public static class ConsultaDisponibilidadeException extends IllegalStateException {
+        private final String codigo;
+
+        public ConsultaDisponibilidadeException(String codigo) {
+            super("Consulta de disponibilidade nao concluida.");
+            this.codigo = codigo;
+        }
+
+        public String getCodigo() {
+            return codigo;
+        }
+    }
+
     public List<PesquisaResponse> pesquisarDisponibilidadeV2(PesquisaRequestDTOV2 pesquisaRequestDTO) {
         return post(
                 "Aéreo - Pesquisar Disponibilidade V2",
@@ -199,6 +232,17 @@ public class AereoClient {
             REQ request,
             Class<RES> responseClass,
             RES retornoPadrao
+    ) {
+        return post(operacao, endpoint, request, responseClass, retornoPadrao, false);
+    }
+
+    private <REQ, RES> RES post(
+            String operacao,
+            String endpoint,
+            REQ request,
+            Class<RES> responseClass,
+            RES retornoPadrao,
+            boolean resultadoEstrito
     ) {
         String url = montarUrl(endpoint);
         long inicio = System.currentTimeMillis();
@@ -234,8 +278,14 @@ public class AereoClient {
 
         } catch (Exception e) {
             tratarErro(operacao, url, inicio, e);
+            if (resultadoEstrito) {
+                throw new IllegalStateException("Nao foi possivel consultar a reserva no HUB.", e);
+            }
         }
 
+        if (resultadoEstrito) {
+            throw new IllegalStateException("A consulta da reserva retornou uma resposta invalida.");
+        }
         return retornoPadrao;
     }
 
@@ -246,6 +296,17 @@ public class AereoClient {
             ParameterizedTypeReference<RES> responseType,
             RES retornoPadrao
     ) {
+        return post(operacao, endpoint, request, responseType, retornoPadrao, false);
+    }
+
+    private <REQ, RES> RES post(
+            String operacao,
+            String endpoint,
+            REQ request,
+            ParameterizedTypeReference<RES> responseType,
+            RES retornoPadrao,
+            boolean resultadoEstrito
+    ) {
         String url = montarUrl(endpoint);
         long inicio = System.currentTimeMillis();
 
@@ -255,7 +316,7 @@ public class AereoClient {
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<REQ> entity = new HttpEntity<>(request, headers);
 
-            JsonLogUtil.logRequest(operacao, request);
+            if (!resultadoEstrito) JsonLogUtil.logRequest(operacao, request);
 
             ResponseEntity<RES> response = restTemplate.exchange(
                     url,
@@ -264,7 +325,7 @@ public class AereoClient {
                     responseType
             );
 
-            JsonLogUtil.logResponse(operacao, response.getBody());
+            if (!resultadoEstrito) JsonLogUtil.logResponse(operacao, response.getBody());
 
             logTempoExecucao(operacao, inicio);
 
@@ -279,9 +340,18 @@ public class AereoClient {
 //            );
 
         } catch (Exception e) {
+            if (resultadoEstrito) {
+                String codigo = isTimeout(e) ? "TIMEOUT" : "ERRO_CONSULTA";
+                LOG.log(Level.WARNING, "REMARCACAO_DISPONIBILIDADE_FALHA codigo={0} tipo={1}",
+                        new Object[]{codigo, e.getClass().getSimpleName()});
+                throw new ConsultaDisponibilidadeException(codigo);
+            }
             tratarErro(operacao, url, inicio, e);
         }
 
+        if (resultadoEstrito) {
+            throw new ConsultaDisponibilidadeException("RESPOSTA_INVALIDA");
+        }
         return retornoPadrao;
     }
 

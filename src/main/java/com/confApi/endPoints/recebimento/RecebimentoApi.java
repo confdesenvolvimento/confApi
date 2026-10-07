@@ -87,8 +87,23 @@ public class RecebimentoApi {
         }
     }
 
+    public List<Recebimento> findByReservaAereoParaSincronizacao(Integer codgReservaAereo) {
+        ConfAppResp token = confAppService.token();
+        String url = UriComponentsBuilder.fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                .path("/recebimento").queryParam("codgReservaAereo.codgReservaAereo", codgReservaAereo).toUriString();
+        ResponseEntity<List<Recebimento>> response = restTemplate.exchange(url, HttpMethod.GET,
+                new HttpEntity<>(defaultHeaders(token.getToken())), new ParameterizedTypeReference<List<Recebimento>>() {});
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new IllegalStateException("Manager nao confirmou os recebimentos da reserva " + codgReservaAereo);
+        }
+        return response.getBody();
+    }
+
     public void atualizar(Integer codgRecebimento, Recebimento recebimento) {
         try {
+            if (codgRecebimento == null) {
+                throw new IllegalArgumentException("codgRecebimento obrigatorio para atualizar recebimento.");
+            }
             ConfAppResp token = confAppService.token();
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)

@@ -88,24 +88,21 @@ class ChatV2CasosLocaisRegressionTest {
     }
     @Test void executorCheckinNaoEnviaLocalizadorAntigoAoServicoOuModelo()throws Exception {
         var p=ChatV2Plan.of(ChatV2Capability.CHECKIN);p.setParametros(Map.of("localizador","FLSEMF"));
-        when(chat.actionApis(anyList(),any(),eq("checkin"),eq(true))).thenAnswer(inv->{
-            ConversationRequestDTO req=inv.getArgument(1);
+        when(chat.responderCheckinsProximos(any())).thenAnswer(inv->{
+            ConversationRequestDTO req=inv.getArgument(0);
             assertEquals(10L,req.codgAgencia());assertEquals("ERP-10",req.idErp());assertFalse(req.input().contains("FLSEMF"));
-            List<ChatMessageDTO> dados=inv.getArgument(0);
-            dados.add(new ChatMessageDTO("system","Dado do sistema: {\"reservaCheckInIA\":[{\"localizadorCompanhia\":\"ABC123\"}]}"));
-            return List.of("checkin");
+            assertTrue(req.history().isEmpty());
+            var dados=List.of(new ChatMessageDTO("system","Dado do sistema: {\"reservaCheckInIA\":[{\"localizadorCompanhia\":\"ABC123\"}]}"));
+            return new ChatResponseDTO(null,"Embarque ABC123",List.of(),null,List.of("checkin"),dados);
         });
-        when(chat.chat(any(),any(),any())).thenReturn(new ChatResponseDTO("mock","Embarque ABC123",List.of(),null,List.of(),List.of()));
         assertEquals("Embarque ABC123",responder(p,"Quais são meus próximos check-ins?",decisao()));
-        var captor=ArgumentCaptor.forClass(ChatRequestDTO.class);verify(chat).chat(captor.capture(),any(),any());
-        assertFalse(mapper.writeValueAsString(captor.getValue()).contains("FLSEMF"));assertFalse(p.getParametros().containsKey("localizador"));
+        verify(chat,never()).chat(any(),any(),any());
+        assertFalse(p.getParametros().containsKey("localizador"));assertEquals("DADOS_CONSULTADOS",p.getResultado());
     }
     @Test void checkinVazioNaoPedeAoModeloParaInventarJustificativa()throws Exception {
         var p=ChatV2Plan.of(ChatV2Capability.CHECKIN);p.setParametros(Map.of("localizador","FLSEMF"));
-        when(chat.actionApis(anyList(),any(),eq("checkin"),eq(true))).thenAnswer(inv->{
-            List<ChatMessageDTO> dados=inv.getArgument(0);
-            dados.add(new ChatMessageDTO("system","Dado do sistema: {\"reservaCheckInIA\":[]}"));return List.of("checkin");
-        });
+        var dados=List.of(new ChatMessageDTO("system","Dado do sistema: {\"reservaCheckInIA\":[]}"));
+        when(chat.responderCheckinsProximos(any())).thenReturn(new ChatResponseDTO(null,"Não há embarques no período.",List.of(),null,List.of("checkin"),dados));
         String out=responder(p,"Quais são meus próximos check-ins?",decisao());
         assertEquals("SEM_RESULTADO",p.getResultado());assertTrue(out.contains("embarques"));
         assertFalse(out.contains("FLSEMF"));verify(chat,never()).chat(any(),any(),any());

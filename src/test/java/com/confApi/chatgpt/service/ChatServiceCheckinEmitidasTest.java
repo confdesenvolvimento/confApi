@@ -44,6 +44,7 @@ class ChatServiceCheckinEmitidasTest {
         value.setPassageiro("PASSAGEIRO-TESTE-" + locator);
         value.setLinkCheckin("https://example.invalid/checkin/" + locator);
         TrechoCheckin trecho = new TrechoCheckin();
+        trecho.setData(new Date());
         trecho.setStatus(1); // Bilhete/trecho ativo nao torna uma reserva cancelada elegivel.
         value.setTrechosMultiplaConexao(List.of(trecho));
         return value;
@@ -55,7 +56,7 @@ class ChatServiceCheckinEmitidasTest {
     }
 
     @Test void listaMistaRetornaApenasEmitidasSemDadosDeCanceladasOuReservadas() throws Exception {
-        when(checkin.findCheckin72Horas(any())).thenReturn(Arrays.asList(
+        when(checkin.findCheckin72HorasEstrito(any())).thenReturn(Arrays.asList(
                 reserva("GCPKVE", 3), reserva("ATIVA1", 1), reserva("INM1RT", 2),
                 reserva("SEMSTS", null), null, reserva("OUTRA2", 2)));
         List<ChatMessageDTO> messages = new ArrayList<>();
@@ -69,31 +70,31 @@ class ChatServiceCheckinEmitidasTest {
         assertFalse(messages.get(0).content().contains("ATIVA1"));
         assertFalse(messages.get(0).content().contains("SEMSTS"));
         ArgumentCaptor<CheckinRQ> captor = ArgumentCaptor.forClass(CheckinRQ.class);
-        verify(checkin).findCheckin72Horas(captor.capture());
+        verify(checkin).findCheckin72HorasEstrito(captor.capture());
         assertEquals("321", captor.getValue().getIdErp());
     }
 
     @ParameterizedTest
     @ValueSource(ints = {-1, 0, 1, 3, 4, 5, 6, 7, 8, 9, 99})
     void qualquerStatusDiferenteDeEmitidaFicaForaMesmoComBilheteAtivo(int status) throws Exception {
-        when(checkin.findCheckin72Horas(any())).thenReturn(List.of(reserva("GCPKVE", status)));
+        when(checkin.findCheckin72HorasEstrito(any())).thenReturn(List.of(reserva("GCPKVE", status)));
         ChatMessageDTO message = chat.buscarCheckinsProximos(request(new ArrayList<>()));
         assertTrue(reservas(message).isEmpty());
         assertFalse(message.content().contains("GCPKVE"));
     }
 
     @Test void statusAusenteNaoETratadoComoEmitido() throws Exception {
-        when(checkin.findCheckin72Horas(any())).thenReturn(Arrays.asList(reserva("SEMSTS", null), null));
+        when(checkin.findCheckin72HorasEstrito(any())).thenReturn(Arrays.asList(reserva("SEMSTS", null), null));
         assertTrue(reservas(chat.buscarCheckinsProximos(request(new ArrayList<>()))).isEmpty());
     }
 
     @Test void retornoNuloDoServicoContinuaSendoListaVazia() throws Exception {
-        when(checkin.findCheckin72Horas(any())).thenReturn(null);
+        when(checkin.findCheckin72HorasEstrito(any())).thenReturn(null);
         assertTrue(reservas(chat.buscarCheckinsProximos(request(new ArrayList<>()))).isEmpty());
     }
 
     @Test void novaConsultaRemoveReservaCanceladaDepoisDaPrimeiraConsulta() throws Exception {
-        when(checkin.findCheckin72Horas(any())).thenReturn(
+        when(checkin.findCheckin72HorasEstrito(any())).thenReturn(
                 List.of(reserva("INM1RT", 2)), List.of(reserva("INM1RT", 3)));
         List<ChatMessageDTO> first = new ArrayList<>();
         chat.actionApis(first, request(new ArrayList<>()), "checkin", true);
@@ -102,11 +103,11 @@ class ChatServiceCheckinEmitidasTest {
         chat.actionApis(second, request(new ArrayList<>(List.of("checkin"))), "checkin", true);
         assertEquals(1, second.size());
         assertTrue(reservas(second.get(0)).isEmpty());
-        verify(checkin, times(2)).findCheckin72Horas(any());
+        verify(checkin, times(2)).findCheckin72HorasEstrito(any());
     }
 
     @Test void v2NaoGeraCheckinQuandoSoExistemReservasCanceladas() throws Exception {
-        when(checkin.findCheckin72Horas(any())).thenReturn(List.of(reserva("GCPKVE", 3)));
+        when(checkin.findCheckin72HorasEstrito(any())).thenReturn(List.of(reserva("GCPKVE", 3)));
         ChatV2Plan plan = ChatV2Plan.of(ChatV2Capability.CHECKIN);
         ChatResponseDTO response = new ChatV2Executor(chat, mock(ToolRouter.class), mapper)
                 .executar(plan, request(new ArrayList<>()), new ChatConfiancaDecisaoIa());
@@ -116,18 +117,14 @@ class ChatServiceCheckinEmitidasTest {
         verify(chat, never()).chat(any(), any(), any());
     }
 
-    @Test void v2EnviaAoModeloSomenteReservasEmitidas() throws Exception {
-        when(checkin.findCheckin72Horas(any())).thenReturn(List.of(reserva("GCPKVE", 3), reserva("INM1RT", 2)));
-        doReturn(new ChatResponseDTO(null, "Embarque emitido", List.of(), null, List.of(), List.of()))
-                .when(chat).chat(any(), any(), any());
+    @Test void v2RetornaSomenteReservasEmitidasSemReescreverComModelo() throws Exception {
+        when(checkin.findCheckin72HorasEstrito(any())).thenReturn(List.of(reserva("GCPKVE", 3), reserva("INM1RT", 2)));
         ChatV2Plan plan = ChatV2Plan.of(ChatV2Capability.CHECKIN);
-        new ChatV2Executor(chat, mock(ToolRouter.class), mapper)
+        ChatResponseDTO response = new ChatV2Executor(chat, mock(ToolRouter.class), mapper)
                 .executar(plan, request(new ArrayList<>()), new ChatConfiancaDecisaoIa());
-        ArgumentCaptor<ChatRequestDTO> captor = ArgumentCaptor.forClass(ChatRequestDTO.class);
-        verify(chat).chat(captor.capture(), any(), any());
-        String modelInput = mapper.writeValueAsString(captor.getValue().messages());
-        assertTrue(modelInput.contains("INM1RT"));
-        assertFalse(modelInput.contains("GCPKVE"));
+        assertTrue(response.content().contains("INM1RT"));
+        assertFalse(response.content().contains("GCPKVE"));
+        verify(chat, never()).chat(any(), any(), any());
         assertEquals("DADOS_CONSULTADOS", plan.getResultado());
     }
 }

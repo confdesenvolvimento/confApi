@@ -391,24 +391,40 @@ public class ChatConfiancaRemarcacaoService {
         simulacao = salvar(simulacao);
         PesquisaRequestDTO pesquisa = montarPesquisa(
                 simulacao, original, sessao, request, passageirosSelecionados);
-        List<PesquisaResponse> retornos = aereoClient.pesquisarDisponibilidade(pesquisa);
-        List<Trecho> opcoes = filtrarOpcoes(
+        List<PesquisaResponse> retornos;
+        try {
+            retornos = aereoClient.pesquisarDisponibilidadeEstrita(pesquisa);
+        } catch (AereoClient.ConsultaDisponibilidadeException ex) {
+            return respostaFalhaPesquisa(simulacao, original, request, ex.getCodigo());
+        } catch (RuntimeException ex) {
+            // Nao reutiliza mensagens, causas ou payloads do fornecedor no chat/log.
+            return respostaFalhaPesquisa(simulacao, original, request, "ERRO_CONSULTA");
+        }
+        if (retornos == null) {
+            return respostaFalhaPesquisa(simulacao, original, request, "RESPOSTA_INVALIDA");
+        }
+        if (!retornos.isEmpty() && retornos.stream().allMatch(java.util.Objects::isNull)) {
+            return respostaFalhaPesquisa(simulacao, original, request, "RESPOSTA_INVALIDA");
+        }
+        boolean erroFornecedor = retornos.stream().filter(java.util.Objects::nonNull)
+                .anyMatch(item -> item.getException() != null);
+        boolean recebeuOpcoes = retornos.stream().filter(java.util.Objects::nonNull)
+                .anyMatch(item -> item.getTrechos1() != null && !item.getTrechos1().isEmpty());
+        if (erroFornecedor && !recebeuOpcoes) {
+            return respostaFalhaPesquisa(simulacao, original, request, "ERRO_CONSULTA");
+        }
+        ResultadoFiltroPesquisa filtro = filtrarOpcoes(
                 retornos, simulacao, request, reserva, passageirosSelecionados);
+        List<Trecho> opcoes = filtro.opcoes;
 
         if (opcoes.isEmpty()) {
             simulacao.setStatus(AGUARDANDO_CRITERIOS);
             simulacao.setResultadosJson(null);
             simulacao = salvar(simulacao);
-
-            boolean exigeTarifaMinima = indicesTrechosSimulacao(simulacao).size() == 1
-                    && exigeTarifaIgualOuMaior(regraSnapshot(simulacao));
-            RemarcacaoSimulacaoResponse response = respostaCriterios(simulacao, original,
-                    exigeTarifaMinima
-                            ? "Nao encontrei voos compativeis com tarifa igual ou superior a tarifa original. "
-                                    + "Tente outra data ou periodo."
-                            : "Nao encontrei voos compativeis nessa data e periodo. Tente outra combinacao.");
+            RemarcacaoSimulacaoResponse response = respostaCriteriosPesquisa(simulacao, original, request,
+                    mensagemPesquisaSemOpcao(filtro));
             registrarEvento(simulacao, "REMARCACAO_PESQUISA_SEM_RESULTADO",
-                    "Pesquisa sem opcoes compativeis.", json(request));
+                    "Pesquisa sem opcoes compativeis.", json(diagnosticoPesquisa(filtro, simulacao, request)));
             registrarCard(simulacao, response);
             return response;
         }
@@ -424,9 +440,121 @@ public class ChatConfiancaRemarcacaoService {
         ajustarDataMinimaConjunta(response, simulacao);
         response.setOpcoes(montarOpcoes(opcoes));
         registrarEvento(simulacao, "REMARCACAO_OPCOES_ENCONTRADAS",
-                opcoes.size() + " opcoes apresentadas ao solicitante.", json(request));
+                opcoes.size() + " opcoes apresentadas ao solicitante.", json(diagnosticoPesquisa(filtro, simulacao, request)));
         registrarCard(simulacao, response);
         return response;
+    }
+
+    private RemarcacaoSimulacaoResponse respostaFalhaPesquisa(
+            SimulacaoRemarcacao simulacao,
+            TrechoReserva original,
+            RemarcacaoRequest.Pesquisar request,
+            String codigo) {
+        String seguro = "TIMEOUT".equals(codigo) ? "TIMEOUT"
+                : "RESPOSTA_INVALIDA".equals(codigo) ? "RESPOSTA_INVALIDA" : "ERRO_CONSULTA";
+        simulacao.setStatus(AGUARDANDO_CRITERIOS);
+        simulacao.setResultadosJson(null);
+        simulacao = salvar(simulacao);
+        String mensagem = "TIMEOUT".equals(seguro)
+                ? "A consulta de novos voos demorou alem do limite e nao pode ser concluida. "
+                : "Nao foi possivel consultar a disponibilidade de novos voos agora. ";
+        RemarcacaoSimulacaoResponse response = respostaCriteriosPesquisa(simulacao, original, request,
+                mensagem + "Isso nao significa que nao existam voos. Tente pesquisar novamente "
+                        + "ou fale com um atendente. Nenhuma alteracao ou cobranca foi realizada.");
+        Map<String, Object> diagnostico = criteriosPesquisaSeguros(simulacao, request);
+        diagnostico.put("codigo", seguro);
+        registrarEvento(simulacao, "REMARCACAO_PESQUISA_INDISPONIVEL",
+                "Consulta de disponibilidade nao concluida.", json(diagnostico));
+        registrarCard(simulacao, response);
+        return response;
+    }
+
+    private RemarcacaoSimulacaoResponse respostaCriteriosPesquisa(
+            SimulacaoRemarcacao simulacao,
+            TrechoReserva original,
+            RemarcacaoRequest.Pesquisar request,
+            String mensagem) {
+        RemarcacaoSimulacaoResponse response = respostaCriterios(simulacao, original, mensagem);
+        response.setCriterios(montarCriterios(original, request.getData(), request.getPeriodo(),
+                Boolean.TRUE.equals(request.getSomenteDireto())));
+        ajustarDataMinimaConjunta(response, simulacao);
+        return response;
+    }
+
+    private String mensagemPesquisaSemOpcao(ResultadoFiltroPesquisa filtro) {
+        if (filtro.opcoesRecebidas == 0) {
+            return "A consulta foi concluida, mas a companhia nao retornou opcoes de voo para esta rota e data. "
+                    + "Tente outra data ou fale com um atendente.";
+        }
+        if (filtro.familiasSemDadosTarifarios > 0) {
+            return "A companhia retornou opcoes, mas nenhuma pode ser apresentada com os criterios e regras atuais. "
+                    + "Faltam valores tarifarios necessarios para confirmar a regra de tarifa minima em parte das opcoes. "
+                    + detalhesOutrosDescartes(filtro)
+                    + "Tente outra data ou fale com um atendente.";
+        }
+        if (filtro.familiasAbaixoTarifaMinima > 0) {
+            return "A pesquisa do trecho selecionado foi concluida, mas nenhuma opcao atende aos criterios e regras atuais. "
+                    + "Foram descartadas familias com tarifa abaixo da "
+                    + (ratearValoresOriginaisPorTrecho ? "tarifa original do trecho" : "tarifa do bilhete original")
+                    + " exigida pela regra aprovada. "
+                    + detalhesOutrosDescartes(filtro)
+                    + "Tente outra data ou periodo, ou fale com um atendente.";
+        }
+        return "A companhia retornou opcoes, mas nenhuma atende aos criterios da remarcacao "
+                + "(" + motivosDescartesCriterios(filtro) + "). "
+                + "Tente outra data ou ajuste os filtros.";
+    }
+
+    private String detalhesOutrosDescartes(ResultadoFiltroPesquisa filtro) {
+        return filtro.opcoesForaCriterios > 0 || filtro.opcoesForaCronologia > 0
+                ? "Tambem houve descartes por " + motivosDescartesCriterios(filtro) + ". " : "";
+    }
+
+    private String motivosDescartesCriterios(ResultadoFiltroPesquisa filtro) {
+        List<String> motivos = new ArrayList<>();
+        for (Map.Entry<MotivoIncompatibilidade, Integer> entry : filtro.descartesCriterios.entrySet()) {
+            if (entry.getValue() <= 0) continue;
+            motivos.add(switch (entry.getKey()) {
+                case ROTA -> "rota diferente da reserva";
+                case COMPANHIA -> "companhia diferente da reserva";
+                case DIRETO -> "voos com conexoes ou paradas quando foi solicitado voo direto";
+                case CODESHARE -> "voos codeshare nao permitidos neste fluxo";
+                case PERIODO -> "horario fora do periodo solicitado";
+                case DADOS_INVALIDOS -> "dados de voo ou familias tarifarias indisponiveis";
+                default -> "criterios do voo";
+            });
+        }
+        if (filtro.opcoesForaCronologia > 0) motivos.add("cronologia incompativel com o itinerario selecionado");
+        return motivos.isEmpty() ? "familias tarifarias indisponiveis" : String.join("; ", motivos);
+    }
+
+    private Map<String, Object> criteriosPesquisaSeguros(SimulacaoRemarcacao simulacao, RemarcacaoRequest.Pesquisar request) {
+        Map<String, Object> dados = new LinkedHashMap<>();
+        dados.put("data", request.getData().toString());
+        String periodo = vazio(request.getPeriodo()) ? "QUALQUER" : request.getPeriodo().trim().toUpperCase(Locale.ROOT);
+        dados.put("periodo", Set.of("QUALQUER", "MANHA", "TARDE", "NOITE").contains(periodo) ? periodo : "OUTRO");
+        dados.put("somenteDireto", Boolean.TRUE.equals(request.getSomenteDireto()));
+        dados.put("trechoIndice", simulacao.getTrechoIndice());
+        return dados;
+    }
+
+    private Map<String, Object> diagnosticoPesquisa(ResultadoFiltroPesquisa filtro, SimulacaoRemarcacao simulacao,
+                                                   RemarcacaoRequest.Pesquisar request) {
+        Map<String, Object> dados = criteriosPesquisaSeguros(simulacao, request);
+        dados.put("codigo", !filtro.opcoes.isEmpty() ? "OPCOES_ENCONTRADAS"
+                : filtro.opcoesRecebidas == 0 ? "FORNECEDOR_SEM_OPCOES"
+                : filtro.familiasSemDadosTarifarios > 0 ? "DADOS_TARIFARIOS_INSUFICIENTES"
+                : filtro.familiasAbaixoTarifaMinima > 0 ? "REGRAS_TARIFARIAS" : "CRITERIOS_SEM_OPCOES");
+        dados.put("opcoesRecebidas", filtro.opcoesRecebidas);
+        dados.put("retornosComFalha", filtro.retornosComFalha);
+        dados.put("opcoesForaCriterios", filtro.opcoesForaCriterios);
+        dados.put("descartesCriterios", filtro.descartesCriterios);
+        dados.put("opcoesForaCronologia", filtro.opcoesForaCronologia);
+        dados.put("opcoesSemFamilias", filtro.opcoesSemFamilias);
+        dados.put("familiasAbaixoTarifaMinima", filtro.familiasAbaixoTarifaMinima);
+        dados.put("familiasSemDadosTarifarios", filtro.familiasSemDadosTarifarios);
+        dados.put("opcoesApresentadas", filtro.opcoes.size());
+        return dados;
     }
 
     public RemarcacaoSimulacaoResponse simular(Long id, RemarcacaoRequest.Simular request) {
@@ -967,6 +1095,9 @@ public class ChatConfiancaRemarcacaoService {
                 montarRequestRegra(reserva, trecho, null, null));
         simulacao.setRegraSnapshotJson(json(regra));
         simulacao.setRegraId(regra == null || regra.getRegra() == null ? null : regra.getRegra().getId());
+        if (falhaTecnicaRegra(regra)) {
+            return recuperarFalhaConsultaRegra(simulacao, reserva);
+        }
         if (!regraPermite(regra)) {
             String motivo = regra == null || vazio(regra.getMensagem())
                     ? "Nao foi possivel confirmar uma regra aprovada para esse trecho."
@@ -999,6 +1130,9 @@ public class ChatConfiancaRemarcacaoService {
                 RegraAereaAlteracaoConsultaResponse regraTrecho = indiceConjunto.equals(indice)
                         ? regra : regraService.simular(montarRequestRegra(
                                 reserva, trecho(reserva, indiceConjunto), null, null));
+                if (falhaTecnicaRegra(regraTrecho)) {
+                    return recuperarFalhaConsultaRegra(simulacao, reserva);
+                }
                 if (!regrasCompativeis(regra, regraTrecho)) {
                     return bloquear(simulacao,
                             "Os trechos possuem regras diferentes ou nao homologadas para calculo conjunto. "
@@ -1030,6 +1164,39 @@ public class ChatConfiancaRemarcacaoService {
                 "Trecho " + simulacao.getOrigem() + " - " + simulacao.getDestino() + " selecionado.",
                 json(dadosEvento));
         return prepararPassageiros(simulacao, reserva, trecho);
+    }
+
+    private boolean falhaTecnicaRegra(RegraAereaAlteracaoConsultaResponse regra) {
+        return regra == null || "ERRO_CONSULTA".equalsIgnoreCase(regra.getStatus());
+    }
+
+    /** A transport failure is not a commercial denial. Retry must validate the rules again. */
+    private RemarcacaoSimulacaoResponse recuperarFalhaConsultaRegra(
+            SimulacaoRemarcacao simulacao, Reserva reserva) {
+        limparResultadosPosteriores(simulacao);
+        simulacao.setPassageirosJson(null);
+        simulacao.setTrechoIndice(null);
+        simulacao.setOrigem(null);
+        simulacao.setDestino(null);
+        simulacao.setTrechoOriginalJson(null);
+        simulacao.setTrechosIndicesJson(null);
+        simulacao.setTrechosOriginaisJson(null);
+        simulacao.setRegraId(null);
+        simulacao.setRegraSnapshotJson(null);
+        simulacao.setStatus(AGUARDANDO_TRECHO);
+        String mensagem = "Nao foi possivel consultar as regras da companhia agora. "
+                + "Isso nao confirma que a reserva seja inelegivel. Selecione novamente o trecho "
+                + "para tentar a consulta; se persistir, use Falar com atendente no chat. "
+                + "Nenhuma alteracao ou cobranca foi realizada.";
+        simulacao.setMotivoBloqueio(mensagem);
+        simulacao = salvar(simulacao);
+        registrarEvento(simulacao, "REMARCACAO_ERRO_CONSULTA_REGRA", mensagem, null);
+        List<Integer> elegiveis = indicesTrechosElegiveis(reserva);
+        RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
+                "Consulta de regras indisponivel", mensagem);
+        response.setTrechos(montarTrechos(reserva, elegiveis, null));
+        preencherSelecaoIdaVolta(response, reserva, elegiveis);
+        return response;
     }
 
     private RemarcacaoSimulacaoResponse prepararPassageiros(
@@ -1679,52 +1846,72 @@ public class ChatConfiancaRemarcacaoService {
         return request;
     }
 
-    private List<Trecho> filtrarOpcoes(List<PesquisaResponse> respostas,
+    private ResultadoFiltroPesquisa filtrarOpcoes(List<PesquisaResponse> respostas,
                                        SimulacaoRemarcacao simulacao,
                                        RemarcacaoRequest.Pesquisar criterios,
                                        Reserva reserva,
                                        List<Passageiro> passageirosSelecionados) {
-        if (respostas == null) return new ArrayList<>();
+        ResultadoFiltroPesquisa diagnostico = new ResultadoFiltroPesquisa();
+        if (respostas == null) return diagnostico;
         boolean exigeTarifaMinima = indicesTrechosSimulacao(simulacao).size() == 1
                 && exigeTarifaIgualOuMaior(regraSnapshot(simulacao));
         List<Trecho> resultado = new ArrayList<>();
         Set<String> chaves = new HashSet<>();
         for (PesquisaResponse resposta : respostas) {
+            if (resposta != null && resposta.getException() != null) diagnostico.retornosComFalha++;
             if (resposta == null || resposta.getTrechos1() == null) continue;
             for (Trecho trecho : resposta.getTrechos1()) {
-                if (!opcaoCompativel(trecho, simulacao, criterios)
-                        || !cronologiaOpcaoCompativel(simulacao, trecho)) continue;
-                if (exigeTarifaMinima) {
-                    filtrarFamiliasPorTarifaMinima(trecho, reserva, passageirosSelecionados);
+                diagnostico.opcoesRecebidas++;
+                MotivoIncompatibilidade motivo = avaliarCompatibilidade(trecho, simulacao, criterios);
+                if (motivo != MotivoIncompatibilidade.COMPATIVEL) {
+                    diagnostico.opcoesForaCriterios++;
+                    diagnostico.descartesCriterios.merge(motivo, 1, Integer::sum);
+                    continue;
                 }
-                if (trecho.getFamilias() == null || trecho.getFamilias().isEmpty()) continue;
+                if (!cronologiaOpcaoCompativel(simulacao, trecho)) {
+                    diagnostico.opcoesForaCronologia++;
+                    continue;
+                }
+                if (exigeTarifaMinima) {
+                    filtrarFamiliasPorTarifaMinima(trecho, reserva, passageirosSelecionados, diagnostico);
+                }
+                if (trecho.getFamilias() == null || trecho.getFamilias().isEmpty()) {
+                    diagnostico.opcoesSemFamilias++;
+                    continue;
+                }
                 String chave = numerosVoos(trecho) + "|" + horaPrimeiroVoo(trecho) + "|" + trecho.getSistema();
                 if (chaves.add(chave)) resultado.add(trecho);
             }
         }
         resultado.sort((a, b) -> valorMenor(a).compareTo(valorMenor(b)));
-        return resultado.stream().limit(LIMITE_OPCOES).collect(Collectors.toList());
+        diagnostico.opcoes = resultado.stream().limit(LIMITE_OPCOES).collect(Collectors.toList());
+        return diagnostico;
     }
 
     private void filtrarFamiliasPorTarifaMinima(
             Trecho trecho,
             Reserva reserva,
-            List<Passageiro> passageirosSelecionados) {
+            List<Passageiro> passageirosSelecionados,
+            ResultadoFiltroPesquisa diagnostico) {
         if (trecho == null || trecho.getFamilias() == null) return;
         trecho.setFamilias(trecho.getFamilias().stream()
-                .filter(familia -> familiaAtendeTarifaMinima(
-                        familia, reserva, passageirosSelecionados))
+                .filter(familia -> {
+                    ResultadoTarifaMinima resultado = avaliarTarifaMinima(familia, reserva, passageirosSelecionados);
+                    if (resultado == ResultadoTarifaMinima.ABAIXO_MINIMO) diagnostico.familiasAbaixoTarifaMinima++;
+                    if (resultado == ResultadoTarifaMinima.DADOS_INCOMPLETOS) diagnostico.familiasSemDadosTarifarios++;
+                    return resultado == ResultadoTarifaMinima.COMPATIVEL;
+                })
                 .collect(Collectors.toList()));
     }
 
-    private boolean familiaAtendeTarifaMinima(
+    private ResultadoTarifaMinima avaliarTarifaMinima(
             FamiliaPreco familia,
             Reserva reserva,
             List<Passageiro> passageirosSelecionados) {
         Preco preco = familia == null ? null : familia.getPreco();
         if (preco == null || reserva == null || reserva.getPassageiros() == null
                 || passageirosSelecionados == null || passageirosSelecionados.isEmpty()) {
-            return false;
+            return ResultadoTarifaMinima.DADOS_INCOMPLETOS;
         }
 
         if (possuiTarifaParaTodos(preco, passageirosSelecionados)) {
@@ -1741,18 +1928,34 @@ public class ChatConfiancaRemarcacaoService {
                         decimal(precoTipo(preco, tipo).getValorTarifa()),
                         quantidadesPorTipo.getOrDefault(tipo, 1),
                         ComponentePreco.TARIFA);
-                if (!tarifaIgualOuMaior(tarifaOriginal, novaTarifa)) return false;
+                if (tarifaOriginal == null || novaTarifa == null) return ResultadoTarifaMinima.DADOS_INCOMPLETOS;
+                if (!tarifaIgualOuMaior(tarifaOriginal, novaTarifa)) return ResultadoTarifaMinima.ABAIXO_MINIMO;
             }
-            return true;
+            return ResultadoTarifaMinima.COMPATIVEL;
         }
 
         BigDecimal novaTarifaTotal = decimal(preco.getTotalTarifa());
         if (novaTarifaTotal == null && passageirosSelecionados.size() == 1) {
             novaTarifaTotal = decimal(preco.getTarifa());
         }
-        return tarifaIgualOuMaior(
-                tarifaOriginalPassageiros(reserva, passageirosSelecionados),
-                novaTarifaTotal);
+        BigDecimal tarifaOriginal = tarifaOriginalPassageiros(reserva, passageirosSelecionados);
+        if (tarifaOriginal == null || novaTarifaTotal == null) return ResultadoTarifaMinima.DADOS_INCOMPLETOS;
+        return tarifaIgualOuMaior(tarifaOriginal, novaTarifaTotal)
+                ? ResultadoTarifaMinima.COMPATIVEL : ResultadoTarifaMinima.ABAIXO_MINIMO;
+    }
+
+    private enum ResultadoTarifaMinima { COMPATIVEL, ABAIXO_MINIMO, DADOS_INCOMPLETOS }
+
+    private static class ResultadoFiltroPesquisa {
+        private List<Trecho> opcoes = new ArrayList<>();
+        private int opcoesRecebidas;
+        private int retornosComFalha;
+        private int opcoesForaCriterios;
+        private final Map<MotivoIncompatibilidade, Integer> descartesCriterios = new LinkedHashMap<>();
+        private int opcoesForaCronologia;
+        private int opcoesSemFamilias;
+        private int familiasAbaixoTarifaMinima;
+        private int familiasSemDadosTarifarios;
     }
 
     private BigDecimal tarifaOriginalPassageiros(
@@ -1773,22 +1976,25 @@ public class ChatConfiancaRemarcacaoService {
         return total.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private boolean opcaoCompativel(Trecho trecho,
+    private enum MotivoIncompatibilidade { COMPATIVEL, DADOS_INVALIDOS, ROTA, COMPANHIA, DIRETO, CODESHARE, PERIODO }
+
+    private MotivoIncompatibilidade avaliarCompatibilidade(Trecho trecho,
                                      SimulacaoRemarcacao simulacao,
                                      RemarcacaoRequest.Pesquisar criterios) {
         if (trecho == null || trecho.getVoos() == null || trecho.getVoos().isEmpty()
-                || trecho.getFamilias() == null || trecho.getFamilias().isEmpty()) return false;
+                || trecho.getFamilias() == null || trecho.getFamilias().isEmpty()) return MotivoIncompatibilidade.DADOS_INVALIDOS;
         if (!simulacao.getOrigem().equalsIgnoreCase(iata(trecho.getOrigem()))
-                || !simulacao.getDestino().equalsIgnoreCase(iata(trecho.getDestino()))) return false;
-        if (!companhiasEquivalentes(simulacao.getCompanhiaIata(), companhiaTrecho(trecho))) return false;
+                || !simulacao.getDestino().equalsIgnoreCase(iata(trecho.getDestino()))) return MotivoIncompatibilidade.ROTA;
+        if (!companhiasEquivalentes(simulacao.getCompanhiaIata(), companhiaTrecho(trecho))) return MotivoIncompatibilidade.COMPANHIA;
         if (Boolean.TRUE.equals(criterios.getSomenteDireto())
-                && (trecho.getVoos().size() > 1 || (trecho.getNumeroParadas() != null && trecho.getNumeroParadas() > 0))) return false;
+                && (trecho.getVoos().size() > 1 || (trecho.getNumeroParadas() != null && trecho.getNumeroParadas() > 0))) return MotivoIncompatibilidade.DIRETO;
         for (Voo voo : trecho.getVoos()) {
-            if (Boolean.TRUE.equals(voo.getIsCodeShare())) return false;
+            if (Boolean.TRUE.equals(voo.getIsCodeShare())) return MotivoIncompatibilidade.CODESHARE;
             String iata = voo.getCiaMandatoria() == null ? null : voo.getCiaMandatoria().getCodigoIata();
-            if (!vazio(iata) && !companhiasEquivalentes(simulacao.getCompanhiaIata(), iata)) return false;
+            if (!vazio(iata) && !companhiasEquivalentes(simulacao.getCompanhiaIata(), iata)) return MotivoIncompatibilidade.COMPANHIA;
         }
-        return periodoCompativel(horaPrimeiroVoo(trecho), criterios.getPeriodo());
+        return periodoCompativel(horaPrimeiroVoo(trecho), criterios.getPeriodo())
+                ? MotivoIncompatibilidade.COMPATIVEL : MotivoIncompatibilidade.PERIODO;
     }
 
     private TarifarRequest montarTarifacao(

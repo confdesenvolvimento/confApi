@@ -148,6 +148,41 @@ public class ReservaAereoApi {
                 .orElse(null);
     }
 
+    public ReservaAereo findByLocalizadorCompanhiaParaSincronizacao(String localizador, CompanhiaAerea companhia) {
+        if (localizador == null || localizador.isBlank() || companhia == null) {
+            throw new IllegalArgumentException("Localizador e companhia obrigatorios para sincronizacao.");
+        }
+        ConfAppResp token = confAppService.token();
+        String url = UriComponentsBuilder.fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                .path("/reservaAereo").queryParam("localizador", localizador.trim()).toUriString();
+        ResponseEntity<List<ReservaAereo>> response = restTemplate.exchange(url, HttpMethod.GET,
+                new HttpEntity<>(defaultHeaders(token.getToken())), new ParameterizedTypeReference<List<ReservaAereo>>() {});
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new IllegalStateException("Manager nao confirmou a consulta do localizador " + localizador);
+        }
+        List<ReservaAereo> encontradas = response.getBody().stream()
+                .filter(reserva -> localizador.trim().equalsIgnoreCase(defaultString(reserva.getLocalizador()).trim()))
+                .filter(reserva -> mesmaCompanhia(reserva.getCodgCompanhiaAerea(), companhia))
+                .collect(java.util.stream.Collectors.toList());
+        if (encontradas.size() > 1) {
+            throw new IllegalStateException("Mais de uma reserva para localizador + companhia: " + localizador);
+        }
+        return encontradas.isEmpty() ? null : encontradas.get(0);
+    }
+
+    public Integer reconciliarDivisaoWooba(Integer codgReservaOrigem, ReservaAereo destino) {
+        ConfAppResp token = confAppService.token();
+        String url = UriComponentsBuilder.fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                .path("/reservaAereo/wooba/divisoes").toUriString();
+        ResponseEntity<Integer> response = restTemplate.exchange(url, HttpMethod.POST,
+                new HttpEntity<>(Map.of("codgReservaOrigem", codgReservaOrigem, "destino", destino),
+                        defaultHeaders(token.getToken())), Integer.class);
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null || response.getBody() <= 0) {
+            throw new IllegalStateException("Manager nao confirmou a divisao para " + destino.getLocalizador());
+        }
+        return response.getBody();
+    }
+
     public List<ReservaAereo> consultarReservasUsuario(Integer codgUsuario, Integer codgAgencia, String localizador) {
         if (codgUsuario == null) {
             return Collections.emptyList();
@@ -221,7 +256,7 @@ public class ReservaAereoApi {
             return response.getBody();
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Erro ao criar reserva aerea no Manager. Localizador: " + safeLocalizador(reservaAereo), e);
-            alertarErro("Erro ao criar reserva aerea no Manager. Localizador " + safeLocalizador(reservaAereo), e);
+            alertarErro("POST /reservaAereo no Manager. " + contextoReserva(reservaAereo), e);
             throw e;
         }
     }
@@ -392,6 +427,15 @@ public class ReservaAereoApi {
             return left.getCodgCompanhiaAerea().equals(right.getCodgCompanhiaAerea());
         }
         return false;
+    }
+
+    private String contextoReserva(ReservaAereo reserva) {
+        if (reserva == null) return "Reserva nula";
+        return "Localizador=" + reserva.getLocalizador()
+                + "; agencia=" + (reserva.getCodgAgencia() == null ? null : reserva.getCodgAgencia().getCodgAgencia())
+                + "; usuario=" + (reserva.getCodgUsuarioCriacao() == null ? null : reserva.getCodgUsuarioCriacao().getCodgUsuario())
+                + "; sistema=" + (reserva.getCodgSistema() == null ? null : reserva.getCodgSistema().getCodgSistema())
+                + "; companhia=" + (reserva.getCodgCompanhiaAerea() == null ? null : reserva.getCodgCompanhiaAerea().getIataCia());
     }
 
     private String safeLocalizador(ReservaAereo reservaAereo) {

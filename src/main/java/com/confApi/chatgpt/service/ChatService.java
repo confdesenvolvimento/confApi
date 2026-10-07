@@ -71,6 +71,12 @@ import java.util.regex.Pattern;
 @Service
 @RequiredArgsConstructor
 public class ChatService {
+
+    /** Shared V1/V2 invoice query; filters never supply the authenticated agency identity. */
+    public ChatResponseDTO responderFaturas(ConversationRequestDTO req, Map<String,String> filtros, boolean boletos) {
+        return new com.confApi.chatconfianca.financeiro.ChatFaturasConsulta(faturasService, mapper)
+                .responder(req, filtros, boletos);
+    }
     private static final int LIMITE_ULTIMAS_RESERVAS_AEREAS = 10;
     // Codigo de turReservasAereas.Status na Wooba; difere do cadastro proprio do Manager.
     private static final int STATUS_RESERVA_WOOBA_EMITIDA = 2;
@@ -126,9 +132,11 @@ public class ChatService {
     }
 
     private ChatResponseDTO chat(ChatRequestDTO req, List<String> keywords, List<ChatMessageDTO> history,
-                                 boolean somenteTextoTi) throws IOException {
-        String model = Optional.ofNullable(req.model()).orElse(props.getChatModel());
+            boolean somenteTextoTi) throws IOException {
+        String model = OpenAIResponsesAdapter.model(req.model(), props);
         ObjectMapper om = new ObjectMapper().findAndRegisterModules();
+        OpenAIResponsesAdapter responses = OpenAIResponsesAdapter.usesResponses(model)
+                ? new OpenAIResponsesAdapter(om) : null;
 
         // 0) Normaliza e aplica trim no histórico
         List<ChatMessageDTO> baseHistory = (history != null) ? history : new ArrayList<>();
@@ -195,8 +203,10 @@ public class ChatService {
                 }
             }
 
+            if (responses != null) payload = responses.request(payload, props);
             Request request = new Request.Builder()
-                    .url(props.getBaseUrl() + "/v1/chat/completions")
+                    .url(props.getBaseUrl().replaceAll("/+$", "")
+                            + (responses == null ? "/v1/chat/completions" : "/v1/responses"))
                     .post(RequestBody.create(
                             MediaType.parse("application/json"),
                             om.writeValueAsBytes(payload)))
@@ -207,8 +217,11 @@ public class ChatService {
                     .retryOnConnectionFailure(false).build() : client;
             try (Response r = clienteTurno.newCall(request).execute()) {
                 if (somenteTextoTi && !r.isSuccessful()) throw new IOException("TI_GERACAO_INDISPONIVEL");
+                if (responses != null && (!r.isSuccessful() || r.body() == null))
+                    throw new IOException("OPENAI_RESPONSES_HTTP_" + r.code());
                 String json = Objects.requireNonNull(r.body()).string();
                 JsonNode root = om.readTree(json);
+                if (responses != null) root = responses.completion(root);
                 completionId = root.path("id").asText();
 
                 JsonNode choice = root.path("choices").get(0);
@@ -339,14 +352,16 @@ public class ChatService {
         return Flux.create(sink -> {
             try {
                 Map<String, Object> body = new HashMap<>();
-                body.put("model", Optional.ofNullable(req.model()).orElse(props.getChatModel()));
+                body.put("model", OpenAIResponsesAdapter.model(req.model(), props));
                 body.put("stream", true);
                 body.put("messages", req.messages().stream()
                         .map(m -> Map.of("role", m.role(), "content", m.content()))
                         .toList());
+                // This public SSE path is text-only and retains the Chat Completions event contract.
+                OpenAIResponsesAdapter.configureTextCompletion(body, props, 8192);
 
                 Request request = new Request.Builder()
-                        .url(props.getBaseUrl() + "/v1/chat/completions")
+                        .url(props.getBaseUrl().replaceAll("/+$", "") + "/v1/chat/completions")
                         .post(RequestBody.create(
                                 MediaType.parse("application/json"),
                                 new ObjectMapper().writeValueAsBytes(body)))
@@ -402,17 +417,19 @@ public class ChatService {
         if (keyword == null) {
             keyword = "desconhecido";
             try {
-                keyword = conversationAgentIA(req.input());
+                String classificada = conversationAgentIA(req.input());
+                if (classificada != null && !classificada.isBlank()) keyword = classificada.trim();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
-        List<String> keywords = Optional.ofNullable(req.keywords()).orElseGet(ArrayList::new);
+        List<String> keywords = new ArrayList<>(Optional.ofNullable(req.keywords()).orElseGet(ArrayList::new));
         String localizadorReserva = null;
         boolean contextoReservaAerea = keywords.contains("reserva_aerea_detalhes") || keywords.contains("reserva_aerea_regras");
         if (isKeywordSeletorRemarcacao(keyword)) {
             localizadorReserva = extrairLocalizadorDeterministico(req.input());
-            messages.add(montarMensagemSeletorRemarcacao(localizadorReserva));
+            ChatMessageDTO bloqueio = validarLocalizadorRemarcacao(req, localizadorReserva);
+            messages.add(bloqueio == null ? montarMensagemSeletorRemarcacao(localizadorReserva) : bloqueio);
         } else if (deveTentarCarregarReservaAerea(req.input(), keyword) || contextoReservaAerea) {
             localizadorReserva = intencaoDeterministica
                     ? extrairLocalizadorDeterministico(req.input())
@@ -445,8 +462,9 @@ public class ChatService {
 
         if (keyword.equals("desconhecido") && !keywords.contains(keyword)) {
             List<ChatMemoria> chatMemorias = chatMemoriaService.findByBase(req.unidade());
-            for (ChatMemoria chtMemoria : chatMemorias) {
-                //   System.out.println("Memoria: " + chtMemoria.getText());
+            for (ChatMemoria chtMemoria : chatMemorias == null ? List.<ChatMemoria>of() : chatMemorias) {
+                if (chtMemoria == null || chtMemoria.getText() == null || chtMemoria.getText().isBlank()) continue;
+             //   System.out.println("Memoria: " + chtMemoria.getText());
                 messages.add(new ChatMessageDTO("system", "Dado do sistema: " + chtMemoria.getText()));
             }
         }
@@ -594,6 +612,10 @@ public class ChatService {
         List<ChatActionDTO> actions = new ArrayList<>();
         Set<String> adicionadas = new HashSet<>();
         if (messages == null) {
+            return actions;
+        }
+        // A blocked current lookup must not inherit actions from older reservation messages.
+        if (respostaBloqueioRemarcacao(messages, List.of()) != null) {
             return actions;
         }
 
@@ -1029,6 +1051,97 @@ public class ChatService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private ChatMessageDTO validarLocalizadorRemarcacao(ConversationRequestDTO req, String localizador) {
+        if (localizador == null) {
+            return null;
+        }
+        if (req.codgAgencia() == null || req.codgAgencia() <= 0 || req.idErp() == null
+                || req.idErp().isBlank() || "confia".equalsIgnoreCase(req.idErp().trim())) {
+            return mensagemBloqueioRemarcacao(localizador, "ERRO_CONSULTA");
+        }
+
+        ConsultarLocalizadorResponse consulta;
+        try {
+            consulta = aereoClient.carregarReservaEstrita(montarRequestConsultaLocalizador(req, localizador));
+        } catch (Exception ex) {
+            return mensagemBloqueioRemarcacao(localizador, "ERRO_CONSULTA");
+        }
+        if (consulta == null || consulta.getException() != null || consulta.getReservas() == null) {
+            return mensagemBloqueioRemarcacao(localizador, "ERRO_CONSULTA");
+        }
+        boolean encontrada = consulta.getReservas().stream().filter(Objects::nonNull)
+                .anyMatch(reserva -> reserva.getLocalizador() != null
+                        && localizador.equalsIgnoreCase(reserva.getLocalizador().trim()));
+        return encontrada ? null : mensagemBloqueioRemarcacao(localizador, "NAO_ENCONTRADA");
+    }
+
+    private ChatMessageDTO mensagemBloqueioRemarcacao(String localizador, String status) {
+        Map<String, Object> contexto = new LinkedHashMap<>();
+        contexto.put("tipoConsulta", "validacao_remarcacao");
+        contexto.put("localizadorConsultado", localizador);
+        contexto.put("statusConsulta", status);
+        contexto.put("mensagem", "NAO_ENCONTRADA".equals(status)
+                ? "Nao encontrei a reserva " + localizador + " na sua agencia."
+                : "Nao foi possivel consultar a reserva " + localizador + " agora. Tente novamente mais tarde.");
+        contexto.put("acoesDisponiveis", List.of());
+        try {
+            return new ChatMessageDTO("system", "Dado do sistema (validacao_remarcacao): "
+                    + mapper.writeValueAsString(contexto));
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Nao foi possivel informar o resultado da consulta da reserva.", ex);
+        }
+    }
+
+    /** Only current-turn lookup data should be supplied; no model or historical actions are used. */
+    public ChatResponseDTO respostaBloqueioRemarcacao(List<ChatMessageDTO> dados, List<String> keywords) {
+        if (dados == null) {
+            return null;
+        }
+        for (int indice = dados.size() - 1; indice >= 0; indice--) {
+            ChatMessageDTO dado = dados.get(indice);
+            if (dado == null || !"system".equals(dado.role()) || dado.content() == null) {
+                continue;
+            }
+            JsonNode consulta = extrairJsonDadoSistema(dado.content());
+            if (consulta == null) {
+                continue;
+            }
+            String tipoConsulta = consulta.path("tipoConsulta").asText();
+            if (Set.of("seletor_remarcacao", "reserva_aerea_detalhes", "reserva_aerea_regras")
+                    .contains(tipoConsulta)) {
+                return null;
+            }
+            if (!"validacao_remarcacao".equals(tipoConsulta)) continue;
+            String status = consulta.path("statusConsulta").asText();
+            if ("NAO_ENCONTRADA".equals(status) || "ERRO_CONSULTA".equals(status)) {
+                return new ChatResponseDTO(null, consulta.path("mensagem").asText(), List.of(), null,
+                        keywords == null ? List.of() : new ArrayList<>(keywords), List.of(dado), List.of());
+            }
+        }
+        return null;
+    }
+
+    /** Return only a current-turn selector already prepared by the authorized reservation lookup. */
+    public ChatResponseDTO respostaSeletorRemarcacao(List<ChatMessageDTO> dados, List<String> keywords) {
+        ChatResponseDTO bloqueio = respostaBloqueioRemarcacao(dados, keywords);
+        if (bloqueio != null) return bloqueio;
+        if (dados == null) return null;
+        for (int indice = dados.size() - 1; indice >= 0; indice--) {
+            ChatMessageDTO dado = dados.get(indice);
+            if (dado == null || !"system".equals(dado.role()) || dado.content() == null) continue;
+            JsonNode consulta = extrairJsonDadoSistema(dado.content());
+            if (consulta == null || !"seletor_remarcacao".equals(consulta.path("tipoConsulta").asText())) continue;
+            List<ChatActionDTO> acoes = extrairAcoesDisponiveis(List.of(dado)).stream()
+                    .filter(acao -> isKeywordSeletorRemarcacao(acao.code())).toList();
+            if (acoes.isEmpty()) return null;
+            return new ChatResponseDTO(null,
+                    "Use o seletor para escolher a reserva emitida e simular a remarcacao. "
+                            + "Nenhuma alteracao ou cobranca foi realizada; a conclusao depende de validacao humana.",
+                    List.of(), null, keywords == null ? List.of() : new ArrayList<>(keywords), List.of(dado), acoes);
+        }
+        return null;
     }
 
     private ChatMessageDTO montarMensagemSeletorRemarcacao(String localizador) {
@@ -2200,46 +2313,39 @@ public class ChatService {
 
 
     public ChatMessageDTO buscarCheckinsProximos(ConversationRequestDTO req) {
-        String resultadoJson;
-
-        // Filtra pelo status da reserva antes de enviar qualquer dado ao modelo.
-        List<Checkin72Horas> checkinList = Optional
-                .ofNullable(checkinService.findCheckin72Horas(new CheckinRQ(req.idErp(), 2)))
-                .orElseGet(java.util.Collections::emptyList)
-                .stream()
-                .filter(Objects::nonNull)
-                .filter(reserva -> Objects.equals(reserva.getStatusReserva(), STATUS_RESERVA_WOOBA_EMITIDA))
-                .toList();
-
-        try {
-            // 2) Converte List<Checkin72Horas> -> List<ReservaCheckInIA> sem serializar antes
-            List<ReservaCheckInIA> rcIA = mapper.convertValue(
-                    checkinList,
-                    new com.fasterxml.jackson.core.type.TypeReference<List<ReservaCheckInIA>>() {
-                    }
-            );
-
-            // 3) Monta o wrapper de resposta
-            CheckinIAResponse fResponse = new CheckinIAResponse();
-            fResponse.setReservaCheckInIA(
-                    Optional.ofNullable(rcIA).orElseGet(java.util.ArrayList::new)
-            );
-
-            // 4) Serializa o OBJETO (não toString)
-            resultadoJson = mapper.writeValueAsString(fResponse);
-
-            // System.out.println("[buscarCheckinsProximos] itens convertidos: " + fResponse.getReservaCheckInIA().size());
-
-        } catch (Exception e) {
-            //   System.out.println("[buscarCheckinsProximos] Erro ao montar resposta" + e);
-            // fallback mínimo para não quebrar o fluxo
-            resultadoJson = "{\"reservaCheckInIA\":[]}";
+        Map<String, Object> payload;
+        if (req == null || req.codgAgencia() == null || req.codgAgencia() <= 0
+                || req.idErp() == null || req.idErp().isBlank() || "confia".equalsIgnoreCase(req.idErp().trim())) {
+            payload = Map.of("statusConsulta", "CONSULTA_BLOQUEADA", "reservaCheckInIA", List.of(),
+                    "textoResposta", "Não foi possível identificar a agência deste atendimento para consultar os embarques. Reabra o chat pela sua sessão autenticada.");
+        } else {
+            try {
+                // Preserve the backend's calendar window: today through today + 3, inclusive.
+                // The ERP identity comes only from the authenticated session, never from a locator/model.
+                CheckinRQ consulta = new CheckinRQ(req.idErp(), 2);
+                payload = new ChatCheckinResumo().montar(checkinService.findCheckin72HorasEstrito(consulta), consulta);
+            } catch (Exception ex) {
+                payload = Map.of("statusConsulta", "ERRO_INTEGRACAO", "reservaCheckInIA", List.of(),
+                        "textoResposta", "Não foi possível consultar os próximos embarques agora. Tente novamente ou solicite atendimento humano.");
+            }
         }
+        try {
+            return new ChatMessageDTO("system", "Dado do sistema: " + mapper.writeValueAsString(payload));
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Não foi possível preparar a consulta de embarques.", ex);
+        }
+    }
 
-        return new ChatMessageDTO("system", "Dado do sistema: " + resultadoJson
-                + "\nEsta e a consulta atual de embarques proximos, apenas de reservas emitidas. "
-                + "Use exclusivamente os itens desta lista; nao acrescente reservas de consultas anteriores. "
-                + "Se a lista estiver vazia, informe que nao ha reservas emitidas com embarques proximos retornadas para esta agencia.");
+    /** Shared by V1/V2: no model rewrite, cached history, or previous reservation locator. */
+    public ChatResponseDTO responderCheckinsProximos(ConversationRequestDTO req) {
+        ChatMessageDTO payload = buscarCheckinsProximos(req);
+        try {
+            JsonNode dados = mapper.readTree(payload.content().substring(payload.content().indexOf('{')));
+            return new ChatResponseDTO(null, dados.path("textoResposta").asText(), List.of(), null,
+                    List.of("checkin"), List.of(payload), List.of());
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Não foi possível preparar a resposta de embarques.", ex);
+        }
     }
 
     public ChatMessageDTO montarMensagemFaturas(ConversationRequestDTO req) {

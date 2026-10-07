@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/v2/aereo")
@@ -57,8 +58,19 @@ public class AereoControllerV2 {
     }
 
     @PostMapping("/carregarReservaModel")
-        public ReservaAereoModel carregaReservaModel(@RequestBody ReservaAereo req) {
+    public ReservaAereoModel carregaReservaModel(@RequestBody ReservaAereo req) {
         ReservaAereoModel result = aereoClientV2.carregarReservaAerea(req);
+        return result;
+    }
+
+    @PostMapping("/iniciarEmissao")
+    public Map<String, Object> iniciarEmissao(@RequestBody ConsultarLocalizadorRequest req) {
+        return aereoClient.iniciarEmissao(req);
+    }
+
+    @PostMapping("/emitir")
+    public EmitirResponse emitir(@RequestBody EmitirRequest req) {
+        EmitirResponse result = aereoClient.emitir(req);
         return result;
     }
 

@@ -58,6 +58,17 @@ public class HotelSearchService {
         // 1) chamar HUB (client)
         List<HotelResponse> hotelResponse = hubClient.pesquisar(req);
 
+        return prepararResultados(req, hotelResponse);
+    }
+
+    public List<HotelResponse> pesquisarFornecedor(HotelPesquisaModelFront req, String fornecedor) {
+        List<HotelResponse> hoteis = hubClient.pesquisar(req, fornecedor);
+        if (hoteis == null) throw new IllegalStateException("Resposta de disponibilidade vazia");
+        if (hoteis.isEmpty()) return hoteis;
+        return prepararResultados(req, hoteis);
+    }
+
+    private List<HotelResponse> prepararResultados(HotelPesquisaModelFront req, List<HotelResponse> hotelResponse) {
         // 2) buscar markup por unidade/produto (Manager)
         //Double mkp = markupService.findByCodProdutoValue(req.getIdentificacaoAgenciaModel().getCodgProduto());
         Double mkp = markupService.findVlrMarkup(req.getIdentificacaoAgenciaModel());
@@ -77,7 +88,7 @@ public class HotelSearchService {
         //4) Salvar no cache -  processo realizado em thred para não parar o processo, mesmo com ou sem erro.
         CompletableFuture.runAsync(() -> {
             try {
-                cacheHotelService.salvarCacheHotel(hotelResponse);
+                cacheHotelService.salvarCacheHotel(hotelResponse, req.getCodgCidade());
             } catch (Exception e) {
                 // loga o erro mas não interrompe o fluxo
                 System.err.println("Erro ao salvar cache: " + e.getMessage());

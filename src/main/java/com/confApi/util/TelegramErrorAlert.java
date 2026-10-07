@@ -37,30 +37,7 @@ public class TelegramErrorAlert {
     }
 
     private String mensagemComErro(String mensagem, Exception e) {
-        if (e == null) {
-            return mensagem;
-        }
-        Throwable rootCause = rootCause(e);
-        StringBuilder detalhe = new StringBuilder(mensagem)
-                .append(": ")
-                .append(e.getClass().getSimpleName())
-                .append(" - ")
-                .append(e.getMessage());
-        if (rootCause != null && rootCause != e) {
-            detalhe.append(" | Causa raiz: ")
-                    .append(rootCause.getClass().getSimpleName())
-                    .append(" - ")
-                    .append(rootCause.getMessage());
-        }
-        return detalhe.toString();
-    }
-
-    private Throwable rootCause(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null && current.getCause() != null && current.getCause() != current) {
-            current = current.getCause();
-        }
-        return current;
+        return ErrorDiagnostic.format(mensagem, e);
     }
 
     private String classe(Object source) {
@@ -78,7 +55,8 @@ public class TelegramErrorAlert {
         for (StackTraceElement element : stackTrace) {
             String className = element.getClassName();
             if (!className.equals(Thread.class.getName())
-                    && !className.equals(TelegramErrorAlert.class.getName())) {
+                    && !className.equals(TelegramErrorAlert.class.getName())
+                    && !element.getMethodName().equals("alertarErro")) {
                 return element.getMethodName();
             }
         }

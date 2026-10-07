@@ -17,6 +17,9 @@ class ChatV2SemanticClientTest {
     private final ObjectMapper mapper=new ObjectMapper();
     private final AtomicReference<JsonNode> sent=new AtomicReference<>();
     private ChatV2SemanticClient client(int status,String body) {
+        return client(status,body,"modelo-configurado");
+    }
+    private ChatV2SemanticClient client(int status,String body,String model) {
         OkHttpClient http=new OkHttpClient.Builder().addInterceptor(chain->{
             Buffer buffer=new Buffer();chain.request().body().writeTo(buffer);
             sent.set(mapper.readTree(buffer.readUtf8()));
@@ -25,7 +28,7 @@ class ChatV2SemanticClientTest {
                     .code(status).message("mock").body(ResponseBody.create(body,MediaType.get("application/json"))).build();
         }).build();
         OpenAIProperties ai=mock(OpenAIProperties.class);
-        when(ai.getChatModel()).thenReturn("modelo-configurado");
+        when(ai.getChatModel()).thenReturn(model);
         when(ai.getBaseUrl()).thenReturn("https://provider.invalid/");
         return new ChatV2SemanticClient(http,ai,new ChatV2Properties(),mapper);
     }
@@ -52,6 +55,20 @@ class ChatV2SemanticClientTest {
         assertEquals(28,format.path("schema").path("properties").path("intencao").path("enum").size());
         assertFalse(sent.get().has("tools"));
         assertFalse(sent.get().toString().contains("123456"));assertFalse(sent.get().toString().contains("654321"));
+        String prompt=sent.get().path("messages").path(0).path("content").asText();
+        assertTrue(prompt.contains("explicitamente de HOTEL"));
+        assertTrue(prompt.contains("Reservas AEREAS nunca pedem tipo de data"));
+        assertTrue(prompt.contains("janeiro de 2027"));
+    }
+    @Test void solMantemDecisaoJsonEstritaSemFerramentas()throws Exception {
+        ChatV2SemanticClient client=client(200,envelope(plan(Map.of()),"stop"),"gpt-6.1-sol");
+        assertEquals(ChatV2Capability.FATURAS,client.decidir("minhas faturas",null,LocalDate.now()).capability());
+        assertEquals("gpt-6.1-sol",sent.get().path("model").asText());
+        assertEquals("low",sent.get().path("reasoning_effort").asText());
+        assertEquals(4096,sent.get().path("max_completion_tokens").asInt());
+        assertFalse(sent.get().path("store").asBoolean(true));
+        assertTrue(sent.get().path("response_format").path("json_schema").path("strict").asBoolean());
+        assertFalse(sent.get().has("tools"));
     }
     @Test void negaIdentificadorDeAgenciaNoPlano()throws Exception {
         ChatV2SemanticClient client=client(200,"{}");

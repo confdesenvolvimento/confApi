@@ -1,6 +1,8 @@
 package com.confApi.chatconfianca.v2;
 
 import com.confApi.chatgpt.util.LocalizadorAereo;
+import com.confApi.chatconfianca.financeiro.ChatFaturasContexto;
+import com.confApi.chatconfianca.financeiro.ChatFaturasFiltros;
 
 import com.confApi.chatconfianca.intencao.ChatConfiancaDecisaoIa;
 import com.confApi.chatconfianca.intencao.ChatIntencaoRuntimeDto;
@@ -103,6 +105,22 @@ public class ChatV2Executor {
         String input=session.input()+(localizador==null?"":"\nLocalizador "+localizador);
         ConversationRequestDTO req=new ConversationRequestDTO(session.identificacao(),session.unidade(),session.idErp(),
                 session.codgAgencia(),session.codgUsuario(),input,new ArrayList<>(),null,false,new ArrayList<>());
+        if(c==ChatV2Capability.FATURAS||c==ChatV2Capability.BOLETOS) {
+            ChatResponseDTO r=chat.responderFaturas(req,
+                    ChatFaturasFiltros.extrair(session.input(),p.getParametros(),LocalDate.now()),c==ChatV2Capability.BOLETOS);
+            JsonNode payload=ChatFaturasContexto.payload(r,mapper);
+            if(payload==null)return finish(p,d,"ERRO_INTEGRACAO","Não foi possível consultar as faturas agora. Tente novamente ou solicite atendimento ao financeiro.");
+            String status=payload.path("statusConsulta").asText("ERRO_INTEGRACAO");
+            p.setParametros(ChatFaturasContexto.parametros(payload.path("filtros")));
+            p.setPergunta("AGUARDANDO_DADOS".equals(status)?r.content():null);
+            d.setMemorias(List.of());
+            finish(p,d,status,r.content());return r;
+        }
+        if(c==ChatV2Capability.CHECKIN) {
+            ChatResponseDTO r=chat.responderCheckinsProximos(req);
+            if(r==null)return finish(p,d,"ERRO_INTEGRACAO","Não foi possível consultar os próximos embarques agora. Tente novamente ou solicite atendimento humano.");
+            finish(p,d,resultadoDados(r.history()),r.content());return r;
+        }
         if(c==ChatV2Capability.RESERVAS) {
             ChatResponseDTO r=chat.responderListagemReservasRecentes(req);
             if(r==null)return finish(p,d,"SEM_RESULTADO","A consulta nao retornou uma resposta utilizavel.");
@@ -110,6 +128,11 @@ public class ChatV2Executor {
         }
         List<ChatMessageDTO> dados=new ArrayList<>();
         List<String> keywords=chat.actionApis(dados,req,action,true);
+        ChatResponseDTO bloqueio=chat.respostaBloqueioRemarcacao(dados,keywords);
+        if(bloqueio!=null) {
+            finish(p,d,resultadoDados(bloqueio.history()),bloqueio.content());
+            return bloqueio;
+        }
         List<ChatActionDTO> actions=chat.extrairAcoesDisponiveis(dados);
         if(c==ChatV2Capability.REMARCACAO) {
             finish(p,d,"ACAO_PREPARADA","");
@@ -151,7 +174,9 @@ public class ChatV2Executor {
                 JsonNode root=mapper.readTree(text.substring(inicio));
                 JsonNode consulta=root.has("reservasRecentes")?root.path("reservasRecentes"):root;
                 String status=consulta.path("statusConsulta").asText(consulta.path("status").asText(""));
+                if(status.equals("CONSULTA_BLOQUEADA"))return "CONSULTA_BLOQUEADA";
                 if(status.startsWith("ERRO")||status.equals("ERROR"))return "ERRO_INTEGRACAO";
+                if(status.equals("NAO_ENCONTRADA"))return "SEM_RESULTADO";
                 for(String campo:List.of("reservas","faturas","reservaCheckInIA")) {
                     if(consulta.path(campo).isArray()&&consulta.path(campo).isEmpty())return "SEM_RESULTADO";
                 }

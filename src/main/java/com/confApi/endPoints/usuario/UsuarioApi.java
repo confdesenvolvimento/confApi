@@ -19,6 +19,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.Collections;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -44,10 +45,13 @@ public class UsuarioApi {
     public Usuario consultaUsuarioByLogin(String loginUsuario) {
         try {
             ConfAppResp token = confAppService.token();
-            String url = UriComponentsBuilder
+            URI url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
-                    .path("/usuario/findByLogin/" + loginUsuario)
-                    .toUriString();
+                    .path("/usuario/findByLogin/")
+                    .pathSegment("{login}")
+                    .encode()
+                    .buildAndExpand(loginUsuario.strip())
+                    .toUri();
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<?> entity =
@@ -70,14 +74,30 @@ public class UsuarioApi {
         }
     }
 
+    public Usuario consultaUsuarioByLoginParaImportacao(String loginUsuario) {
+        ConfAppResp token = confAppService.token();
+        URI url = UriComponentsBuilder.fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                .path("/usuario/findByLogin/").pathSegment("{login}").encode()
+                .buildAndExpand(loginUsuario.strip()).toUri();
+        try {
+            return restTemplate.exchange(url, HttpMethod.GET,
+                    new HttpEntity<>(defaultHeaders(token.getToken())), Usuario.class).getBody();
+        } catch (HttpClientErrorException.NotFound ex) {
+            return null;
+        }
+    }
+
     public Object consultaUsuarioByLoginWooba(String loginUsuario) {
         try {
             ConfAppResp token = confAppService.token();
 
-            String url = UriComponentsBuilder
+            URI url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
-                    .path("/wooba/turUsuarios/loginDB/" + loginUsuario)
-                    .toUriString();
+                    .path("/wooba/turUsuarios/loginDB/")
+                    .pathSegment("{login}")
+                    .encode()
+                    .buildAndExpand(loginUsuario.strip())
+                    .toUri();
 
             HttpHeaders headers = defaultHeaders(token.getToken());
             HttpEntity<Void> entity = new HttpEntity<>(headers);

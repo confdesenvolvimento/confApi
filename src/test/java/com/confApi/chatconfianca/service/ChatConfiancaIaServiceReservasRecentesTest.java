@@ -142,6 +142,107 @@ class ChatConfiancaIaServiceReservasRecentesTest {
     }
 
     @Test
+    void remarcacaoNaoEncontradaDeveSomenteInformarSemAcaoMesmoComHistoricoAnterior() throws Exception {
+        validarBloqueioRemarcacaoNoTurno("NAO_ENCONTRADA",
+                "Nao encontrei a reserva ZZZ999. Confira o localizador e tente novamente.");
+    }
+
+    @Test
+    void erroDeConsultaDaRemarcacaoDeveInformarFalhaSemDizerQueReservaNaoExiste() throws Exception {
+        validarBloqueioRemarcacaoNoTurno("ERRO_CONSULTA",
+                "Nao foi possivel consultar a reserva ZZZ999 agora. Tente novamente.");
+    }
+
+    @Test
+    void bloqueioDeTurnoAnteriorNaoDeveImpedirSeletorDaReservaAtualValidada() throws Exception {
+        PerguntarConfiaRequest request = request("Simular remarcacao ABC123");
+        prepararContexto(request);
+        Mensagem anterior = new Mensagem();
+        anterior.setRemetenteTipo(RemetenteTipo.BOT);
+        anterior.setConteudo("Nao encontrei a reserva ZZZ999.");
+        anterior.setConteudoJson(mapper.writeValueAsString(Map.of(
+                "tipoConsulta", "validacao_remarcacao", "statusConsulta", "NAO_ENCONTRADA",
+                "localizadorConsultado", "ZZZ999", "mensagem", "Nao encontrei a reserva ZZZ999.",
+                "actions", List.of())));
+        when(chatConfiancaService.listarMensagens(10L, 7, false, false)).thenReturn(List.of(anterior));
+        ChatActionDTO acao = acaoSimularRemarcacao("ABC123");
+        prepararRespostaIa(request, List.of(acao), "simular_remarcacao");
+        ChatMessageDTO dadoAtual = new ChatMessageDTO("system",
+                "{\"tipoConsulta\":\"seletor_remarcacao\",\"localizador\":\"ABC123\"}");
+        when(chatService.actionApis(anyList(), any())).thenAnswer(invocation -> {
+            List<ChatMessageDTO> mensagens = invocation.getArgument(0);
+            mensagens.add(dadoAtual);
+            return List.of("simular_remarcacao");
+        });
+        when(chatService.respostaBloqueioRemarcacao(anyList(), anyList())).thenAnswer(invocation -> {
+            List<ChatMessageDTO> dadosDoTurno = invocation.getArgument(0);
+            assertEquals(List.of(dadoAtual), dadosDoTurno,
+                    "Validacao deve ignorar ausencia de outra reserva em turnos anteriores.");
+            return null;
+        });
+
+        ChatConfiancaIaResponse response = service.perguntar(request);
+
+        assertEquals("Reserva carregada.", response.getResposta());
+        assertEquals(List.of(acao), response.getActions());
+        assertEquals("simular_remarcacao", response.getAcaoSolicitada());
+        verify(chatService).chat(any(), anyList(), isNull());
+        verify(chatService).respostaBloqueioRemarcacao(anyList(), anyList());
+    }
+
+    private void validarBloqueioRemarcacaoNoTurno(String status, String mensagem) throws Exception {
+        PerguntarConfiaRequest request = request("Simular remarcacao ZZZ999");
+        prepararContexto(request);
+        ChatActionDTO acaoAntiga = acaoSimularRemarcacao("ABC123");
+        Mensagem anterior = new Mensagem();
+        anterior.setRemetenteTipo(RemetenteTipo.BOT);
+        anterior.setConteudo("Use o seletor para simular a remarcacao ABC123.");
+        anterior.setConteudoJson(mapper.writeValueAsString(Map.of(
+                "actions", List.of(acaoAntiga), "acaoSolicitada", "simular_remarcacao")));
+        when(chatConfiancaService.listarMensagens(10L, 7, false, false)).thenReturn(List.of(anterior));
+        when(profiles.systemPrompt(anyString(), anyLong(), anyLong())).thenReturn("prompt");
+        ChatMessageDTO dadoAtual = new ChatMessageDTO("system", mapper.writeValueAsString(Map.of(
+                "tipoConsulta", "validacao_remarcacao", "statusConsulta", status,
+                "localizadorConsultado", "ZZZ999", "mensagem", mensagem, "acoesDisponiveis", List.of())));
+        when(chatService.actionApis(anyList(), any())).thenAnswer(invocation -> {
+            List<ChatMessageDTO> mensagens = invocation.getArgument(0);
+            mensagens.add(dadoAtual);
+            return List.of("simular_remarcacao");
+        });
+        when(chatService.respostaBloqueioRemarcacao(anyList(), anyList())).thenAnswer(invocation -> {
+            List<ChatMessageDTO> dadosDoTurno = invocation.getArgument(0);
+            assertEquals(List.of(dadoAtual), dadosDoTurno,
+                    "Somente a consulta atual pode decidir o bloqueio e suas acoes.");
+            return new ChatResponseDTO(null, mensagem, List.of(), null,
+                    invocation.getArgument(1), List.copyOf(dadosDoTurno), List.of());
+        });
+        when(chatService.extrairAcoesDisponiveis(anyList())).thenReturn(List.of(acaoAntiga));
+        when(chatService.identificarAcaoSolicitadaDeterministica(request.getMensagem()))
+                .thenReturn("simular_remarcacao");
+        when(chatConfiancaService.registrarMensagemBot(eq(10L), anyString(), anyString()))
+                .thenReturn(new Mensagem());
+
+        ChatConfiancaIaResponse response = service.perguntar(request);
+
+        assertEquals(mensagem, response.getResposta());
+        assertTrue(response.getActions().isEmpty());
+        assertNull(response.getAcaoSolicitada());
+        ArgumentCaptor<String> jsonCaptor = ArgumentCaptor.forClass(String.class);
+        verify(chatConfiancaService).registrarMensagemBot(eq(10L), eq(mensagem), jsonCaptor.capture());
+        JsonNode persistido = mapper.readTree(jsonCaptor.getValue());
+        assertTrue(persistido.path("actions").isArray());
+        assertTrue(persistido.path("actions").isEmpty());
+        assertTrue(persistido.path("acaoSolicitada").isNull());
+        verify(chatService).respostaBloqueioRemarcacao(anyList(), anyList());
+        verify(chatService, never()).chat(any(), anyList(), any());
+    }
+
+    private ChatActionDTO acaoSimularRemarcacao(String localizador) {
+        return new ChatActionDTO("simular_remarcacao", "Simular remarcacao", "Preparar simulacao",
+                localizador, null, false, true, false, "Simular remarcacao " + localizador);
+    }
+
+    @Test
     void devePersistirMelhoresTarifasEAcoesNaMensagemBot() throws Exception {
         PerguntarConfiaRequest request = request(
                 "Qual o dia mais barato de CGB para MCO?");
@@ -523,7 +624,7 @@ class ChatConfiancaIaServiceReservasRecentesTest {
     }
 
     @Test
-    void decisaoUnificadaDeveInjetarSomenteMemoriaDaIntencaoEExecutarAcaoEscolhida()
+    void decisaoUnificadaDeFaturasUsaConsultaValidadaSemSegundaRespostaLivre()
             throws Exception {
         decisionProperties.setUnifiedDecisionEnabled(true);
         decisionProperties.setUnifiedDecisionCanaryEnabled(false);
@@ -541,22 +642,22 @@ class ChatConfiancaIaServiceReservasRecentesTest {
         classificacao.setMemoriasRecuperadas(List.of(70));
         when(chatIntencaoShadowService.classificar(eq(request.getMensagem()), any(), any()))
                 .thenReturn(classificacao);
-        when(chatService.actionApis(anyList(), any(), eq("faturas")))
-                .thenReturn(List.of("faturas"));
-        prepararRespostaIa(request, List.of(), null);
+        when(chatService.responderFaturas(any(), any(), eq(false))).thenReturn(new ChatResponseDTO(
+                null,"Faturas consultadas.",List.of(),null,List.of("faturas"),List.of(new ChatMessageDTO("system",
+                    "{\"schema\":\"chat.faturas.v1\",\"statusConsulta\":\"DADOS_CONSULTADOS\",\"filtros\":{}}"))));
+        when(chatConfiancaService.registrarMensagemBot(eq(10L),anyString(),anyString())).thenReturn(new Mensagem());
 
         ChatConfiancaIaResponse response = service.perguntar(request);
 
         assertEquals("financeiro.faturas", response.getIntencao());
-        ArgumentCaptor<ChatRequestDTO> chatRequest = ArgumentCaptor.forClass(ChatRequestDTO.class);
-        verify(chatService).chat(chatRequest.capture(), anyList(), isNull());
-        assertTrue(chatRequest.getValue().messages().stream().anyMatch(item ->
-                item.content().contains("As faturas devem ser apresentadas somente")));
-        verify(chatService).actionApis(anyList(), any(), eq("faturas"));
+        verify(chatService,never()).chat(any(),anyList(),any());
+        verify(chatService,never()).actionApis(anyList(),any(),anyString());
+        verify(chatService).responderFaturas(any(),any(),eq(false));
+        assertEquals("Faturas consultadas.",response.getResposta());
         JsonNode metadados = mapper.readTree(response.getConversa().getMetadadosJson());
         assertTrue(metadados.path("decisaoIa").path("aplicada").asBoolean());
         assertEquals("faturas", metadados.path("decisaoIa").path("acao").asText());
-        assertEquals(70, metadados.path("decisaoIa").path("memoriaIds").get(0).asInt());
+        assertTrue(metadados.path("decisaoIa").path("memoriaIds").isEmpty());
         verify(chatIaDecisaoAuditService).registrar(
                 eq(10L), eq(30L), isNull(), eq("Confianca"),
                 any(ChatConfiancaDecisaoIa.class), eq(false), eq(false),
@@ -601,6 +702,213 @@ class ChatConfiancaIaServiceReservasRecentesTest {
         assertEquals("UNIFICADA", decisao.path("modo").asText());
         assertEquals("institucional.", decisao.path("escopoCanario").get(0).asText());
         assertEquals(7, decisao.path("memoriaIds").get(0).asInt());
+    }
+
+    @Test
+    void dataCurtaComCardVigenteDeveOrientarEtapaSemConsultarBspNemReserva() throws Exception {
+        PerguntarConfiaRequest request = request("20 set 2026");
+        prepararContexto(request);
+        Mensagem card = new Mensagem();
+        card.setRemetenteTipo(RemetenteTipo.BOT);
+        card.setEnviadaEm(java.time.LocalDateTime.now().minusMinutes(1));
+        card.setConteudoJson(mapper.writeValueAsString(Map.of("remarcacao", Map.of(
+                "conversaId", 10L, "status", "AGUARDANDO_CRITERIOS",
+                "expiraEm", java.time.LocalDateTime.now().plusMinutes(15).toString()))));
+        when(chatConfiancaService.listarMensagens(10L, 7, false, false)).thenReturn(List.of(card));
+        ChatConfiancaIaResponse response = service.perguntar(request);
+        assertTrue(response.getResposta().contains("Nova data"));
+        assertEquals("aereo_simular_remarcacao", response.getIntencao());
+        assertTrue(response.getActions().isEmpty());
+        verify(chatService, never()).chat(any(), any(), any());
+        verify(chatService, never()).actionApis(anyList(), any());
+    }
+
+    @Test
+    void localizadorIsoladoAposSeletorDeveCompletarSomenteOTextoOperacional() throws Exception {
+        PerguntarConfiaRequest request = request("ABC123");
+        prepararContexto(request);
+        prepararRespostaIa(request, List.of(), null);
+        Mensagem card = new Mensagem();
+        card.setRemetenteTipo(RemetenteTipo.BOT);
+        card.setEnviadaEm(java.time.LocalDateTime.now().minusMinutes(1));
+        card.setConteudoJson("{\"actions\":[{\"code\":\"selecionar_reserva_remarcacao\"}]}");
+        when(chatConfiancaService.listarMensagens(10L, 7, false, false)).thenReturn(List.of(card));
+        service.perguntar(request);
+        ArgumentCaptor<com.confApi.chatgpt.dto.ConversationRequestDTO> consulta =
+                ArgumentCaptor.forClass(com.confApi.chatgpt.dto.ConversationRequestDTO.class);
+        verify(chatService).actionApis(anyList(), consulta.capture());
+        assertEquals("Simular remarcacao da reserva ABC123", consulta.getValue().input());
+        verify(chatConfiancaService).registrarMensagemUsuarioAssistida(10L, 7, "ABC123");
+    }
+
+    @Test
+    void promessaSemConsultaNaoDevePedirAoUsuarioParaAguardar() throws Exception {
+        PerguntarConfiaRequest request = request("Buscar pacote para janeiro");
+        prepararContexto(request);
+        prepararRespostaIa(request, List.of(), null);
+        when(chatService.chat(any(), anyList(), isNull())).thenReturn(new ChatResponseDTO(
+                "resp", "Vou buscar os pacotes. Aguarde um momento.", List.of(), null,
+                List.of("pacotes"), List.of(), List.of()));
+        ChatConfiancaIaResponse response = service.perguntar(request);
+        assertTrue(response.getResposta().contains("Nao ha uma consulta em andamento"));
+        ArgumentCaptor<ChatConfiancaDecisaoIa> decisao = ArgumentCaptor.forClass(ChatConfiancaDecisaoIa.class);
+        verify(chatIaDecisaoAuditService).registrar(eq(10L), eq(30L), isNull(), eq("Confianca"),
+                decisao.capture(), org.mockito.ArgumentMatchers.anyBoolean(), eq(false), isNull(), anyLong());
+        assertEquals("FALLBACK", decisao.getValue().getStatusResultado());
+    }
+
+    @Test
+    void falhaNaoDeveRecuperarAcoesDeReservaAntiga() throws Exception {
+        PerguntarConfiaRequest request = request("Quero consultar as duvidas frequentes");
+        prepararContexto(request);
+        prepararRespostaIa(request, List.of(acaoSimularRemarcacao("OLD123")), null);
+        when(chatService.actionApis(anyList(), any())).thenThrow(new NullPointerException("dado ausente"));
+        ChatConfiancaIaResponse response = service.perguntar(request);
+        assertTrue(response.getActions().isEmpty());
+        verify(chatService, never()).extrairAcoesDisponiveis(anyList());
+    }
+
+    @Test
+    void checkinLegadoDeveUsarResumoDeterministicoSemModelo() throws Exception {
+        PerguntarConfiaRequest request = request("Quais meus proximos check-ins?");
+        prepararContexto(request);
+        when(chatService.identificarKeywordOperacionalDeterministica(request.getMensagem())).thenReturn("checkin");
+        when(chatService.responderCheckinsProximos(any())).thenReturn(new ChatResponseDTO(null,
+                "Consulta de embarques: 22/09/2026 a 25/09/2026.", List.of(), null, List.of("checkin"),
+                List.of(new ChatMessageDTO("system", "Dado do sistema: {\"statusConsulta\":\"DADOS_CONSULTADOS\"}")), List.of()));
+        assertTrue(service.perguntar(request).getResposta().contains("22/09/2026"));
+        verify(chatService, never()).chat(any(), any(), any());
+        verify(chatService, never()).actionApis(anyList(), any());
+    }
+
+    @Test
+    void checkinLegadoComFalhaNaoDeveSerAuditadoComoSucesso() {
+        PerguntarConfiaRequest request = request("Quais meus proximos check-ins?");
+        prepararContexto(request);
+        when(chatService.identificarKeywordOperacionalDeterministica(request.getMensagem())).thenReturn("checkin");
+        when(chatService.responderCheckinsProximos(any())).thenReturn(new ChatResponseDTO(null,
+                "Nao foi possivel consultar os embarques agora.", List.of(), null, List.of("checkin"),
+                List.of(new ChatMessageDTO("system", "Dado do sistema: {\"statusConsulta\":\"ERRO_INTEGRACAO\"}")), List.of()));
+        assertTrue(service.perguntar(request).getResposta().contains("Nao foi possivel consultar"));
+        ArgumentCaptor<ChatConfiancaDecisaoIa> decisao = ArgumentCaptor.forClass(ChatConfiancaDecisaoIa.class);
+        verify(chatIaDecisaoAuditService).registrar(eq(10L), eq(30L), isNull(), eq("Confianca"),
+                decisao.capture(), org.mockito.ArgumentMatchers.anyBoolean(), eq(false), isNull(), anyLong());
+        assertEquals("ERRO", decisao.getValue().getStatusResultado());
+        assertEquals("CHECKIN_INDISPONIVEL", decisao.getValue().getErroCodigo());
+    }
+
+    @Test
+    void legadoFinanceiroContinuaFiltrosSomenteDaSessaoENaoChamaLlm() throws Exception {
+        PerguntarConfiaRequest request=request("e as pagas?");prepararContexto(request);
+        var sessao=new SessaoChatResponse();var agencia=new com.confApi.chatconfianca.dto.model.RefAgencia();
+        agencia.setCodgAgencia(321);agencia.setCodgSistemaBackoffice("987");sessao.setAgencia(agencia);
+        when(chatConfiancaService.montarSessao(7,321)).thenReturn(sessao);
+        Map<String,String> filtros=Map.of("faturaPagamento","ABERTO","faturaTipoData","DATA_EMISSAO","faturaInicio","2026-09-01","faturaFim","2026-09-30");
+        String contexto=mapper.writeValueAsString(Map.of("consultaFaturas",Map.of("conversa",10,"agencia",321,"usuario",7,
+                "atualizadoEm",System.currentTimeMillis(),"boletos",false,"parametros",filtros)));
+        Mensagem bot=new Mensagem();bot.setConversaId(10L);bot.setRemetenteTipo(RemetenteTipo.BOT);bot.setConteudoJson(contexto);
+        when(chatConfiancaService.listarMensagens(10L,7,false,false)).thenReturn(List.of(bot));
+        when(chatService.responderFaturas(any(),any(),eq(false))).thenAnswer(inv->{
+            com.confApi.chatgpt.dto.ConversationRequestDTO req=inv.getArgument(0);Map<String,String> p=inv.getArgument(1);
+            assertEquals(321L,req.codgAgencia());assertEquals(7L,req.codgUsuario());assertEquals("987",req.idErp());
+            assertEquals("PAGO",p.get("faturaPagamento"));assertEquals("2026-09-01",p.get("faturaInicio"));
+            String json=mapper.writeValueAsString(Map.of("schema","chat.faturas.v1","statusConsulta","SEM_RESULTADO","filtros",p,
+                    "contexto",Map.of("agencia",321,"usuario",7,"atualizadoEm",System.currentTimeMillis(),"parametros",p)));
+            return new ChatResponseDTO(null,"Nenhuma fatura para esses filtros.",List.of(),null,List.of("faturas"),List.of(new ChatMessageDTO("system",json)));
+        });
+        when(chatConfiancaService.registrarMensagemBot(eq(10L),anyString(),anyString())).thenReturn(new Mensagem());
+        var r=service.perguntar(request);assertEquals("Nenhuma fatura para esses filtros.",r.getResposta());
+        verify(chatService,never()).chat(any(),anyList(),any());verify(chatService).responderFaturas(any(),any(),eq(false));
+        ArgumentCaptor<String> metadados=ArgumentCaptor.forClass(String.class);
+        verify(chatConfiancaService).registrarMensagemBot(eq(10L),anyString(),metadados.capture());
+        var persisted=mapper.readTree(metadados.getValue()).path("consultaFaturas");
+        assertEquals(10L,persisted.path("conversa").asLong());assertEquals("PAGO",persisted.path("parametros").path("faturaPagamento").asText());
+        ArgumentCaptor<ChatConfiancaDecisaoIa> audit=ArgumentCaptor.forClass(ChatConfiancaDecisaoIa.class);
+        verify(chatIaDecisaoAuditService).registrar(eq(10L),eq(30L),any(),any(),audit.capture(),eq(false),eq(false),any(),anyLong());
+        assertEquals("FALLBACK",audit.getValue().getStatusResultado());
+    }
+
+    @Test
+    void legadoFinanceiroDistingueErroDeConsultaVazia() throws Exception {
+        var request=request("faturas");prepararContexto(request);
+        when(chatService.responderFaturas(any(),any(),eq(false))).thenReturn(new ChatResponseDTO(null,
+                "Consulta indisponível, tente novamente.",List.of(),null,List.of("faturas"),List.of(new ChatMessageDTO("system",
+                "{\"schema\":\"chat.faturas.v1\",\"statusConsulta\":\"ERRO_INTEGRACAO\",\"filtros\":{}}"))));
+        when(chatConfiancaService.registrarMensagemBot(eq(10L),anyString(),anyString())).thenReturn(new Mensagem());
+        service.perguntar(request);
+        ArgumentCaptor<ChatConfiancaDecisaoIa> audit=ArgumentCaptor.forClass(ChatConfiancaDecisaoIa.class);
+        verify(chatIaDecisaoAuditService).registrar(eq(10L),eq(30L),any(),any(),audit.capture(),eq(false),eq(false),any(),anyLong());
+        assertEquals("ERRO",audit.getValue().getStatusResultado());assertEquals("FATURAS_INDISPONIVEIS",audit.getValue().getErroCodigo());
+        verify(chatService,never()).chat(any(),anyList(),any());
+    }
+
+    @Test
+    void pesquisaEstruturadaNaoIgnoraEncaminhamentoComDepartamentoConfirmado() throws Exception {
+        var request=request("pesquisar voos e falar com atendente");request.setEncaminharAtendente(true);request.setDepartamentoUnidadeId(20L);
+        prepararContexto(request);prepararRespostaIa(request,List.of(),null);
+        when(chatService.chat(any(),anyList(),isNull())).thenReturn(new ChatResponseDTO(null,"{\"tipo\":\"aereo\",\"status\":\"OK\",\"origem\":\"CGB\",\"destino\":\"BSB\",\"dataIda\":\"2027-01-10\"}",List.of(),null,List.of(),List.of()));
+        var encaminhada=new Conversa();encaminhada.setId(10L);encaminhada.setDepartamentoUnidadeId(20L);
+        encaminhada.setStatus(com.confApi.chatconfianca.dto.enums.StatusConversa.AGUARDANDO_ATENDENTE);
+        when(chatConfiancaService.encaminharConversaParaAtendente(eq(10L),eq(7),eq(20L),anyString())).thenReturn(encaminhada);
+        var response=service.perguntar(request);
+        assertTrue(response.isAtendenteSolicitado());assertEquals(encaminhada,response.getConversa());
+        assertTrue(response.getMensagemAtendente().contains("na fila da equipe escolhida"));
+        verify(chatConfiancaService).encaminharConversaParaAtendente(eq(10L),eq(7),eq(20L),anyString());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "quero simular a remarcacao do localizador LA9578682RZQD",
+            "Quero simular a remarcacao da reserva LA9578682RZQD",
+            "Quero simular uma remarcação"})
+    void solAbreSeletorNoLegadoSemDependerDaOpenAi(String mensagem) throws Exception {
+        var request = request(mensagem);
+        prepararContexto(request);
+        var sessao = new SessaoChatResponse();
+        var agencia = new com.confApi.chatconfianca.dto.model.RefAgencia();
+        agencia.setCodgAgencia(321); agencia.setCodgSistemaBackoffice("987"); sessao.setAgencia(agencia);
+        when(chatConfiancaService.montarSessao(7, 321)).thenReturn(sessao);
+        when(profiles.systemPrompt(anyString(), anyLong(), anyLong())).thenReturn("prompt");
+        when(chatConfiancaService.registrarMensagemBot(eq(10L), anyString(), anyString())).thenReturn(new Mensagem());
+
+        var openAi = mock(okhttp3.OkHttpClient.class);
+        var call = mock(okhttp3.Call.class);
+        when(openAi.newCall(any())).thenReturn(call);
+        when(call.execute()).thenThrow(new java.io.IOException("falha simulada do provedor"));
+        var props = new com.confApi.chatgpt.config.OpenAIProperties();
+        props.setChatModel("gpt-6.1-sol"); props.setBaseUrl("https://provider.invalid"); props.setApiKey("unused-test");
+        var aereo = mock(com.confApi.aereo.AereoClient.class);
+        var reserva = new com.confApi.aereo.dto.Reserva(); reserva.setLocalizador("LA9578682RZQD"); reserva.setStatus("EMITIDA");
+        var consulta = new com.confApi.aereo.dto.ConsultarLocalizadorResponse(); consulta.setReservas(List.of(reserva));
+        when(aereo.carregarReservaEstrita(any())).thenReturn(consulta);
+        var realChat = new ChatService(openAi, props, mock(com.confApi.chatgpt.tools.ToolRouter.class),
+                mock(com.confApi.db.confManager.chatMemoria.ChatMemoriaService.class),
+                mock(com.confApi.hub.limites.LimitesService.class), mock(com.confApi.db.confManager.faturas.FaturasService.class),
+                mock(com.confApi.db.wooba.checkin.CheckinService.class), mock(com.confApi.db.confManager.familia.FamiliaService.class),
+                mock(com.confApi.db.confManager.alertaTarifa.AlertaTarifaService.class), mock(ChatConfiancaReservaAereaService.class),
+                aereo, mock(com.confApi.aereo.AereoRegrasReservaService.class));
+        service = new ChatConfiancaIaService(chatConfiancaService, realChat, profiles, mapper, chatIntencaoShadowService,
+                new ChatConfiancaDecisaoIaService(chatIntencaoShadowService, realChat, decisionProperties),
+                chatMemoriaRecuperacaoAuditService, chatIaDecisaoAuditService);
+
+        var response = service.perguntar(request);
+        assertEquals(1, response.getActions().size());
+        assertTrue(response.getResposta().contains("Nenhuma alteracao ou cobranca"));
+        assertTrue(!response.isSugerirAtendente());
+        if (mensagem.contains("LA9578682RZQD")) {
+            assertEquals("simular_remarcacao", response.getAcaoSolicitada());
+            assertEquals("LA9578682RZQD", response.getActions().get(0).localizador());
+            var captura = ArgumentCaptor.forClass(com.confApi.aereo.dto.ConsultarLocalizadorRequest.class);
+            verify(aereo).carregarReservaEstrita(captura.capture());
+            assertEquals("321", captura.getValue().getAgencia().getCodgAgencia());
+        } else {
+            assertEquals("selecionar_reserva_remarcacao", response.getActions().get(0).code());
+            assertNull(response.getAcaoSolicitada()); verifyNoInteractions(aereo);
+        }
+        var conteudo = ArgumentCaptor.forClass(String.class);
+        verify(chatConfiancaService).registrarMensagemBot(eq(10L), anyString(), conteudo.capture());
+        assertEquals(1, mapper.readTree(conteudo.getValue()).path("actions").size());
+        verifyNoInteractions(openAi, call);
     }
 
     private PerguntarConfiaRequest request(String mensagem) {

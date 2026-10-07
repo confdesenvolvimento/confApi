@@ -56,4 +56,104 @@ class ChatV2ExecutorTest {
                 "quartosJson","[{\"adultos\":2,\"criancas\":1,\"idadesCriancas\":[]}]")));
         exec.executar(p,session,decision());assertEquals("AGUARDANDO_DADOS",p.getResultado());verifyNoInteractions(router,chat);
     }
+
+    @Test void remarcacaoNaoEncontradaApenasInformaSemPrepararAcaoOuConsultarLlm() throws Exception {
+        ChatV2Plan plan = ChatV2Plan.of(ChatV2Capability.REMARCACAO);
+        plan.getParametros().put("localizador", "ZZZ999");
+        ChatMessageDTO dado = bloqueioRemarcacao("NAO_ENCONTRADA",
+                "Nao encontrei a reserva ZZZ999. Confira o localizador e tente novamente.");
+        configurarBloqueio(dado);
+        when(chat.extrairAcoesDisponiveis(anyList())).thenReturn(List.of(acaoSimular("ABC123")));
+        ChatConfiancaDecisaoIa decisao = decision();
+
+        ChatResponseDTO response = exec.executar(plan, sessaoRemarcacao("ZZZ999"), decisao);
+
+        assertEquals("Nao encontrei a reserva ZZZ999. Confira o localizador e tente novamente.", response.content());
+        assertEquals("SEM_RESULTADO", plan.getResultado());
+        assertEquals("FALLBACK", decisao.getStatusResultado());
+        assertTrue(response.actions().isEmpty());
+        assertTrue(response.toolCalls().isEmpty());
+        assertEquals(List.of(dado), response.history());
+        verify(chat, never()).chat(any(), anyList(), any());
+        verifyNoInteractions(router);
+    }
+
+    @Test void falhaAoValidarLocalizadorNaoAfirmaReservaInexistenteNemPreparaSimulacao() throws Exception {
+        ChatV2Plan plan = ChatV2Plan.of(ChatV2Capability.REMARCACAO);
+        plan.getParametros().put("localizador", "ZZZ999");
+        ChatMessageDTO dado = bloqueioRemarcacao("ERRO_CONSULTA",
+                "Nao foi possivel consultar a reserva ZZZ999 agora. Tente novamente.");
+        configurarBloqueio(dado);
+        ChatConfiancaDecisaoIa decisao = decision();
+
+        ChatResponseDTO response = exec.executar(plan, sessaoRemarcacao("ZZZ999"), decisao);
+
+        assertEquals("Nao foi possivel consultar a reserva ZZZ999 agora. Tente novamente.", response.content());
+        assertEquals("ERRO_INTEGRACAO", plan.getResultado());
+        assertEquals("ERRO", decisao.getStatusResultado());
+        assertTrue(response.actions().isEmpty());
+        assertTrue(response.toolCalls().isEmpty());
+        verify(chat, never()).chat(any(), anyList(), any());
+        verifyNoInteractions(router);
+    }
+
+    @Test void localizadorValidadoPreservaSeletorAtualSemExecutarRemarcacao() throws Exception {
+        ChatV2Plan plan = ChatV2Plan.of(ChatV2Capability.REMARCACAO);
+        plan.getParametros().put("localizador", "ABC123");
+        ChatActionDTO acao = acaoSimular("ABC123");
+        ChatMessageDTO dado = new ChatMessageDTO("system",
+                "{\"tipoConsulta\":\"seletor_remarcacao\",\"localizador\":\"ABC123\"}");
+        when(chat.actionApis(anyList(), any(), eq("selecionar_reserva_remarcacao"), eq(true)))
+                .thenAnswer(invocation -> {
+                    List<ChatMessageDTO> dados = invocation.getArgument(0);
+                    dados.add(dado);
+                    return List.of("selecionar_reserva_remarcacao");
+                });
+        when(chat.extrairAcoesDisponiveis(anyList())).thenReturn(List.of(acao));
+
+        ChatResponseDTO response = exec.executar(plan, sessaoRemarcacao("ABC123"), decision());
+
+        assertEquals("ACAO_PREPARADA", plan.getResultado());
+        assertTrue(response.content().contains("Use o seletor"));
+        assertEquals(List.of(acao), response.actions());
+        assertTrue(response.toolCalls().isEmpty());
+        verify(chat, never()).chat(any(), anyList(), any());
+        verifyNoInteractions(router);
+    }
+
+    private ChatMessageDTO bloqueioRemarcacao(String status, String mensagem) throws Exception {
+        return new ChatMessageDTO("system", mapper.writeValueAsString(Map.of(
+                "tipoConsulta", "validacao_remarcacao", "statusConsulta", status,
+                "localizadorConsultado", "ZZZ999", "mensagem", mensagem, "acoesDisponiveis", List.of())));
+    }
+
+    private void configurarBloqueio(ChatMessageDTO dado) throws Exception {
+        when(chat.actionApis(anyList(), any(), eq("selecionar_reserva_remarcacao"), eq(true)))
+                .thenAnswer(invocation -> {
+                    List<ChatMessageDTO> dados = invocation.getArgument(0);
+                    assertTrue(dados.isEmpty(), "A consulta deve avaliar apenas os dados do turno atual.");
+                    dados.add(dado);
+                    return List.of("selecionar_reserva_remarcacao");
+                });
+        when(chat.respostaBloqueioRemarcacao(anyList(), anyList())).thenAnswer(invocation -> {
+            List<ChatMessageDTO> dados = invocation.getArgument(0);
+            assertEquals(List.of(dado), dados);
+            return new ChatResponseDTO(null, mapper.readTree(dado.content()).path("mensagem").asText(),
+                    List.of(), null, invocation.getArgument(1), List.copyOf(dados), List.of());
+        });
+    }
+
+    private ConversationRequestDTO sessaoRemarcacao(String localizador) {
+        return new ConversationRequestDTO("confia", "CGB", "ERP-10", 10L, 20L,
+                "Quero remarcar a reserva " + localizador,
+                List.of(new ChatMessageDTO("system",
+                        "{\"tipoConsulta\":\"seletor_remarcacao\",\"localizador\":\"ANT123\","
+                                + "\"acoesDisponiveis\":[{\"code\":\"simular_remarcacao\"}]}")),
+                null, false, List.of());
+    }
+
+    private ChatActionDTO acaoSimular(String localizador) {
+        return new ChatActionDTO("simular_remarcacao", "Simular remarcacao", "Preparar simulacao",
+                localizador, null, false, true, false, "Simular remarcacao " + localizador);
+    }
 }

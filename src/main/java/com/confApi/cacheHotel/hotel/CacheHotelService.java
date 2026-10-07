@@ -36,6 +36,11 @@ public class CacheHotelService {
     private CacheHotelCidadeAPI cacheHotelCidadeAPI;
 
     public List<CacheHotelDTO> salvarCacheHotel(List<HotelResponse> hotelResponses) {
+        return salvarCacheHotel(hotelResponses, null);
+    }
+
+    public List<CacheHotelDTO> salvarCacheHotel(List<HotelResponse> hotelResponses, String codigoCidadePesquisa) {
+
 
         // verificar se está nulo ou vazio
         if (hotelResponses == null || hotelResponses.isEmpty()) {
@@ -44,7 +49,7 @@ public class CacheHotelService {
 
         // converte para CacheHotelDTO e devolve em lista
         List<CacheHotelDTO> lista = hotelResponses.stream()
-                .map(this::converterParaDTO)
+                .map(hotel -> converterParaDTO(hotel, codigoCidadePesquisa))
                 .collect(Collectors.toList());
 
         //metodo aplicar mkp chamar findByCodProdutoValue
@@ -58,6 +63,11 @@ public class CacheHotelService {
     }
 
     public CacheHotelDTO converterParaDTO(HotelResponse hotelResponse) {
+        return converterParaDTO(hotelResponse, null);
+    }
+
+    public CacheHotelDTO converterParaDTO(HotelResponse hotelResponse, String codigoCidadePesquisa) {
+
 
         CacheHotelDTO dto = new CacheHotelDTO();
 
@@ -65,7 +75,10 @@ public class CacheHotelService {
         dto.setCategoria(hotelResponse.getCategoria());
         dto.setEndereco(hotelResponse.getEndereco());
 
-        dto.setCodgCidade(hotelResponse.getCodigoCidade());
+        // O destinationId da EZLink identifica o destino no fornecedor, nao no cache interno.
+        // Altera somente o DTO de cache; a disponibilidade mantem a referencia de reserva.
+        dto.setCodgCidade(codigoCidadePesquisa != null && !codigoCidadePesquisa.isBlank()
+                ? codigoCidadePesquisa : hotelResponse.getCodigoCidade());
         dto.setNomeCidade(hotelResponse.getCidade());
         dto.setNomeEstado(hotelResponse.getEstado());
         dto.setNomePais(hotelResponse.getPais());

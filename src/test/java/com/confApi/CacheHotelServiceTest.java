@@ -33,6 +33,24 @@ class CacheHotelServiceTest {
         assertEquals(25.0, dto.getTaxas());
     }
 
+    @Test
+    void cacheUsaCidadeDaPesquisaSemAlterarDestinoOuTokenDoFornecedor() {
+        HotelResponse hotel = new HotelResponse();
+        hotel.setCodigoCidade("5d652a1437f0a05da7a94b18");
+        hotel.setSearchToken("token-ezlink");
+        CacheHotelDTO dto = new CacheHotelService().converterParaDTO(hotel, "LIS");
+        assertEquals("LIS", dto.getCodgCidade());
+        assertEquals("5d652a1437f0a05da7a94b18", hotel.getCodigoCidade());
+        assertEquals("token-ezlink", hotel.getSearchToken());
+    }
+
+    @Test
+    void chamadaLegadaPreservaCodigoQuandoNaoRecebeCidadeDaPesquisa() {
+        HotelResponse hotel = new HotelResponse();
+        hotel.setCodigoCidade("CGB");
+        assertEquals("CGB", new CacheHotelService().converterParaDTO(hotel, " ").getCodgCidade());
+    }
+
     private static QuartoPesquisa quarto(HotelAcomodacao... acomodacoes) {
         QuartoPesquisa quarto = new QuartoPesquisa();
         quarto.setAcomodacoes(List.of(acomodacoes));

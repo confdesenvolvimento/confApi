@@ -758,7 +758,7 @@ class ChatConfiancaServiceTest {
     }
 
     @Test
-    void devePreservarEncaminhamentoHumanoComumNoDepartamentoAtual() {
+    void naoDeveUsarDepartamentoAtualComoConfirmacaoDeHandoff() {
         fixture.conversa = conversaParaRemarcacao(DEPARTAMENTO_UNIDADE_ID, StatusConversa.NOVA);
         fixture.solicitanteParticipante = true;
         when(manager.get(
@@ -766,16 +766,203 @@ class ChatConfiancaServiceTest {
                 DepartamentoUnidade.class))
                 .thenReturn(fixture.departamentoUnidade);
 
-        Conversa encaminhada = service.encaminharConversaParaAtendente(
-                CONVERSA_ID, SOLICITANTE, "Atendimento humano solicitado.");
+        RegraDeNegocioException erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.encaminharConversaParaAtendente(
+                        CONVERSA_ID, SOLICITANTE, "Atendimento humano solicitado."));
+        assertEquals(400, erro.getStatus());
+        assertTrue(erro.getMessage().contains("confirme"));
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
 
-        assertEquals(DEPARTAMENTO_UNIDADE_ID, encaminhada.getDepartamentoUnidadeId());
-        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, encaminhada.getStatus());
+    @Test
+    void handoffDeveLimparResponsavelAnteriorEManterEquipeQuandoOffline() {
+        prepararHandoff();
+        fixture.conversa.setAtendenteResponsavelCodgUsuario(999);
+        fixture.departamentoUnidade.setDistribuicao(DistribuicaoDepartamento.MENOR_CARGA);
+        AtendenteStatus offline = statusOnline();
+        offline.setStatus(StatusAtendente.OFFLINE);
+        when(configService.buscarAtendenteStatus(ATENDENTE)).thenReturn(offline);
+
+        Conversa resultado = confirmarHandoff();
+
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, resultado.getStatus());
+        assertEquals(null, resultado.getAtendenteResponsavelCodgUsuario());
+        assertEquals(null, fixture.fila.getAtendenteDestinoCodgUsuario());
         assertEquals(DEPARTAMENTO_UNIDADE_ID, fixture.fila.getDepartamentoUnidadeId());
-        verify(manager, never()).post(
-                eq("chat-confianca/persistencia/conversa-transferencias"),
-                any(ConversaTransferencia.class),
-                eq(ConversaTransferencia.class));
+        assertTrue(ultimoAviso().contains("fila da equipe Suporte"));
+        assertFalse(ultimoAviso().contains("foi atribuido"));
+    }
+
+    @Test
+    void distribuicaoAutomaticaNaoPodeSelecionarVinculoDeOutroDepartamento() {
+        prepararHandoff();
+        fixture.departamentoUnidade.setDistribuicao(DistribuicaoDepartamento.MENOR_CARGA);
+        DepartamentoAtendente outro = vinculoAtendente(999L);
+        outro.setCodgUsuario(999);
+        AtendenteStatus onlineOutro = statusOnline();
+        onlineOutro.setCodgUsuario(999);
+        AtendenteStatus offline = statusOnline();
+        offline.setStatus(StatusAtendente.OFFLINE);
+        when(configService.buscarAtendenteStatus(ATENDENTE)).thenReturn(offline);
+        when(configService.buscarAtendenteStatus(999)).thenReturn(onlineOutro);
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_UNIDADE_ID))
+                .thenReturn(List.of(outro, fixture.vinculoAtendente));
+
+        Conversa resultado = confirmarHandoff();
+
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, resultado.getStatus());
+        assertEquals(null, resultado.getAtendenteResponsavelCodgUsuario());
+        verify(configService, never()).buscarAtendenteStatus(999);
+    }
+
+    @Test
+    void handoffNaoPodeConsiderarVinculoDeOutraEquipeComoAtendenteConfigurado() {
+        prepararHandoff();
+        when(configService.listarAtendentesDepartamento(DEPARTAMENTO_UNIDADE_ID))
+                .thenReturn(List.of(vinculoAtendente(999L)));
+        assertThrows(RegraDeNegocioException.class, this::confirmarHandoff);
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void statusDesconhecidoNaoDistribuiAutomaticamente() {
+        prepararHandoff();
+        fixture.departamentoUnidade.setDistribuicao(DistribuicaoDepartamento.ROUND_ROBIN);
+        when(configService.buscarAtendenteStatus(ATENDENTE)).thenReturn(null);
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, confirmarHandoff().getStatus());
+        assertEquals(null, fixture.fila.getAtendenteDestinoCodgUsuario());
+    }
+
+    @Test
+    void falhaNaConsultaStatusPreservaSolicitacaoNaFilaEscolhida() {
+        prepararHandoff();
+        fixture.departamentoUnidade.setDistribuicao(DistribuicaoDepartamento.ROUND_ROBIN);
+        when(configService.buscarAtendenteStatus(ATENDENTE)).thenThrow(new IllegalStateException("offline"));
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, confirmarHandoff().getStatus());
+        assertEquals(DEPARTAMENTO_UNIDADE_ID, fixture.fila.getDepartamentoUnidadeId());
+    }
+
+    @Test
+    void distribuicaoConfirmadaInformaAtendimentoAtribuidoSemPrometerFila() {
+        prepararHandoff();
+        fixture.departamentoUnidade.setDistribuicao(DistribuicaoDepartamento.MENOR_CARGA);
+        Conversa resultado = confirmarHandoff();
+        assertEquals(StatusConversa.EM_ATENDIMENTO, resultado.getStatus());
+        assertEquals(ATENDENTE, resultado.getAtendenteResponsavelCodgUsuario());
+        assertTrue(ultimoAviso().contains("foi atribuido a um atendente da equipe Suporte"));
+        assertFalse(ultimoAviso().contains("entrou na fila"));
+    }
+
+    @Test
+    void handoffDeveRecusarDepartamentoInativoAntesDePersistir() {
+        prepararHandoff();
+        fixture.departamentoUnidade.setAtivo(false);
+        assertThrows(RegraDeNegocioException.class, this::confirmarHandoff);
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void handoffDeveRecusarDepartamentoDeOutraUnidadeAntesDePersistir() {
+        prepararHandoff();
+        fixture.departamentoUnidade.setCodgUnidade(2);
+        assertThrows(RegraDeNegocioException.class, this::confirmarHandoff);
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void handoffDeveRecusarDestinoQueNaoPermiteChamadoDaAgencia() {
+        prepararHandoff();
+        fixture.departamentoUnidade.setPermiteChamadoAgencia(false);
+        assertThrows(RegraDeNegocioException.class, this::confirmarHandoff);
+        verificarQueRoteamentoNaoFoiPersistido();
+    }
+
+    @Test
+    void confirmarDuasVezesNaoDuplicaFilaNemResumo() {
+        prepararHandoff();
+        confirmarHandoff();
+        int mensagens = fixture.mensagens.size();
+        confirmarHandoff();
+        assertEquals(mensagens, fixture.mensagens.size());
+        verify(manager, times(1)).post(eq("chat-confianca/persistencia/filas"), any(), eq(FilaAtendimento.class));
+    }
+
+    @Test
+    void resumoDeHandoffDeveSerInternoESomenteDaMesmaConversa() {
+        prepararHandoff();
+        fixture.conversa.setMetadadosJson("{\"origem\":\"CONFIA\"}");
+        Mensagem publica = mensagemHistorico(CONVERSA_ID, "Preciso consultar minhas faturas.");
+        Mensagem outra = mensagemHistorico(555L, "DADOS OUTRA CONVERSA");
+        Mensagem interna = mensagemHistorico(CONVERSA_ID, "NOTA INTERNA ANTIGA");
+        interna.setVisibilidade(VisibilidadeMensagem.INTERNA);
+        Mensagem excluida = mensagemHistorico(CONVERSA_ID, "MENSAGEM EXCLUIDA");
+        excluida.setStatus(StatusMensagem.EXCLUIDA);
+        when(manager.getList(eq("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/mensagens"), any()))
+                .thenReturn(List.of(publica, outra, interna, excluida));
+
+        confirmarHandoff();
+
+        Mensagem resumo = fixture.mensagens.stream()
+                .filter(m -> m.getVisibilidade() == VisibilidadeMensagem.INTERNA).findFirst().orElseThrow();
+        assertTrue(resumo.getConteudo().contains("consultar minhas faturas"));
+        assertFalse(resumo.getConteudo().contains("DADOS OUTRA CONVERSA"));
+        assertFalse(resumo.getConteudo().contains("NOTA INTERNA ANTIGA"));
+        assertFalse(resumo.getConteudo().contains("MENSAGEM EXCLUIDA"));
+        assertNotNull(resumo.getConteudoJson());
+        assertTrue(ultimoAviso().contains("resumo desta conversa"));
+    }
+
+    @Test
+    void falhaNoHistoricoNaoImpedeHandoffEResumoInformaLimitacao() {
+        prepararHandoff();
+        fixture.conversa.setMetadadosJson("{\"origem\":\"CONFIA\"}");
+        when(manager.getList(eq("chat-confianca/consultas/conversas/" + CONVERSA_ID + "/mensagens"), any()))
+                .thenThrow(new IllegalStateException("unavailable"));
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, confirmarHandoff().getStatus());
+        assertTrue(fixture.mensagens.stream().anyMatch(m -> m.getVisibilidade() == VisibilidadeMensagem.INTERNA));
+    }
+
+    @Test
+    void falhaAoSalvarResumoNaoPrometeResumoNemImpedeFila() {
+        prepararHandoff();
+        fixture.conversa.setMetadadosJson("{\"origem\":\"CONFIA\"}");
+        when(manager.post(eq("chat-confianca/persistencia/mensagens"), any(Mensagem.class), eq(Mensagem.class)))
+                .thenAnswer(inv -> {
+                    Mensagem mensagem = inv.getArgument(1);
+                    if (mensagem.getVisibilidade() == VisibilidadeMensagem.INTERNA) {
+                        throw new IllegalStateException("failed");
+                    }
+                    return responderPost(inv);
+                });
+        assertEquals(StatusConversa.AGUARDANDO_ATENDENTE, confirmarHandoff().getStatus());
+        assertFalse(ultimoAviso().contains("resumo desta conversa"));
+    }
+
+    private void prepararHandoff() {
+        fixture.conversa = conversaParaRemarcacao(999L, StatusConversa.AGUARDANDO_SOLICITANTE);
+        fixture.solicitanteParticipante = true;
+        when(manager.get("chat-confianca/persistencia/departamento-unidades/" + DEPARTAMENTO_UNIDADE_ID,
+                DepartamentoUnidade.class)).thenReturn(fixture.departamentoUnidade);
+    }
+
+    private Conversa confirmarHandoff() {
+        return service.encaminharConversaParaAtendente(CONVERSA_ID, SOLICITANTE, DEPARTAMENTO_UNIDADE_ID,
+                "Cliente confirmou Suporte.");
+    }
+
+    private String ultimoAviso() {
+        return fixture.mensagens.get(fixture.mensagens.size() - 1).getConteudo();
+    }
+
+    private Mensagem mensagemHistorico(Long conversaId, String texto) {
+        Mensagem mensagem = new Mensagem();
+        mensagem.setConversaId(conversaId);
+        mensagem.setRemetenteTipo(RemetenteTipo.USUARIO);
+        mensagem.setRemetenteCodgUsuario(SOLICITANTE);
+        mensagem.setVisibilidade(VisibilidadeMensagem.PUBLICA);
+        mensagem.setStatus(StatusMensagem.ENVIADA);
+        mensagem.setConteudo(texto);
+        return mensagem;
     }
 
     @Test

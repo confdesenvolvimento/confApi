@@ -9,6 +9,8 @@ public class OpenAIProperties {
     private String apiKey ="";
     private String baseUrl="https://api.openai.com";
     private String chatModel="gpt-4o";
+    private String chatReasoningEffort="low";
+    private int chatMaxOutputTokens=8192;
     private String sttModel="gpt-4o-transcribe";
     private String ttsModel="gpt-4o-mini-tts";
     private String realtimeModel="gpt-realtime";

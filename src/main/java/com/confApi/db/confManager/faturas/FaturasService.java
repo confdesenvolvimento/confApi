@@ -76,6 +76,45 @@ public class FaturasService  {
     /* -------------------------
        Listar faturas
     -------------------------- */
+    /**
+     * Consulta usada pelo chat: somente uma resposta valida com lista vazia
+     * significa ausencia de faturas. Falhas tecnicas nunca viram lista vazia.
+     * O metodo legado abaixo mantem o contrato dos demais consumidores.
+     */
+    public List<FaturaSicaRS> faturaSicaEstrita(FaturaSicaRQ faturaSicaRQ) {
+        try {
+            Objects.requireNonNull(faturaSicaRQ, "A consulta de faturas e obrigatoria.");
+            URI uri = buildUri(UrlConfig.URL_CONFIANCA_MANAGER + URL_FATURAS);
+            ResponseEntity<List<FaturaSicaRS>> resp = postJson(
+                    uri,
+                    faturaSicaRQ,
+                    new ParameterizedTypeReference<List<FaturaSicaRS>>() {}
+            );
+            if (resp == null || !resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                throw new ConsultaFaturasException("A consulta de faturas retornou uma resposta invalida.");
+            }
+            return resp.getBody();
+        } catch (ConsultaFaturasException e) {
+            throw e;
+        } catch (HttpStatusCodeException e) {
+            // Nao incluir corpo HTTP: pode conter dados financeiros ou credenciais.
+            throw new ConsultaFaturasException("Nao foi possivel consultar as faturas no servico financeiro.", e);
+        } catch (RuntimeException e) {
+            // Inclui timeout, conversao do JSON e falha ao obter autenticacao.
+            throw new ConsultaFaturasException("Nao foi possivel concluir a consulta de faturas.", e);
+        }
+    }
+
+    public static class ConsultaFaturasException extends RuntimeException {
+        public ConsultaFaturasException(String message) {
+            super(message);
+        }
+
+        public ConsultaFaturasException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     public List<FaturaSicaRS> faturaSica(FaturaSicaRQ faturaSicaRQ) {
         try {
            String  ENDPOINT = UrlConfig.URL_CONFIANCA_MANAGER;

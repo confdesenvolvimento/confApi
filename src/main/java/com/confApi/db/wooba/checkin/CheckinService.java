@@ -51,9 +51,18 @@ public class CheckinService {
         return postForList(API_ACTION_CHECKIN, rq, new TypeReference<List<Checkin72Horas>>() {});
     }
 
+    /** Chat must distinguish integration failure from a genuinely empty result. */
+    public List<Checkin72Horas> findCheckin72HorasEstrito(CheckinRQ rq) {
+        return postForList(API_ACTION_CHECKIN, rq, new TypeReference<List<Checkin72Horas>>() {}, true);
+    }
+
     /* ============================ PRIVADOS ============================ */
 
     private <T> List<T> postForList(String action, Object body, TypeReference<List<T>> typeRef) {
+        return postForList(action, body, typeRef, false);
+    }
+
+    private <T> List<T> postForList(String action, Object body, TypeReference<List<T>> typeRef, boolean estrito) {
         String url = buildUrl(action);
         LOG.info(() -> "[CheckinService] URL chamada: " + url);
 
@@ -64,6 +73,7 @@ public class CheckinService {
             entity = new HttpEntity<>(jsonBody, headers);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "[CheckinService] Falha ao serializar request body", e);
+            if (estrito) throw new IllegalStateException("Consulta de embarques indisponível.");
             return Collections.emptyList();
         }
 
@@ -72,20 +82,24 @@ public class CheckinService {
             ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
             if (!resp.getStatusCode().is2xxSuccessful()) {
                 LOG.log(Level.WARNING, "[CheckinService] HTTP {0} em {1}", new Object[]{resp.getStatusCode(), url});
+                if (estrito) throw new IllegalStateException("Consulta de embarques indisponível.");
                 return Collections.emptyList();
             }
             responseBody = Optional.ofNullable(resp.getBody()).orElse("");
             if (responseBody.isBlank()) {
                 LOG.log(Level.WARNING, "[CheckinService] Resposta vazia em {0}", url);
+                if (estrito) throw new IllegalStateException("Consulta de embarques indisponível.");
                 return Collections.emptyList();
             }
         } catch (RestClientException ex) {
             LOG.log(Level.SEVERE, "[CheckinService] Erro HTTP em " + url, ex);
+            if (estrito) throw new IllegalStateException("Consulta de embarques indisponível.");
             return Collections.emptyList();
         }
 
         try {
             List<T> list = mapper.readValue(responseBody, typeRef);
+            if (list == null && estrito) throw new IllegalStateException("Resposta de embarques inválida.");
             if (list == null || list.isEmpty()) {
                 LOG.log(Level.INFO, "[CheckinService] Lista vazia retornada por {0}", url);
                 return Collections.emptyList();
@@ -93,6 +107,7 @@ public class CheckinService {
             return list;
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "[CheckinService] Falha ao parsear resposta de " + url, e);
+            if (estrito) throw new IllegalStateException("Consulta de embarques indisponível.");
             return Collections.emptyList();
         }
     }

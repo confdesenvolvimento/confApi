@@ -487,7 +487,7 @@ class ChatConfiancaRemarcacaoServiceTest {
                 new com.confApi.hub.aereo.dto.Companhia(1, "LA", "LATAM"));
         PesquisaResponse disponibilidade = new PesquisaResponse();
         disponibilidade.setTrechos1(List.of(opcao));
-        when(aereoClient.pesquisarDisponibilidade(any())).thenReturn(List.of(disponibilidade));
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(List.of(disponibilidade));
 
         RemarcacaoRequest.Pesquisar request = new RemarcacaoRequest.Pesquisar();
         request.setCodgUsuario(USUARIO_ID);
@@ -501,7 +501,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(1, response.getOpcoes().size());
         ArgumentCaptor<PesquisaRequestDTO> pesquisa =
                 ArgumentCaptor.forClass(PesquisaRequestDTO.class);
-        verify(aereoClient).pesquisarDisponibilidade(pesquisa.capture());
+        verify(aereoClient).pesquisarDisponibilidadeEstrita(pesquisa.capture());
         assertEquals("LA", pesquisa.getValue().getCompanhias().get(0).getCodigoIata());
     }
 
@@ -776,6 +776,77 @@ class ChatConfiancaRemarcacaoServiceTest {
     }
 
     @Test
+    void falhaTecnicaDaRegraPermiteTentarNovamenteSemDeclararInelegibilidade() {
+        prepararReservaIdaVolta();
+        RegraAereaAlteracaoConsultaResponse erro = new RegraAereaAlteracaoConsultaResponse();
+        erro.setStatus("ERRO_CONSULTA");
+        when(regraService.simular(any())).thenReturn(erro);
+        simulacao.setResultadosJson("dados antigos");
+        simulacao.setCalculoJson("previa antiga");
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
+        assertEquals("AGUARDANDO_TRECHO", response.getStatus());
+        assertEquals(2, response.getTrechos().size());
+        assertTrue(response.getMensagem().contains("Selecione novamente"));
+        assertNull(simulacao.getTrechoIndice());
+        assertNull(simulacao.getRegraId());
+        assertNull(simulacao.getResultadosJson());
+        assertNull(simulacao.getCalculoJson());
+        assertNull(simulacao.getPassageirosJson());
+        RemarcacaoRequest.Pesquisar pesquisa = new RemarcacaoRequest.Pesquisar();
+        pesquisa.setCodgUsuario(USUARIO_ID);
+        pesquisa.setData(LocalDate.now().plusDays(10));
+        assertThrows(RegraDeNegocioException.class,
+                () -> service.pesquisar(SIMULACAO_ID, pesquisa));
+        verify(aereoClient, never()).tarifar(any());
+        when(regraService.simular(any())).thenReturn(regraPermitida(false));
+        assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))).getStatus());
+        assertNull(simulacao.getMotivoBloqueio());
+    }
+
+    @Test
+    void falhaNaRegraDoSegundoTrechoNaoDeveVirarRegrasComerciaisDiferentes() {
+        prepararReservaIdaVolta();
+        RegraAereaAlteracaoConsultaResponse erro = new RegraAereaAlteracaoConsultaResponse();
+        erro.setStatus("ERRO_CONSULTA");
+        when(regraService.simular(any())).thenReturn(regraPermitida(false), erro);
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
+        assertEquals("AGUARDANDO_TRECHO", response.getStatus());
+        assertFalse(response.getMensagem().contains("regras diferentes"));
+        assertNull(simulacao.getRegraSnapshotJson());
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
+    void respostaNulaDaConsultaDeRegraNaoDeveSerInelegibilidadeComercial() {
+        prepararReservaIdaVolta();
+        when(regraService.simular(any())).thenReturn(null);
+        assertEquals("AGUARDANDO_TRECHO", service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))).getStatus());
+    }
+
+    @Test
+    void selecaoComConexaoMantemTodosOsVoosDoTrecho() {
+        Reserva reserva = prepararReservaIdaVolta();
+        reserva.getViagens().get(0).setVoos(List.of(voo("CGB", "GRU", "1111"), voo("GRU", "BSB", "2222")));
+        simulacao.setStatus("AGUARDANDO_TRECHO");
+        RemarcacaoSimulacaoResponse card = service.consultar(SIMULACAO_ID, USUARIO_ID);
+        assertEquals(2, card.getTrechos().size());
+        assertEquals(2, card.getTrechos().get(0).getVoos().size());
+        assertEquals("CGB", card.getTrechos().get(0).getOrigem());
+        assertEquals("BSB", card.getTrechos().get(0).getDestino());
+        when(regraService.simular(any())).thenReturn(regraPermitida(false));
+        RemarcacaoRequest.SelecionarTrecho request = new RemarcacaoRequest.SelecionarTrecho();
+        request.setCodgUsuario(USUARIO_ID); request.setTrechoIndice(0);
+        assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(SIMULACAO_ID, request).getStatus());
+        assertTrue(simulacao.getTrechoOriginalJson().contains("1111"));
+        assertTrue(simulacao.getTrechoOriginalJson().contains("2222"));
+        verify(aereoClient, never()).tarifar(any());
+    }
+
+    @Test
     void devePreservarExigenciaConjuntaAoEscolherSomenteVolta() {
         prepararReservaIdaVolta();
         when(regraService.simular(any())).thenReturn(regraPermitida(true));
@@ -844,7 +915,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         String ofertaIda = simulacao.getOfertaSelecionadaJson();
         PesquisaResponse pesquisa = new PesquisaResponse();
         pesquisa.setTrechos1(List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678")));
-        when(aereoClient.pesquisarDisponibilidade(any())).thenReturn(List.of(pesquisa));
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(List.of(pesquisa));
         RemarcacaoRequest.Pesquisar request = pesquisaRemarcacao();
         request.setData(LocalDate.now().plusDays(33));
 
@@ -866,7 +937,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         request.setData(LocalDate.now().plusDays(29));
         assertThrows(RegraDeNegocioException.class, () -> service.pesquisar(SIMULACAO_ID, request));
         assertEquals(ofertaIda, simulacao.getOfertaSelecionadaJson());
-        verify(aereoClient, never()).pesquisarDisponibilidade(any());
+        verify(aereoClient, never()).pesquisarDisponibilidadeEstrita(any());
     }
 
     @Test
@@ -1366,7 +1437,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertNotNull(consulta.getLabelVoltar());
         assertTrue(consulta.isPreferenciasRestauradas());
         assertEquals(response.getCriterios().getDataSugerida(), consulta.getCriterios().getDataSugerida());
-        verify(aereoClient, never()).pesquisarDisponibilidade(any());
+        verify(aereoClient, never()).pesquisarDisponibilidadeEstrita(any());
     }
 
     @Test
@@ -1621,6 +1692,206 @@ class ChatConfiancaRemarcacaoServiceTest {
         return request;
     }
 
+    @Test
+    void fornecedorVazioNaoAfirmaDescarteTarifarioEPreservaCriterios() throws Exception {
+        prepararPesquisaLatamComTarifaMinima(opcaoPesquisa("ID", "CGB", "BSB", "3895"), "IGUAL_OU_MAIOR", 300);
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(List.of());
+        RemarcacaoRequest.Pesquisar request = pesquisaRemarcacao();
+        request.setData(LocalDate.now().plusDays(16));
+        request.setPeriodo("TARDE");
+        request.setSomenteDireto(true);
+        String passageirosAntes = simulacao.getPassageirosJson();
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, request);
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.getMensagem().contains("companhia nao retornou opcoes"));
+        assertFalse(response.getMensagem().contains("tarifa original"));
+        assertEquals(request.getData(), response.getCriterios().getDataSugerida());
+        assertEquals("TARDE", response.getCriterios().getPeriodo());
+        assertTrue(response.getCriterios().isSomenteDireto());
+        assertEquals(0, simulacao.getTrechoIndice());
+        assertEquals(passageirosAntes, simulacao.getPassageirosJson());
+        assertEquals("FORNECEDOR_SEM_OPCOES", diagnosticoEvento("REMARCACAO_PESQUISA_SEM_RESULTADO").path("codigo").asText());
+    }
+
+    @Test
+    void timeoutPermiteRepetirSemConfundirComAusenciaDeVoos() throws Exception {
+        prepararPesquisaLatamComTarifaMinima(opcaoPesquisa("ID", "CGB", "BSB", "3895"), "IGUAL_OU_MAIOR", 300);
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any()))
+                .thenThrow(new AereoClient.ConsultaDisponibilidadeException("TIMEOUT"));
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.getMensagem().contains("demorou alem do limite"));
+        assertTrue(response.getMensagem().contains("nao significa que nao existam voos"));
+        assertNull(simulacao.getResultadosJson());
+        assertEquals("TIMEOUT", diagnosticoEvento("REMARCACAO_PESQUISA_INDISPONIVEL").path("codigo").asText());
+    }
+
+    @Test
+    void resposta200ComExceptionSemOpcoesEIndisponibilidadeSemExporPayload() throws Exception {
+        prepararPesquisaLatamComTarifaMinima(opcaoPesquisa("ID", "CGB", "BSB", "3895"), "IGUAL_OU_MAIOR", 300);
+        PesquisaResponse falha = new PesquisaResponse();
+        falha.setException(java.util.Map.of("erro", "payload-privado"));
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(List.of(falha));
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.getMensagem().contains("Nao foi possivel consultar"));
+        assertFalse(response.getMensagem().contains("payload-privado"));
+        assertFalse(diagnosticoEvento("REMARCACAO_PESQUISA_INDISPONIVEL").toString().contains("payload-privado"));
+    }
+
+    @Test
+    void respostaMistaMantemOpcoesValidasEContaFalha() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "3895");
+        prepararPesquisaLatamComTarifaMinima(opcao, "PODE_SER_MENOR", 300);
+        PesquisaResponse valida = new PesquisaResponse();
+        valida.setTrechos1(List.of(opcao));
+        PesquisaResponse falha = new PesquisaResponse();
+        falha.setException("payload-privado");
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(java.util.Arrays.asList(null, falha, valida));
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals(1, response.getOpcoes().size());
+        assertEquals(1, diagnosticoEvento("REMARCACAO_OPCOES_ENCONTRADAS").path("retornosComFalha").asInt());
+    }
+
+    @Test
+    void descartarFamiliasAbaixoDoMinimoNaoExigeSelecionarAmbosOsTrechos() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "3895");
+        opcao.setFamilias(List.of(familiaPesquisa("Menor", 250, 400)));
+        prepararPesquisaLatamComTarifaMinima(opcao, "IGUAL_OU_MAIOR", 300);
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.getMensagem().contains("pesquisa do trecho selecionado"));
+        assertTrue(response.getMensagem().contains("tarifa do bilhete original"));
+        assertFalse(response.getMensagem().contains("dois trechos"));
+        com.fasterxml.jackson.databind.JsonNode dados = diagnosticoEvento("REMARCACAO_PESQUISA_SEM_RESULTADO");
+        assertEquals("REGRAS_TARIFARIAS", dados.path("codigo").asText());
+        assertEquals(1, dados.path("familiasAbaixoTarifaMinima").asInt());
+    }
+
+    @Test
+    void valoresIncompletosNaoSaoDescritosComoTarifaAbaixoDoMinimo() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "3895");
+        FamiliaPreco familia = familiaPesquisa("Sem preco", 350, 410);
+        familia.setPreco(null);
+        opcao.setFamilias(List.of(familia));
+        prepararPesquisaLatamComTarifaMinima(opcao, "IGUAL_OU_MAIOR", 300);
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertTrue(response.getMensagem().contains("Faltam valores tarifarios"));
+        assertFalse(response.getMensagem().contains("abaixo da"));
+        com.fasterxml.jackson.databind.JsonNode dados = diagnosticoEvento("REMARCACAO_PESQUISA_SEM_RESULTADO");
+        assertEquals("DADOS_TARIFARIOS_INSUFICIENTES", dados.path("codigo").asText());
+        assertEquals(0, dados.path("familiasAbaixoTarifaMinima").asInt());
+    }
+
+    @Test
+    void companhiaForaDoCriterioNaoEConfundidaComTarifaMinima() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "3895");
+        prepararPesquisaLatamComTarifaMinima(opcao, "IGUAL_OU_MAIOR", 300);
+        opcao.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(2, "G3", "GOL"));
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertTrue(response.getMensagem().contains("criterios da remarcacao"));
+        assertFalse(response.getMensagem().contains("tarifa original"));
+        assertEquals(0, diagnosticoEvento("REMARCACAO_PESQUISA_SEM_RESULTADO").path("familiasAbaixoTarifaMinima").asInt());
+    }
+
+    @Test
+    void falhaNaVoltaPreservaVooDaIdaJaSelecionado() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        String selecaoAntes = simulacao.getOfertaSelecionadaJson();
+        String indicesAntes = simulacao.getTrechosIndicesJson();
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any()))
+                .thenThrow(new AereoClient.ConsultaDisponibilidadeException("ERRO_CONSULTA"));
+        RemarcacaoRequest.Pesquisar pesquisaVolta = pesquisaRemarcacao();
+        pesquisaVolta.setData(LocalDate.now().plusDays(33));
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaVolta);
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertEquals(selecaoAntes, simulacao.getOfertaSelecionadaJson());
+        assertEquals(indicesAntes, simulacao.getTrechosIndicesJson());
+        assertEquals(1, simulacao.getTrechoIndice());
+    }
+
+    @Test
+    void periodoForaDoFiltroExplicaMotivoReal() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "3895");
+        prepararPesquisaLatamComTarifaMinima(opcao, "IGUAL_OU_MAIOR", 300);
+        opcao.getVoos().get(0).setHoraPartida("09:00");
+        RemarcacaoRequest.Pesquisar request = pesquisaRemarcacao();
+        request.setPeriodo("TARDE");
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, request);
+        assertTrue(response.getMensagem().contains("horario fora do periodo solicitado"));
+        assertFalse(response.getMensagem().contains("rota diferente"));
+        com.fasterxml.jackson.databind.JsonNode dados = diagnosticoEvento("REMARCACAO_PESQUISA_SEM_RESULTADO");
+        assertEquals(1, dados.path("descartesCriterios").path("PERIODO").asInt());
+        assertEquals("TARDE", dados.path("periodo").asText());
+        assertEquals(request.getData().toString(), dados.path("data").asText());
+        assertEquals(0, dados.path("trechoIndice").asInt());
+    }
+
+    @Test
+    void somenteDiretoExplicaDescartePorParadas() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "3895");
+        prepararPesquisaLatamComTarifaMinima(opcao, "IGUAL_OU_MAIOR", 300);
+        opcao.setNumeroParadas(1);
+        RemarcacaoRequest.Pesquisar request = pesquisaRemarcacao();
+        request.setSomenteDireto(true);
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, request);
+        assertTrue(response.getMensagem().contains("voos com conexoes ou paradas"));
+        assertFalse(response.getMensagem().contains("tarifa do bilhete"));
+        assertEquals(1, diagnosticoEvento("REMARCACAO_PESQUISA_SEM_RESULTADO").path("descartesCriterios").path("DIRETO").asInt());
+    }
+
+    @Test
+    void doisAdultosEmReservaIdaVoltaPodemPesquisarSomentePrimeiroTrecho() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "3895");
+        FamiliaPreco familia = familiaPesquisa("Menor", 250, 400);
+        familia.getPreco().setTotalTarifa(500.0);
+        opcao.setFamilias(List.of(familia));
+        prepararPesquisaLatamComTarifaMinima(opcao, "IGUAL_OU_MAIOR", 300);
+        ConsultarLocalizadorResponse hub = reservaLatamElegivel("LA", "LA", "LA", false);
+        Reserva reserva = hub.getReservas().get(0);
+        reserva.setPassageiros(List.of(passageiro("Maria", "ADT", "001", "ATIVO"),
+                passageiro("Joao", "ADT", "002", "ATIVO")));
+        definirTarifaOriginal(reserva, 300);
+        ValorPassageiro segundo = new ValorPassageiro();
+        segundo.setNomePassageiro("Joao");
+        segundo.setTarifa(300.0);
+        segundo.setTotal(300.0);
+        ValorBase base = reserva.getValorReserva().getValorBase();
+        base.setTarifa(600.0);
+        base.setValorPassageiroList(List.of(base.getValorPassageiroList().get(0), segundo));
+        when(aereoClient.carregarReserva(any())).thenReturn(hub);
+        simulacao.setTrechosIndicesJson("[0]");
+        simulacao.setPassageirosJson("{\"escopo\":\"TODOS\",\"indices\":[0,1],\"passageiros\":[]}");
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertFalse(response.isRemarcacaoConjunta());
+        assertEquals(0, simulacao.getTrechoIndice());
+        assertEquals("[0]", simulacao.getTrechosIndicesJson());
+        assertTrue(response.getMensagem().contains("pesquisa do trecho selecionado"));
+        ArgumentCaptor<PesquisaRequestDTO> consulta = ArgumentCaptor.forClass(PesquisaRequestDTO.class);
+        verify(aereoClient).pesquisarDisponibilidadeEstrita(consulta.capture());
+        assertEquals(2, consulta.getValue().getQtdADT());
+        assertEquals("ONEWAY", consulta.getValue().getTipoPesquisa().name());
+    }
+
+    @Test
+    void retornoNuloOuSomenteItensNulosNaoConfirmaAusenciaDeVoos() throws Exception {
+        prepararPesquisaLatamComTarifaMinima(opcaoPesquisa("ID", "CGB", "BSB", "3895"), "IGUAL_OU_MAIOR", 300);
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(null);
+        assertTrue(service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao()).getMensagem().contains("Nao foi possivel consultar"));
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(java.util.Arrays.asList((PesquisaResponse) null));
+        assertTrue(service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao()).getMensagem().contains("Nao foi possivel consultar"));
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode diagnosticoEvento(String tipo) throws Exception {
+        ArgumentCaptor<ConversaEvento> eventos = ArgumentCaptor.forClass(ConversaEvento.class);
+        verify(manager, atLeastOnce()).post(contains("eventos"), eventos.capture(), eq(ConversaEvento.class));
+        ConversaEvento evento = eventos.getAllValues().stream().filter(item -> tipo.equals(item.getTipoEvento()))
+                .reduce((primeiro, ultimo) -> ultimo).orElseThrow();
+        return mapper.readTree(evento.getDadosJson());
+    }
+
     private RemarcacaoRequest.Pesquisar pesquisaRemarcacao() {
         RemarcacaoRequest.Pesquisar request = new RemarcacaoRequest.Pesquisar();
         request.setCodgUsuario(USUARIO_ID);
@@ -1653,7 +1924,7 @@ class ChatConfiancaRemarcacaoServiceTest {
                 new com.confApi.hub.aereo.dto.Companhia(1, "LA", "LATAM"));
         PesquisaResponse disponibilidade = new PesquisaResponse();
         disponibilidade.setTrechos1(List.of(opcao));
-        when(aereoClient.pesquisarDisponibilidade(any())).thenReturn(List.of(disponibilidade));
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(List.of(disponibilidade));
     }
 
     private void definirTarifaOriginal(Reserva reserva, double tarifa) {
