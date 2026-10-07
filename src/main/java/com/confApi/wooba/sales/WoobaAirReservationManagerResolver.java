@@ -18,6 +18,8 @@ import com.confApi.util.TelegramErrorAlert;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -65,6 +67,49 @@ public class WoobaAirReservationManagerResolver {
         resolverCompanhiasEAeroportos(reserva);
         resolverFormasPagamento(reserva);
         return reserva;
+    }
+
+    public ReservaAereo resolverReferenciasManagerImportacaoManual(ReservaAereo reserva, String loginAlternativo) {
+        validarUsuarioImportacaoManual(reserva, loginAlternativo);
+        resolverAgencia(reserva);
+        resolverCompanhiasEAeroportos(reserva);
+        resolverFormasPagamento(reserva);
+        return reserva;
+    }
+
+    public void validarUsuarioImportacaoManual(ReservaAereo reserva, String loginAlternativo) {
+        Usuario original = reserva.getCodgUsuarioCriacao();
+        Usuario usuario = original == null || isBlank(original.getLoginUsuario()) ? null
+                : usuarioApi.consultaUsuarioByLoginParaImportacao(original.getLoginUsuario());
+        if (usuarioEncontrado(usuario) && !original.getLoginUsuario().trim().equalsIgnoreCase(usuario.getLoginUsuario())) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Manager retornou um usuario diferente do login consultado.");
+        }
+        if (!usuarioEncontrado(usuario)) {
+            if (isBlank(loginAlternativo)) throw new WoobaManualImportUsuarioPendenteException();
+            usuario = buscarUsuarioImportacaoManual(loginAlternativo);
+            if (!usuarioEncontrado(usuario)) throw new WoobaManualImportUsuarioPendenteException();
+        }
+        reserva.setCodgUsuarioCriacao(usuario);
+    }
+
+    public Usuario buscarUsuarioImportacaoManual(String login) {
+        validarLoginImportacaoManual(login);
+        Usuario usuario = usuarioApi.consultaUsuarioByLoginParaImportacao(login.trim());
+        if (!usuarioEncontrado(usuario)) return null;
+        if (!login.trim().equalsIgnoreCase(usuario.getLoginUsuario())) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Manager retornou um usuario diferente do login consultado.");
+        }
+        return usuario;
+    }
+
+    static void validarLoginImportacaoManual(String login) {
+        if (login == null || login.isBlank() || login.trim().length() > 100 || login.chars().anyMatch(Character::isISOControl)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe um login valido (ate 100 caracteres).");
+        }
+    }
+
+    private boolean usuarioEncontrado(Usuario usuario) {
+        return usuario != null && usuario.getCodgUsuario() != null && usuario.getCodgUsuario() > 0;
     }
 
     private void resolverAgencia(ReservaAereo reserva) {

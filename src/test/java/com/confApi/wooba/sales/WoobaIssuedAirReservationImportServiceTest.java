@@ -305,6 +305,55 @@ class WoobaIssuedAirReservationImportServiceTest {
     }
 
     @Test
+    void importacaoManualDeveUsarLoginAlternativoNoAirEBilhetes() throws Exception {
+        var parent = details(1, "ATPXGW", "VALERIA", null);
+        ((ObjectNode) parent.getTransaction()).withArray("Links").addObject()
+                .put("TransactionType", 100).put("TransactionState", 4).put("UniqueId", "TKT-ATPXGW");
+        when(client.details("TKT-ATPXGW")).thenReturn(details(100, "ATPXGW", "VALERIA", "1272312361467"));
+        prepararResolverManual();
+        service.processarDetailsImportacaoManual(parent, "alternativo");
+        verify(resolver, times(2)).resolverReferenciasManagerImportacaoManual(any(), eq("alternativo"));
+        verify(resolver, never()).resolverReferenciasManager(any());
+        assertEquals(777, database.get("ATPXGW").getCodgUsuarioCriacao().getCodgUsuario());
+        assertEquals("1272312361467", database.get("ATPXGW").getPassageiros().get(0).getBilhetes().get(0).getNumrBilhete());
+    }
+
+    @Test
+    void importacaoManualDeveSolicitarUsuarioDoBilheteAntesDeGravarAir() throws Exception {
+        var parent = details(1, "ATPXGW", "VALERIA", null);
+        ((ObjectNode) parent.getTransaction()).withArray("Links").addObject()
+                .put("TransactionType", 100).put("TransactionState", 4).put("UniqueId", "TKT-ATPXGW");
+        when(client.details("TKT-ATPXGW")).thenReturn(details(100, "ATPXGW", "VALERIA", "1272312361467"));
+        doAnswer(i -> {
+            ReservaAereo reservation = i.getArgument(0);
+            if (reservation.getPassageiros().get(0).getBilhetes() != null) throw new WoobaManualImportUsuarioPendenteException();
+            return null;
+        }).when(resolver).validarUsuarioImportacaoManual(any(), isNull());
+        assertThrows(WoobaManualImportUsuarioPendenteException.class, () -> service.processarDetailsImportacaoManual(parent, null));
+        verifyNoInteractions(sync);
+        verify(reservas, never()).reconciliarDivisaoWooba(any(), any());
+        assertTrue(database.isEmpty());
+    }
+
+    @Test
+    void importacaoManualDeveLevarUsuarioSelecionadoParaDivisao() throws Exception {
+        prepararDivisaoGkpxnt();
+        prepararResolverManual();
+        service.processarDetailsImportacaoManual(client.details("AIR-GKPXNT"), "alternativo");
+        verificarDivisaoGkpxnt();
+        assertEquals(777, database.get("GKPXNT").getCodgUsuarioCriacao().getCodgUsuario());
+        verify(resolver, never()).resolverReferenciasManager(any());
+    }
+
+    private void prepararResolverManual() {
+        when(resolver.resolverReferenciasManagerImportacaoManual(any(), eq("alternativo"))).thenAnswer(i -> {
+            ReservaAereo reservation = i.getArgument(0);
+            reservation.setCodgUsuarioCriacao(new com.confApi.db.confManager.usuario.Usuario(777));
+            return reservation;
+        });
+    }
+
+    @Test
     void deveConferirOriginalCriadaPorWebhookTktUsandoWoobaAirUniqueId() throws Exception {
         prepararDivisaoGkpxnt();
         database.get("AEFIBN").setRegraReserva("WoobaUniqueId=TKT-ANTIGO; WoobaAirUniqueId=AIR-AEFIBN");

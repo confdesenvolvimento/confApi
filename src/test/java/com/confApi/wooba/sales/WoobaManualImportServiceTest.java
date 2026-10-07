@@ -41,7 +41,7 @@ class WoobaManualImportServiceTest {
         when(client.list(any())).thenReturn(list);
         when(client.details("AIR-JTTOQR")).thenReturn(detail);
         when(reservas.findByLocalizadorCompanhiaParaSincronizacao(anyString(), any())).thenAnswer(i -> saved);
-        when(resolver.resolverReferenciasManager(any())).thenAnswer(i -> i.getArgument(0));
+        when(resolver.resolverReferenciasManagerImportacaoManual(any(), nullable(String.class))).thenAnswer(i -> i.getArgument(0));
         when(sync.sincronizar(any())).thenAnswer(i -> {
             saved = i.getArgument(0);
             saved.setCodgReservaAereo(264800);
@@ -84,11 +84,12 @@ class WoobaManualImportServiceTest {
             saved = mapper.toReservaAereo(i.getArgument(0), null);
             saved.setCodgReservaAereo(264800);
             return null;
-        }).when(issued).processarDetails(any(), eq(1));
+        }).when(issued).processarDetailsImportacaoManual(any(), isNull());
         var response = service.importar(request("JTTOQR", "2026-09-23", null));
         assertEquals("Emitida", response.descricaoStatus());
-        verify(issued).processarDetails(detail, 1);
-        verifyNoInteractions(sync, resolver);
+        verify(issued).processarDetailsImportacaoManual(detail, null);
+        verify(resolver).validarUsuarioImportacaoManual(any(), isNull());
+        verifyNoInteractions(sync);
     }
 
     @Test
@@ -201,6 +202,22 @@ class WoobaManualImportServiceTest {
         assertStatus(400, request("JTTOQR", "2099-01-01", null));
         assertStatus(400, request("JTTOQR", "2026-09-23", "GOL"));
         verifyNoInteractions(client, reservas, sync, issued);
+    }
+
+    @Test
+    void usuarioAusenteDeveSolicitarSelecaoAntesDeGravar() {
+        doThrow(new WoobaManualImportUsuarioPendenteException()).when(resolver).validarUsuarioImportacaoManual(any(), isNull());
+        assertThrows(WoobaManualImportUsuarioPendenteException.class, () -> service.importar(request("JTTOQR", "2026-09-23", null)));
+        verifyNoInteractions(sync, issued);
+    }
+
+    @Test
+    void deveEncaminharLoginAlternativoSomenteAoFluxoManual() {
+        var input = new WoobaManualImportRequest("JTTOQR", LocalDate.of(2026, 9, 23), null, "operador.manager");
+        assertTrue(service.importar(input).sucesso());
+        verify(resolver).validarUsuarioImportacaoManual(any(), eq("operador.manager"));
+        verify(resolver).resolverReferenciasManagerImportacaoManual(any(), eq("operador.manager"));
+        verify(resolver, never()).resolverReferenciasManager(any());
     }
 
     private void assertStatus(int status, WoobaManualImportRequest request) {

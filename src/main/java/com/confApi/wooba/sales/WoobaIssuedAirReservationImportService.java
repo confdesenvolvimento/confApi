@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,6 +46,27 @@ public class WoobaIssuedAirReservationImportService {
     }
 
     void processarDetails(WoobaSalesDetailsResponse details, int type) {
+        processarDetails(details, type, resolver::resolverReferenciasManager);
+    }
+
+    void processarDetailsImportacaoManual(WoobaSalesDetailsResponse details, String loginAlternativo) {
+        synchronized (sync) {
+            ReservaAereo expected = mapper.toReservaAereo(details, null);
+            resolver.validarUsuarioImportacaoManual(expected, loginAlternativo);
+            // Confere os usuarios dos TKT antes de qualquer gravacao do AIR ou divisao.
+            for (JsonNode link : details.getTransaction().path("Links")) {
+                if (!WoobaSalesListTransactions.matches(link, 100, 4)) continue;
+                WoobaSalesDetailsResponse ticket = client.details(requiredUniqueId(link));
+                if (!elegivel(ticket, 100)) throw new IllegalStateException("Bilhete vinculado nao esta emitido/elegivel.");
+                ReservaAereo related = mapper.toReservaAereo(ticket, null);
+                validarMesmaReserva(expected, related);
+                resolver.validarUsuarioImportacaoManual(related, loginAlternativo);
+            }
+            processarDetails(details, 1, r -> resolver.resolverReferenciasManagerImportacaoManual(r, loginAlternativo));
+        }
+    }
+
+    private void processarDetails(WoobaSalesDetailsResponse details, int type, UnaryOperator<ReservaAereo> referencias) {
         // Compartilha a exclusao mutua com o webhook e o polling de reservadas nesta instancia.
         synchronized (sync) {
             if (!elegivel(details, type)) {
@@ -59,7 +81,7 @@ public class WoobaIssuedAirReservationImportService {
                     || (type == 100 && completa(existing, expected)))) {
                 return;
             }
-            reconciliarDivisao(details, expected);
+            reconciliarDivisao(details, expected, referencias);
 
             if (type == 100) {
                 // O details de um bilhete nao representa a lista completa de passageiros.
@@ -72,7 +94,7 @@ public class WoobaIssuedAirReservationImportService {
                             return;
                         }
                         validarMesmaReserva(expected, mapper.toReservaAereo(parent, null));
-                        importar(parent, true);
+                        importar(parent, true, referencias);
                         break;
                     }
                 }
@@ -82,14 +104,14 @@ public class WoobaIssuedAirReservationImportService {
             }
 
             boolean paymentsFromTickets = type == 1 && temBilhetesVinculados(details);
-            importar(details, paymentsFromTickets);
+            importar(details, paymentsFromTickets, referencias);
             if (type == 1) {
                 for (JsonNode link : details.getTransaction().path("Links")) {
                     if (WoobaSalesListTransactions.matches(link, 100, 4)) {
                         WoobaSalesDetailsResponse ticket = client.details(requiredUniqueId(link));
                         if (elegivel(ticket, 100)) {
                             validarMesmaReserva(expected, mapper.toReservaAereo(ticket, null));
-                            importar(ticket, false);
+                            importar(ticket, false, referencias);
                         }
                     }
                 }
@@ -106,7 +128,7 @@ public class WoobaIssuedAirReservationImportService {
                 && !transaction.path("Context").hasNonNull("Customer");
     }
 
-    private void importar(WoobaSalesDetailsResponse details, boolean paymentsFromTickets) {
+    private void importar(WoobaSalesDetailsResponse details, boolean paymentsFromTickets, UnaryOperator<ReservaAereo> referencias) {
         ReservaAereo expected = mapper.toReservaAereo(details, null);
         // O pagamento agregado do AIR nao deve ser somado aos pagamentos individuais dos TKT.
         if (paymentsFromTickets) {
@@ -128,7 +150,7 @@ public class WoobaIssuedAirReservationImportService {
             }
         }
         verificarVinculosAnteriores(expected, details.getTransaction().path("Links"));
-        WoobaAirReservationSyncResult result = sync.sincronizar(resolver.resolverReferenciasManager(expected));
+        WoobaAirReservationSyncResult result = sync.sincronizar(referencias.apply(expected));
         if (!"PROCESSED".equals(result.getAction())) {
             throw new IllegalStateException("Emissao pendente: " + result.getReason());
         }
@@ -253,7 +275,7 @@ public class WoobaIssuedAirReservationImportService {
         return originals.isEmpty() ? null : originals.get(0);
     }
 
-    private void reconciliarDivisao(WoobaSalesDetailsResponse details, ReservaAereo expected) {
+    private void reconciliarDivisao(WoobaSalesDetailsResponse details, ReservaAereo expected, UnaryOperator<ReservaAereo> referencias) {
         ReservaAereo original = buscarVinculoAnterior(expected, details.getTransaction().path("Links"));
         if (original == null) return;
         WoobaSalesDetailsResponse air = details;
@@ -321,7 +343,7 @@ public class WoobaIssuedAirReservationImportService {
         if (originalTickets.stream().anyMatch(movedTickets::contains)) {
             throw new IllegalStateException("Bilhete ainda consta nos vinculos do AIR original.");
         }
-        reservas.reconciliarDivisaoWooba(original.getCodgReservaAereo(), resolver.resolverReferenciasManager(destination));
+        reservas.reconciliarDivisaoWooba(original.getCodgReservaAereo(), referencias.apply(destination));
         ReservaAereo saved = buscar(destination);
         ReservaAereo sourceAfter = buscar(original);
         if (saved == null || !completa(saved, destination) || sourceAfter == null

@@ -5,6 +5,7 @@ import com.confApi.db.confManager.reservaAereo.ReservaAereo;
 import com.confApi.endPoints.reservaAereo.ReservaAereoApi;
 import com.confApi.wooba.sales.dto.WoobaManualImportRequest;
 import com.confApi.wooba.sales.dto.WoobaManualImportResponse;
+import com.confApi.wooba.sales.dto.WoobaManualImportUsuarioResponse;
 import com.confApi.wooba.sales.dto.WoobaSalesDetailsResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -99,11 +100,13 @@ public class WoobaManualImportService {
                     || (state == 2 && Objects.equals(before.getStatus(), 3)))) {
                 throw conflict("O status existente no Manager impede esta importacao. A reserva nao sera reativada nem voltara de emitida para reservada.");
             }
+            resolver.validarUsuarioImportacaoManual(expected, request.usuarioLogin());
             if (state == 4) {
-                issued.processarDetails(details, 1);
+                issued.processarDetailsImportacaoManual(details, request.usuarioLogin());
             } else {
                 if (before != null) confirmarPassageiros(before, expected);
-                WoobaAirReservationSyncResult imported = sync.sincronizar(resolver.resolverReferenciasManager(mapper.toReservaAereo(details, null)));
+                WoobaAirReservationSyncResult imported = sync.sincronizar(resolver.resolverReferenciasManagerImportacaoManual(
+                        mapper.toReservaAereo(details, null), request.usuarioLogin()));
                 if (!"PROCESSED".equals(imported.getAction())) throw conflict(imported.getReason());
             }
             ReservaAereo saved = buscar(expected);
@@ -137,6 +140,12 @@ public class WoobaManualImportService {
             throw conflict("Details sem companhia aerea.");
         }
         return mapped;
+    }
+
+    public WoobaManualImportUsuarioResponse buscarUsuario(String login) {
+        var usuario = resolver.buscarUsuarioImportacaoManual(login);
+        if (usuario == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario nao encontrado no Manager.");
+        return new WoobaManualImportUsuarioResponse(usuario.getCodgUsuario(), usuario.getLoginUsuario(), usuario.getNomeCompleto());
     }
 
     private ReservaAereo buscar(ReservaAereo expected) {
@@ -177,6 +186,9 @@ public class WoobaManualImportService {
         }
         if (!normalize(request.companhia()).isEmpty() && !normalize(request.companhia()).matches("[A-Z0-9]{2}")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe o codigo IATA da companhia com 2 caracteres.");
+        }
+        if (request.usuarioLogin() != null && !request.usuarioLogin().isBlank()) {
+            WoobaAirReservationManagerResolver.validarLoginImportacaoManual(request.usuarioLogin());
         }
     }
 

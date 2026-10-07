@@ -59,4 +59,36 @@ class WoobaManualImportControllerTest {
                 .andExpect(status().isBadGateway()).andExpect(jsonPath("$.sucesso").value(false));
         verifyNoInteractions(telegram);
     }
+
+    @Test void usuarioAusenteDeveRetornarAcaoEstruturada() throws Exception {
+        when(service.importar(any())).thenThrow(new WoobaManualImportUsuarioPendenteException());
+        mvc(true).perform(post(url).principal(auth).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.acao").value("SELECIONAR_USUARIO"))
+                .andExpect(jsonPath("$.sucesso").value(false));
+        verifyNoInteractions(telegram);
+    }
+
+    @Test void buscaDeUsuarioDeveExigirMesmasPermissoesEServicoAtivo() throws Exception {
+        String search = "/api/wooba/reservas-aereas/usuarios/buscar";
+        String input = "{\"login\":\"operador.manager\"}";
+        mvc(true).perform(post(search).contentType(MediaType.APPLICATION_JSON).content(input)).andExpect(status().isUnauthorized());
+        mvc(true).perform(post(search).principal(new UsernamePasswordAuthenticationToken("externo", "", List.of()))
+                .contentType(MediaType.APPLICATION_JSON).content(input)).andExpect(status().isForbidden());
+        mvc(false).perform(post(search).principal(auth).contentType(MediaType.APPLICATION_JSON).content(input))
+                .andExpect(status().isServiceUnavailable());
+        verifyNoInteractions(service);
+    }
+
+    @Test void buscaRetornaSomenteIdentificacaoPublicaENaoOcultaIndisponibilidade() throws Exception {
+        String search = "/api/wooba/reservas-aereas/usuarios/buscar";
+        String input = "{\"login\":\"operador.manager\"}";
+        when(service.buscarUsuario("operador.manager")).thenReturn(
+                new com.confApi.wooba.sales.dto.WoobaManualImportUsuarioResponse(123, "operador.manager", "Operador Teste"));
+        mvc(true).perform(post(search).principal(auth).contentType(MediaType.APPLICATION_JSON).content(input))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.codgUsuario").value(123))
+                .andExpect(jsonPath("$.login").value("operador.manager")).andExpect(jsonPath("$.senha").doesNotExist());
+        when(service.buscarUsuario("operador.manager")).thenThrow(new IllegalStateException("offline"));
+        mvc(true).perform(post(search).principal(auth).contentType(MediaType.APPLICATION_JSON).content(input))
+                .andExpect(status().isBadGateway()).andExpect(jsonPath("$.acao").isEmpty());
+    }
 }

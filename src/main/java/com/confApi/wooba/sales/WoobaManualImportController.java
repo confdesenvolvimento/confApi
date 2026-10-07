@@ -3,6 +3,7 @@ package com.confApi.wooba.sales;
 import com.confApi.util.TelegramErrorAlert;
 import com.confApi.wooba.sales.dto.WoobaManualImportRequest;
 import com.confApi.wooba.sales.dto.WoobaManualImportResponse;
+import com.confApi.wooba.sales.dto.WoobaManualImportUsuarioRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -47,6 +48,8 @@ public class WoobaManualImportController {
         if (!enabled) return erro(HttpStatus.SERVICE_UNAVAILABLE, "Importacao manual Wooba desabilitada.");
         try {
             return ResponseEntity.ok(service.importar(request));
+        } catch (WoobaManualImportUsuarioPendenteException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(WoobaManualImportResponse.usuarioPendente(ex.getReason()));
         } catch (ResponseStatusException ex) {
             return ResponseEntity.status(ex.getRawStatusCode()).body(WoobaManualImportResponse.erro(ex.getReason()));
         } catch (Exception ex) {
@@ -54,6 +57,25 @@ public class WoobaManualImportController {
             LOG.warning(message);
             if (telegramEnabled && telegram != null) telegram.enviar(this, message);
             return erro(HttpStatus.BAD_GATEWAY, "Nao foi possivel confirmar a importacao. Confira a reserva antes de tentar novamente.");
+        }
+    }
+
+    @PostMapping(value = "/usuarios/buscar", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> buscarUsuario(@RequestBody WoobaManualImportUsuarioRequest request, Authentication auth) {
+        if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
+            return erro(HttpStatus.UNAUTHORIZED, "Autenticacao obrigatoria.");
+        }
+        if (clientLogin == null || clientLogin.isBlank() || !clientLogin.equalsIgnoreCase(auth.getName())) {
+            return erro(HttpStatus.FORBIDDEN, "Aplicacao nao autorizada para importar reservas.");
+        }
+        if (!enabled) return erro(HttpStatus.SERVICE_UNAVAILABLE, "Importacao manual Wooba desabilitada.");
+        try {
+            return ResponseEntity.ok(service.buscarUsuario(request.login()));
+        } catch (ResponseStatusException ex) {
+            return ResponseEntity.status(ex.getRawStatusCode()).body(WoobaManualImportResponse.erro(ex.getReason()));
+        } catch (Exception ex) {
+            LOG.warning("Falha ao consultar usuario para importacao Wooba: " + ex.getClass().getSimpleName());
+            return erro(HttpStatus.BAD_GATEWAY, "Nao foi possivel consultar o Manager. Tente novamente mais tarde.");
         }
     }
 

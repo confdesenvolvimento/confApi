@@ -73,6 +73,19 @@ public class UsuarioApi {
         }
     }
 
+    public Usuario consultaUsuarioByLoginParaImportacao(String loginUsuario) {
+        ConfAppResp token = confAppService.token();
+        URI url = UriComponentsBuilder.fromHttpUrl(UrlConfig.URL_CONFIANCA_MANAGER)
+                .path("/usuario/findByLogin/").pathSegment("{login}").encode()
+                .buildAndExpand(loginUsuario.strip()).toUri();
+        try {
+            return restTemplate.exchange(url, HttpMethod.GET,
+                    new HttpEntity<>(defaultHeaders(token.getToken())), Usuario.class).getBody();
+        } catch (HttpClientErrorException.NotFound ex) {
+            return null;
+        }
+    }
+
     public Object consultaUsuarioByLoginWooba(String loginUsuario) {
         try {
             ConfAppResp token = confAppService.token();
