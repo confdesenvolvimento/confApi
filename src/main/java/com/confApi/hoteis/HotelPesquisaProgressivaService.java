@@ -1,6 +1,8 @@
 package com.confApi.hoteis;
 
 import com.confApi.db.confManager.hotel.model.HotelResponse;
+import com.confApi.db.confManager.sistema.Sistema;
+import com.confApi.db.confManager.sistema.SistemaService;
 import com.confApi.hoteis.model.pesquisa.HotelPesquisaModelFront;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -17,14 +19,15 @@ public class HotelPesquisaProgressivaService {
     private HotelClient client;
     private final HotelSearchService service;
     private final ObjectMapper mapper;
+    private final SistemaService sistemaService;
     private final Map<String, Pesquisa> pesquisas = new ConcurrentHashMap<>();
     private final ExecutorService executor = new ThreadPoolExecutor(4, 8, 60, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(32), new ThreadPoolExecutor.AbortPolicy());
     private final ScheduledExecutorService limpeza = Executors.newSingleThreadScheduledExecutor();
     private static final long PRAZO = 180_000, RETENCAO = 600_000;
 
-    public HotelPesquisaProgressivaService(HotelSearchService service, ObjectMapper mapper) {
-        this.service = service; this.mapper = mapper;
+    public HotelPesquisaProgressivaService(HotelSearchService service, ObjectMapper mapper, SistemaService sistemaService) {
+        this.service = service; this.mapper = mapper; this.sistemaService = sistemaService;
         limpeza.scheduleWithFixedDelay(this::limpar, 30, 30, TimeUnit.SECONDS);
     }
     public record Pagina(String id, List<HotelResponse> hoteis, int proximoCursor,
@@ -37,18 +40,24 @@ public class HotelPesquisaProgressivaService {
         final List<HotelResponse> hoteis = new ArrayList<>();
         final List<String> falhas = new ArrayList<>();
         final List<Future<?>> tarefas = new ArrayList<>();
-        int pendentes = 2;
+        int pendentes;
         boolean cancelada;
-        Pesquisa(String dono, HotelPesquisaModelFront criterio) { this.dono = dono; this.criterio = criterio; }
+        Pesquisa(String dono, HotelPesquisaModelFront criterio, int pendentes) { this.dono = dono; this.criterio = criterio; this.pendentes = pendentes; }
     }
     public synchronized Pagina iniciar(String dono, HotelPesquisaModelFront criterio) {
         limpar();
         if (pesquisas.size() >= 100 || pesquisas.values().stream().filter(p -> p.dono.equals(dono)).count() >= 3)
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Encerre a pesquisa anterior antes de iniciar outra.");
-        Pesquisa p = new Pesquisa(dono, mapper.convertValue(criterio, HotelPesquisaModelFront.class));
+        List<String> fornecedores = sistemaService.findByCodgProduto(2).stream()
+                .map(Sistema::getNomeSistema)
+                .filter(nome -> nome != null && !nome.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        Pesquisa p = new Pesquisa(dono, mapper.convertValue(criterio, HotelPesquisaModelFront.class), fornecedores.size());
         pesquisas.put(p.id, p);
         try {
-            for (String fornecedor : List.of("EZLink", "Omnibees")) {
+            for (String fornecedor : fornecedores) {
                 HotelPesquisaModelFront copia = mapper.convertValue(criterio, HotelPesquisaModelFront.class);
                 synchronized (p) { p.tarefas.add(executor.submit(() -> consultar(p, copia, fornecedor))); }
             }
