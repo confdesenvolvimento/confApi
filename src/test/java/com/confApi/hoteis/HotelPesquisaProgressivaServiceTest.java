@@ -1,5 +1,7 @@
 package com.confApi.hoteis;
 import com.confApi.db.confManager.hotel.model.HotelResponse;
+import com.confApi.db.confManager.sistema.Sistema;
+import com.confApi.db.confManager.sistema.SistemaService;
 import com.confApi.hoteis.model.pesquisa.HotelPesquisaModelFront;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
@@ -11,7 +13,13 @@ import static org.mockito.Mockito.*;
 class HotelPesquisaProgressivaServiceTest {
     HotelSearchService consulta;
     HotelPesquisaProgressivaService service;
-    @BeforeEach void setup() { consulta=mock(HotelSearchService.class); service=new HotelPesquisaProgressivaService(consulta,new ObjectMapper()); }
+    SistemaService sistemas;
+    @BeforeEach void setup() {
+        consulta=mock(HotelSearchService.class);
+        sistemas=mock(SistemaService.class);
+        when(sistemas.findByCodgProduto(2)).thenReturn(List.of(new Sistema("EZLink", "EZ"), new Sistema("Omnibees", "OM")));
+        service=new HotelPesquisaProgressivaService(consulta,new ObjectMapper(),sistemas);
+    }
     @AfterEach void close() { service.encerrar(); }
     List<HotelResponse> hoteis(int n) { List<HotelResponse> lista=new ArrayList<>(); for(int i=0;i<n;i++){var h=new HotelResponse(); h.setCodigoHotelSistema("h"+i);lista.add(h);}return lista; }
     HotelPesquisaProgressivaService.Pagina aguardar(String id, int total, boolean concluida) throws Exception {
@@ -64,5 +72,44 @@ class HotelPesquisaProgressivaServiceTest {
         service.iniciar("ana",new HotelPesquisaModelFront());service.iniciar("ana",new HotelPesquisaModelFront());
         assertEquals(429,assertThrows(ResponseStatusException.class,()->service.iniciar("ana",new HotelPesquisaModelFront())).getRawStatusCode());
         service.cancelar("ana",id);assertNotNull(service.iniciar("ana",new HotelPesquisaModelFront()).id());
+    }
+    @Test void consultaTodosOsFornecedoresDoCadastroEAguardaOTerceiro() throws Exception {
+        when(sistemas.findByCodgProduto(2)).thenReturn(List.of(new Sistema("EZLink", "EZ"),
+                new Sistema("Omnibees", "OM"), new Sistema("HotelDO", "DO")));
+        when(consulta.pesquisarFornecedor(any(),eq("EZLink"))).thenReturn(hoteis(1));
+        when(consulta.pesquisarFornecedor(any(),eq("Omnibees"))).thenReturn(hoteis(1));
+        CountDownLatch liberar=new CountDownLatch(1);
+        when(consulta.pesquisarFornecedor(any(),eq("HotelDO"))).thenAnswer(i->{liberar.await(5,TimeUnit.SECONDS);return hoteis(1);});
+        try {
+            String id=service.iniciar("ana",new HotelPesquisaModelFront()).id();
+            aguardar(id,2,false);
+            liberar.countDown();aguardar(id,3,true);
+            verify(sistemas).findByCodgProduto(2);
+            verify(consulta).pesquisarFornecedor(any(),eq("HotelDO"));
+        } finally { liberar.countDown(); }
+    }
+    @Test void consultaFornecedorUnicoEAtualizaCadastroNaProximaPesquisa() throws Exception {
+        when(sistemas.findByCodgProduto(2)).thenReturn(List.of(new Sistema("HotelDO", "DO")))
+                .thenReturn(List.of(new Sistema("NovoFornecedor", "NF")));
+        when(consulta.pesquisarFornecedor(any(),anyString())).thenReturn(hoteis(1));
+        aguardar(service.iniciar("ana",new HotelPesquisaModelFront()).id(),1,true);
+        aguardar(service.iniciar("ana",new HotelPesquisaModelFront()).id(),1,true);
+        verify(consulta).pesquisarFornecedor(any(),eq("HotelDO"));
+        verify(consulta).pesquisarFornecedor(any(),eq("NovoFornecedor"));
+        verifyNoMoreInteractions(consulta);
+    }
+    @Test void cadastroSemFornecedoresConcluiImediatamente() {
+        when(sistemas.findByCodgProduto(2)).thenReturn(List.of());
+        var pagina=service.iniciar("ana",new HotelPesquisaModelFront());
+        assertTrue(pagina.concluida());assertTrue(pagina.hoteis().isEmpty());
+        assertTrue(pagina.falhas().isEmpty());verifyNoInteractions(consulta);
+    }
+    @Test void falhaNoCadastroNaoCriaPesquisaNemUsaListaFixa() {
+        when(sistemas.findByCodgProduto(2)).thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_GATEWAY));
+        for(int i=0;i<4;i++) {
+            assertEquals(502,assertThrows(ResponseStatusException.class,
+                    ()->service.iniciar("ana",new HotelPesquisaModelFront())).getRawStatusCode());
+        }
+        verifyNoInteractions(consulta);
     }
 }
