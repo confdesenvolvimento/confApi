@@ -2,6 +2,7 @@ package com.confApi.chatconfianca.controller;
 
 import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
+import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
 import org.mockito.ArgumentCaptor;
 import com.confApi.chatconfianca.service.ChatConfiancaRemarcacaoService;
@@ -48,6 +49,33 @@ class ChatConfiancaRemarcacaoControllerTest {
                 .standaloneSetup(new ChatConfiancaRemarcacaoController(service, "api.confplus"))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    void deveAbrirConversaComReferenciaEstruturadaDaReserva() throws Exception {
+        Conversa conversa = new Conversa(); conversa.setId(81L);
+        when(service.abrirConversa(any())).thenReturn(conversa);
+        mockMvc.perform(post("/v1/chat-confianca/remarcacoes/conversas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codgUsuario\":202,\"reservaId\":501,\"localizador\":\"NICC3S\",\"codgAgenciaSessao\":59}")
+                        .principal(clientePayaraAutenticado))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(81));
+        ArgumentCaptor<RemarcacaoRequest.AbrirConversa> request =
+                ArgumentCaptor.forClass(RemarcacaoRequest.AbrirConversa.class);
+        verify(service).abrirConversa(request.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(501, request.getValue().getReservaId());
+        org.junit.jupiter.api.Assertions.assertEquals("NICC3S", request.getValue().getLocalizador());
+        org.junit.jupiter.api.Assertions.assertEquals(59, request.getValue().getCodgAgenciaSessao());
+        org.junit.jupiter.api.Assertions.assertEquals(202, request.getValue().getCodgUsuario());
+    }
+
+    @Test
+    void naoDeveAbrirConversaSemAutenticacao() throws Exception {
+        mockMvc.perform(post("/v1/chat-confianca/remarcacoes/conversas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codgUsuario\":202,\"reservaId\":501,\"localizador\":\"NICC3S\"}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
     }
 
     @Test
@@ -180,6 +208,10 @@ class ChatConfiancaRemarcacaoControllerTest {
         Authentication clienteNaoAutorizado = new UsernamePasswordAuthenticationToken(
                 "usuario.teste", null, List.of());
         List<RequestBuilder> requisicoes = List.of(
+                post("/v1/chat-confianca/remarcacoes/conversas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codgUsuario\":202,\"reservaId\":501,\"localizador\":\"NICC3S\"}")
+                        .principal(clienteNaoAutorizado),
                 get("/v1/chat-confianca/remarcacoes/reservas-emitidas")
                         .param("conversaId", "20")
                         .param("codgUsuario", "202")
