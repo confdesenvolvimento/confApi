@@ -5,6 +5,8 @@ import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import com.confApi.config.UrlConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
@@ -23,7 +25,12 @@ class AereoClientConsultaEstritaTest {
     private final AereoClient client = new AereoClient(rest);
     private final ConsultarLocalizadorRequest request = new ConsultarLocalizadorRequest();
 
+    private String urlAnterior;
+    @AfterEach void restaurarUrl() { UrlConfig.URL_CONFIANCA_HUB = urlAnterior; }
+
     @BeforeEach void setup() {
+        urlAnterior = UrlConfig.URL_CONFIANCA_HUB;
+        UrlConfig.URL_CONFIANCA_HUB = "http://localhost/hub";
         ReflectionTestUtils.setField(client, "confAppService", auth);
         ConfAppResp token = new ConfAppResp();
         token.setToken("token-teste");
