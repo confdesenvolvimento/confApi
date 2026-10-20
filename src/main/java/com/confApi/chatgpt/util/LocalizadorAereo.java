@@ -22,8 +22,10 @@ public final class LocalizadorAereo {
             return input.trim().toUpperCase(Locale.ROOT);
         }
         String texto = normalizarTexto(input).toUpperCase(Locale.ROOT);
+        // A abreviacao de numero exige separador: o N de NICC3S pertence ao codigo.
         Matcher explicito = Pattern.compile(
-                "\\b(?:LOCALIZADOR|LOC|RESERVA|PNR)\\s*(?:N(?:O|RO)?\\.?\\s*)?[:#-]?\\s*([A-Z0-9]{5,13})\\b",
+                "\\b(?:LOCALIZADOR|LOC|RESERVA|PNR)\\b\\s*"
+                        + "(?:N(?:O|RO|[º°])?(?=[\\s.:#-])\\.?\\s*)?[:#-]?\\s*([A-Z0-9]{5,13})\\b",
                 Pattern.CASE_INSENSITIVE)
                 .matcher(texto);
         if (explicito.find()) {
