@@ -23,11 +23,14 @@ public class PlantaoTokenService {
     private static final String CHAVE_TOKEN_APP = "0004PLANTAO";
     private final RestTemplate restTemplate;
     private final String cservicesUrl;
+    private final CserviceTokenValueDecoder tokenValueDecoder;
 
     public PlantaoTokenService(@Qualifier("restTemplate") RestTemplate restTemplate,
-                               @Value("${cservices-url}") String cservicesUrl) {
+                               @Value("${cservices-url}") String cservicesUrl,
+                               CserviceTokenValueDecoder tokenValueDecoder) {
         this.restTemplate = restTemplate;
         this.cservicesUrl = cservicesUrl;
+        this.tokenValueDecoder = tokenValueDecoder;
     }
 
     public PlantaoTokenResponse gerar(PlantaoTokenRequest request, String authorization) {
@@ -47,11 +50,12 @@ public class PlantaoTokenService {
             }
 
             if ("EMAIL".equalsIgnoreCase(request.canal())
-                    && !enviarSmsParaUsuario(request.login().trim(), token, authorization, request.celular())) {
+                    && !enviarSmsParaUsuario(request.login().trim(), tokenValueDecoder.codigoParaEnvio(token),
+                    authorization, request.celular())) {
                 return PlantaoTokenResponse.falha("Token gerado, mas n?o foi poss?vel envi?-lo por SMS.");
             }
             return PlantaoTokenResponse.sucesso(token);
-        } catch (RestClientException exception) {
+        } catch (RestClientException | IllegalStateException exception) {
             return PlantaoTokenResponse.falha("Servi?o de token indispon?vel.");
         }
     }
