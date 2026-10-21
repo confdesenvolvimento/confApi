@@ -18,6 +18,7 @@ import com.confApi.aereo.dto.ValorPassageiro;
 import com.confApi.aereo.dto.ValorReserva;
 import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
 import com.confApi.chatconfianca.dto.enums.StatusConversa;
+import com.confApi.chatconfianca.dto.enums.PrioridadeConversa;
 import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.model.ConversaEvento;
 import com.confApi.chatconfianca.dto.model.RefAgencia;
@@ -69,6 +70,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
 class ChatConfiancaRemarcacaoServiceTest {
@@ -134,6 +136,73 @@ class ChatConfiancaRemarcacaoServiceTest {
         when(manager.get(anyString(), any(Class.class))).thenReturn(simulacao);
         when(manager.post(anyString(), any(), any(Class.class)))
                 .thenAnswer(invocation -> invocation.getArgument(1));
+    }
+
+    @Test
+    void deveAbrirConversaDaReservaSemIAUsandoAgenciaValidadaDaSessao() throws Exception {
+        RemarcacaoRequest.AbrirConversa request = pedidoAberturaReserva();
+        when(manager.get(contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "NICC3S", "LA", "Wooba")));
+        when(chatService.iniciarConversaAssistida(eq(USUARIO_ID), eq(null),
+                eq("Simulacao de remarcacao - NICC3S"), anyString(),
+                eq(PrioridadeConversa.NORMAL), anyString(), eq(AGENCIA_ID))).thenReturn(conversa);
+
+        assertEquals(conversa, service.abrirConversa(request));
+
+        ArgumentCaptor<String> caminho = ArgumentCaptor.forClass(String.class);
+        verify(manager).get(caminho.capture(), eq(ReservasEmitidasRemarcacaoResponse.class));
+        assertTrue(caminho.getValue().contains("codgAgencia=" + AGENCIA_ID));
+        assertTrue(caminho.getValue().contains("reservaId=501"));
+        ArgumentCaptor<String> metadados = ArgumentCaptor.forClass(String.class);
+        verify(chatService).iniciarConversaAssistida(eq(USUARIO_ID), eq(null),
+                eq("Simulacao de remarcacao - NICC3S"), anyString(),
+                eq(PrioridadeConversa.NORMAL), metadados.capture(), eq(AGENCIA_ID));
+        assertEquals("CONFIA", mapper.readTree(metadados.getValue()).path("origem").asText());
+        assertEquals("NICC3S", mapper.readTree(metadados.getValue()).path("localizador").asText());
+        verify(chatService).registrarMensagemUsuarioAssistida(eq(CONVERSA_ID), eq(USUARIO_ID),
+                eq("Solicitada simulacao de remarcacao da reserva NICC3S."));
+        verifyNoInteractions(aereoClient, regraService, limitesService);
+    }
+
+    @Test
+    void naoDeveCriarConversaQuandoReservaNaoPertenceAAgencia() {
+        when(manager.get(contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class))).thenReturn(respostaSelecao());
+        assertEquals(404, assertThrows(RegraDeNegocioException.class,
+                () -> service.abrirConversa(pedidoAberturaReserva())).getStatus());
+        verify(chatService, never()).iniciarConversaAssistida(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void naoDeveCriarConversaComLocalizadorDivergente() {
+        when(manager.get(contains("chat-confianca/consultas/remarcacoes/reservas-emitidas"),
+                eq(ReservasEmitidasRemarcacaoResponse.class)))
+                .thenReturn(respostaSelecao(reservaEmitida(501, "OUTRO1", "LA", "Wooba")));
+        assertEquals(409, assertThrows(RegraDeNegocioException.class,
+                () -> service.abrirConversa(pedidoAberturaReserva())).getStatus());
+        verify(chatService, never()).iniciarConversaAssistida(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void naoDeveCriarConversaSemReferenciaCompletaOuSemAgencia() {
+        RemarcacaoRequest.AbrirConversa request = pedidoAberturaReserva();
+        request.setReservaId(null);
+        assertEquals(400, assertThrows(RegraDeNegocioException.class,
+                () -> service.abrirConversa(request)).getStatus());
+        sessao.setAgencia(null);
+        assertEquals(403, assertThrows(RegraDeNegocioException.class,
+                () -> service.abrirConversa(pedidoAberturaReserva())).getStatus());
+        verify(chatService, never()).iniciarConversaAssistida(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    private RemarcacaoRequest.AbrirConversa pedidoAberturaReserva() {
+        RemarcacaoRequest.AbrirConversa request = new RemarcacaoRequest.AbrirConversa();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setReservaId(501);
+        request.setLocalizador(" nicc3s ");
+        request.setCodgAgenciaSessao(AGENCIA_ID);
+        return request;
     }
 
     @Test

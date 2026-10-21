@@ -30,6 +30,7 @@ class ChatLocalizadorLongoTest {
     private AereoClient aereo;
     private ChatService chat;
     private ChatV2SemanticClient semantic;
+    private ChatV2Properties properties;
     private ChatV2Planner planner;
     private ChatV2Executor executor;
 
@@ -40,7 +41,7 @@ class ChatLocalizadorLongoTest {
         doReturn(new ChatResponseDTO(null, "Reserva consultada", List.of(), null, List.of(), List.of()))
                 .when(chat).chat(any(), any(), any());
         semantic = mock(ChatV2SemanticClient.class);
-        ChatV2Properties properties = new ChatV2Properties();
+        properties = new ChatV2Properties();
         properties.setEnabled(true);
         properties.setTrafficPercent(100);
         planner = new ChatV2Planner(properties, semantic, mapper);
@@ -59,6 +60,46 @@ class ChatLocalizadorLongoTest {
     private ConversationRequestDTO request(String input) {
         return new ConversationRequestDTO("confia", "Confianca", "321", 321L, 101L,
                 input, new ArrayList<>(), null, false, new ArrayList<>());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "quero remarcar o localizador NICC3S",
+            "quero remarcar o localizador NICC3S.",
+            "quero remarcar NICC3S",
+            "quero remarcar o localizador: NICC3S"
+    })
+    void remarcacaoNicc3sChegaSemCorteAoClienteAereoNoLegadoENaV2(String input) throws Exception {
+        // Isola o caminho deterministico de extracao, sem servico semantico externo.
+        properties.setSemanticEnabled(false);
+        Reserva reserva = new Reserva();
+        reserva.setLocalizador("NICC3S");
+        ConsultarLocalizadorResponse consulta = new ConsultarLocalizadorResponse();
+        consulta.setReservas(List.of(reserva));
+        when(aereo.carregarReservaEstrita(any())).thenReturn(consulta);
+
+        List<ChatMessageDTO> messages = new ArrayList<>();
+        List<String> keywords = chat.actionApis(messages, request(input));
+        assertNull(chat.respostaBloqueioRemarcacao(messages, keywords));
+        assertTrue(chat.extrairAcoesDisponiveis(messages).stream().anyMatch(action ->
+                "simular_remarcacao".equals(action.code()) && "NICC3S".equals(action.localizador())));
+
+        ChatV2Plan plan = planner.planejar(input, null, List.of(), 321, 101);
+        assertEquals(ChatV2Capability.REMARCACAO, plan.capability());
+        assertEquals("NICC3S", plan.getParametros().get("localizador"));
+        ChatResponseDTO response = executor.executar(plan, request(input), new ChatConfiancaDecisaoIa());
+        assertEquals("ACAO_PREPARADA", plan.getResultado());
+        assertTrue(response.actions().stream().anyMatch(action ->
+                "simular_remarcacao".equals(action.code()) && "NICC3S".equals(action.localizador())));
+
+        ArgumentCaptor<ConsultarLocalizadorRequest> captor = ArgumentCaptor.forClass(ConsultarLocalizadorRequest.class);
+        verify(aereo, times(2)).carregarReservaEstrita(captor.capture());
+        for (ConsultarLocalizadorRequest sent : captor.getAllValues()) {
+            assertEquals("NICC3S", sent.getLocalizador());
+            assertEquals("321", sent.getAgencia().getCodgAgencia());
+        }
+        verifyNoInteractions(semantic);
+        verify(chat, never()).chat(any(), any(), any());
     }
 
     private Conversa anterior(ChatV2Capability capability) throws Exception {

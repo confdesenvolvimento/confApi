@@ -93,14 +93,39 @@ class AereoControllerV2CompatibilidadeTest {
 
     @Test void novasRotasDeEmissaoCoexistemComContratoAtual() throws Exception {
         when(atual.iniciarEmissao(any())).thenReturn(Map.of("localizador","TESTE1"));
-        when(atual.emitir(any())).thenReturn(new EmitirResponse());
+        when(atual.emitir(any(), any())).thenReturn(new EmitirResponse());
         enviar("/iniciarEmissao", "{\"localizador\":\"TESTE1\",\"sistema\":\"Wooba\"}");
         enviar("/emitir", "{\"localizador\":\"TESTE1\",\"sistema\":\"Wooba\",\"formaDePagamento\":70}");
         ArgumentCaptor<EmitirRequest> pedido = ArgumentCaptor.forClass(EmitirRequest.class);
         verify(atual).iniciarEmissao(any());
-        verify(atual).emitir(pedido.capture());
+        verify(atual).emitir(pedido.capture(), any());
         assertEquals("TESTE1", pedido.getValue().getLocalizador());
         assertEquals(70, pedido.getValue().getFormaDePagamento());
+        verifyNoInteractions(v2);
+    }
+
+    @Test void cancelarReservaPreservaContratoModelERetornoBooleano() throws Exception {
+        when(v2.cancelarReserva(any())).thenReturn(true);
+        assertEquals("true", enviar("/cancelarReserva",
+                "{\"localizador\":\"TESTE1\",\"codgReservaAereoDB\":123}"));
+        ArgumentCaptor<ReservaAereoModel> pedido = ArgumentCaptor.forClass(ReservaAereoModel.class);
+        verify(v2).cancelarReserva(pedido.capture());
+        assertEquals("TESTE1", pedido.getValue().getLocalizador());
+        assertEquals(123L, pedido.getValue().getCodgReservaAereoDB());
+        verifyNoInteractions(atual);
+    }
+
+    @Test void cancelarReservaRequestUsaRotaDistintaERetornaRespostaDoHub() throws Exception {
+        CancelarReservaResponse resultado = new CancelarReservaResponse();
+        resultado.setStatus("Cancelado");
+        when(atual.cancelarReserva(any())).thenReturn(resultado);
+        mvc.perform(post("/v2/aereo/cancelarReservaRequest").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"localizador\":\"TESTE1\",\"motivo\":\"Desistencia\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("Cancelado"));
+        ArgumentCaptor<CancelarReservaRequest> pedido = ArgumentCaptor.forClass(CancelarReservaRequest.class);
+        verify(atual).cancelarReserva(pedido.capture());
+        assertEquals("TESTE1", pedido.getValue().getLocalizador());
+        assertEquals("Desistencia", pedido.getValue().getMotivo());
         verifyNoInteractions(v2);
     }
 

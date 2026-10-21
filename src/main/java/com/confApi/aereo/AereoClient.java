@@ -120,13 +120,25 @@ public class AereoClient {
     }
 
     public EmitirResponse emitir(EmitirRequest request) {
-        return post(
-                "Aéreo - Emitir",
-                API_AEREO + "/emitir",
-                request,
-                EmitirResponse.class,
-                new EmitirResponse()
-        );
+        return emitir(request, new HttpHeaders());
+    }
+
+    public EmitirResponse emitir(EmitirRequest request, HttpHeaders antifraude) {
+        String url = montarUrl(API_AEREO + "/emitir");
+        try {
+            ConfAppResp token = confAppService.token();
+            HttpHeaders headers = defaultHeaders(token.getToken());
+            for (String name : List.of("X-Usuario-Token", "X-Antifraude-Operacao", "X-Antifraude-IP", "X-Antifraude-Contexto", "X-Antifraude-Sessao")) {
+                String value = antifraude == null ? null : antifraude.getFirst(name);
+                if (value != null && !value.isBlank()) headers.set(name, value);
+            }
+            ResponseEntity<EmitirResponse> response = restTemplate.exchange(url, HttpMethod.POST,
+                    new HttpEntity<>(request, headers), EmitirResponse.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) return response.getBody();
+        } catch (Exception ex) {
+            LOG.log(Level.WARNING, "EMISSAO_AEREA_FALHA tipo={0}", ex.getClass().getSimpleName());
+        }
+        throw new IllegalStateException("Não foi possível confirmar o resultado da emissão. Consulte a reserva antes de tentar novamente.");
     }
 
     public ConsultarLocalizadorResponse carregarReserva(ConsultarLocalizadorRequest consultarRequest) {

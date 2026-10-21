@@ -27,6 +27,7 @@ import com.confApi.aereo.eNums.TipoPesquisa;
 import com.confApi.aereo.eNums.TipoTarifa;
 import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
 import com.confApi.chatconfianca.dto.enums.StatusConversa;
+import com.confApi.chatconfianca.dto.enums.PrioridadeConversa;
 import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.model.ConversaEvento;
 import com.confApi.chatconfianca.dto.model.SimulacaoRemarcacao;
@@ -204,6 +205,40 @@ public class ChatConfiancaRemarcacaoService {
                 dataEmissaoFim,
                 pagina,
                 tamanho);
+    }
+
+    /** Abre o contexto do botao da reserva sem classificar texto nem chamar a IA. */
+    public Conversa abrirConversa(RemarcacaoRequest.AbrirConversa request) {
+        if (request == null || request.getCodgUsuario() == null
+                || request.getReservaId() == null || request.getReservaId() <= 0
+                || vazio(request.getLocalizador())) {
+            throw regra(400, "Informe o usuario, o identificador e o localizador da reserva.");
+        }
+        SessaoChatResponse sessao = chatService.montarSessao(
+                request.getCodgUsuario(), request.getCodgAgenciaSessao());
+        if (sessao == null || sessao.getAgencia() == null
+                || sessao.getAgencia().getCodgAgencia() == null) {
+            throw regra(403, "Usuario nao esta vinculado a uma agencia valida.");
+        }
+        Integer agencia = sessao.getAgencia().getCodgAgencia();
+        // Nao cria conversas para reservas fora da agencia ou referencias divergentes.
+        ReservasEmitidasRemarcacaoResponse.Item reserva = resolverReservaSelecionada(
+                agencia, request.getReservaId(), request.getLocalizador());
+        String localizador = reserva.getLocalizador().trim().toUpperCase(Locale.ROOT);
+        String mensagem = "Solicitada simulacao de remarcacao da reserva " + localizador + ".";
+        String metadados = mapper.createObjectNode()
+                .put("origem", "CONFIA")
+                .put("prioridade", "NORMAL")
+                .put("intencaoAtual", "simular_remarcacao")
+                .put("reservaId", reserva.getReservaId())
+                .put("localizador", localizador)
+                .toString();
+        Conversa conversa = chatService.iniciarConversaAssistida(
+                request.getCodgUsuario(), null, "Simulacao de remarcacao - " + localizador,
+                mensagem, PrioridadeConversa.NORMAL, metadados, agencia);
+        chatService.registrarMensagemUsuarioAssistida(
+                conversa.getId(), request.getCodgUsuario(), mensagem);
+        return conversa;
     }
 
     public RemarcacaoSimulacaoResponse iniciar(RemarcacaoRequest.Iniciar request) {

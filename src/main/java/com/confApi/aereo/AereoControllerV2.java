@@ -68,15 +68,24 @@ public class AereoControllerV2 {
         return aereoClient.iniciarEmissao(req);
     }
 
+    @Autowired
+    private AntifraudePortalHeaders antifraudePortalHeaders = new AntifraudePortalHeaders("", "");
+
     @PostMapping("/emitir")
-    public EmitirResponse emitir(@RequestBody EmitirRequest req) {
-        EmitirResponse result = aereoClient.emitir(req);
-        return result;
+    public EmitirResponse emitir(@RequestBody EmitirRequest req, javax.servlet.http.HttpServletRequest servletRequest) {
+        return aereoClient.emitir(req, antifraudePortalHeaders.extract(servletRequest));
     }
 
     @PostMapping("/emitir/{isLink}")
     public ReservaAereoModel emitir(@PathVariable Boolean isLink, @RequestBody ReservaAereoModel req) {
         return aereoClientV2.emitir(req, isLink);
+    /** Compatibilidade dos consumidores Java; o Hub mantém o gate autoritativo. */
+    }
+
+    @PostMapping("/cancelarReservaRequest")
+    public CancelarReservaResponse cancelarReserva(@RequestBody CancelarReservaRequest req) {
+        CancelarReservaResponse result = aereoClient.cancelarReserva(req);
+        return result;
     }
 
     @PostMapping("/cancelarReserva")

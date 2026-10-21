@@ -1,6 +1,7 @@
 package com.confApi.chatconfianca.controller;
 
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoRequest;
+import com.confApi.chatconfianca.dto.model.Conversa;
 import com.confApi.chatconfianca.dto.remarcacao.RemarcacaoSimulacaoResponse;
 import com.confApi.chatconfianca.dto.remarcacao.ReservasEmitidasRemarcacaoResponse;
 import com.confApi.chatconfianca.service.ChatConfiancaRemarcacaoService;
@@ -51,6 +52,12 @@ public class ChatConfiancaRemarcacaoController {
                 dataEmissaoFim,
                 page,
                 size);
+    }
+
+    @PostMapping("/conversas")
+    public Conversa abrirConversa(@RequestBody RemarcacaoRequest.AbrirConversa request,
+                                  Authentication authentication) {
+        return service.abrirConversa(request);
     }
 
     @PostMapping("/iniciar")

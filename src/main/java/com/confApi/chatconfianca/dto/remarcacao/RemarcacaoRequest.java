@@ -10,6 +10,14 @@ public final class RemarcacaoRequest {
     }
 
     @Data
+    public static class AbrirConversa {
+        private Integer codgUsuario;
+        private Integer reservaId;
+        private String localizador;
+        private Integer codgAgenciaSessao;
+    }
+
+    @Data
     public static class Iniciar {
         private Long conversaId;
         private Integer codgUsuario;
