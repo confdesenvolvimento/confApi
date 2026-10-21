@@ -636,6 +636,54 @@ public class AereoService {
                 && paxDB.getSobrenome().equalsIgnoreCase(passageiro.getSobrenome());
     }
 
+    private String normalizarCpf(String valor) {
+        if (valor == null) {
+            return null;
+        }
+        String cpf = valor.replaceAll("[.\\-\\s]", "");
+        return cpf.matches("[0-9]{11}") ? cpf : null;
+    }
+
+    private String cpfDoDocumento(DocumentoPassageiro documento) {
+        // No contrato aéreo Wooba, tipo 1 identifica CPF; passaporte é tipo 2.
+        return documento != null && Integer.valueOf(1).equals(documento.getTipo())
+                ? normalizarCpf(documento.getNumero()) : null;
+    }
+
+    private String cpfParaPersistencia(Passageiro passageiro, PreReserva preReserva) {
+        String cpf = normalizarCpf(passageiro.getCpf());
+        if (cpf != null) {
+            return cpf;
+        }
+        cpf = cpfDoDocumento(passageiro.getDocumento());
+        if (cpf != null || preReserva.getPassageiros() == null) {
+            return cpf;
+        }
+
+        // O fornecedor pode omitir CPF no retorno. Recupera o valor já informado
+        // sem alterar o contrato enviado pelo aplicativo ou pelo portal.
+        String encontrado = null;
+        for (PassageiroModel original : preReserva.getPassageiros()) {
+            if (original == null || !isMesmoPassageiro(passageiro, original)
+                    || (passageiro.getFaixaEtaria() != null && original.getFaixaEtaria() != null
+                    && !passageiro.getFaixaEtaria().equalsIgnoreCase(original.getFaixaEtaria()))) {
+                continue;
+            }
+            String candidato = normalizarCpf(original.getCpf());
+            if (candidato == null) {
+                candidato = cpfDoDocumento(original.getDocumento());
+            }
+            if (candidato != null) {
+                if (encontrado != null && !encontrado.equals(candidato)) {
+                    // Não atribuir CPF de outro passageiro quando houver homônimos.
+                    return null;
+                }
+                encontrado = candidato;
+            }
+        }
+        return encontrado;
+    }
+
     public ReservaAereo convertToReservaAereo(Reserva reservaResp, PreReserva preReserva) {
         ReservaAereo reservaAereo = new ReservaAereo();
         reservaAereo.setCodgAgencia(preReserva.getUsuario().getAgencia());
@@ -686,7 +734,7 @@ public class AereoService {
             } else if (passageiro.getFaixaEtaria().equalsIgnoreCase("INF")) {
                 paxDB.setTipoPassageiro(FlagTipoPassageiro.INF.getTipoPax());
             }
-            paxDB.setCpf(passageiro.getCpf());
+            paxDB.setCpf(cpfParaPersistencia(passageiro, preReserva));
             paxDB.setTelefone(reservaResp.getContatos().get(0).getNumeroDDD() + reservaResp.getContatos().get(0).getNumeroTelefone());
             paxDB.setCelular(reservaResp.getContatos().get(0).getNumeroDDD() + reservaResp.getContatos().get(0).getNumeroTelefone());
             if (passageiro.getDocumento() != null && passageiro.getDocumento().getNumero() != null) {
