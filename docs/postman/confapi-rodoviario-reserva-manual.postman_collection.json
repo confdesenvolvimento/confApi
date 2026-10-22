@@ -1,0 +1,109 @@
+{
+  "info": {
+    "_postman_id": "82ec83ff-cc0c-4a7c-9cc9-9f83650298b7",
+    "name": "ConfApi Rodoviario - Reserva manual",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Uma unica requisicao manual de reserva completa. Use o environment rodoviario ja preenchido. Nao exige as duas variaveis de habilitacao da collection principal. Clicar Send executa booking e checkout e pode gerar cobranca."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{appToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Reservar emitir e gravar Manager - envio manual",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Usuario-Token",
+            "value": "{{usuarioToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}{{prefix}}/reservar",
+        "description": "Envio manual pelo botao Send. Nao exige permitirOperacoesComEfeito ou acaoPermitida. Executa booking e checkout, podendo gerar cobranca. Mantem validacao dos campos obrigatorios e snapshot de recuperacao. Nao execute no Runner em lote.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n \"reservaRodoviario\": {\n  \"sistema\":\"{{sistema}}\",\n  \"viagens\":[{\"codigoViagem\":\"{{codigoViagem}}\",\"passageiros\":[{\n   \"nome\":\"{{nomePassageiro}} {{sobrenomePassageiro}}\",\n   \"documento\":\"{{cpfPassageiro}}\",\"tipoDocumento\":\"CPF\",\n   \"dataNascimento\":\"{{dataNascimento}}\",\"poltrona\":\"{{assento}}\"\n  }]}]\n },\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgVinculoOrigem}},\n             \"codgCidadeDestino\":{{codgVinculoDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Envio individual pelo botao Send: esta operacao executa booking e checkout.",
+              "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"sistema\", \"codigoViagem\", \"assento\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgAgencia\", \"codgSistema\", \"codgVinculoOrigem\", \"codgVinculoDestino\"];",
+              "function bloquear(motivo){",
+              " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+              " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+              " pm.execution.skipRequest();",
+              " throw new Error(motivo);",
+              "}",
+              "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+              "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+              "console.info(\"[ConfApi] Preparando POST /reservar - envio manual\");",
+              "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+              "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+              "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}",
+              "const original=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+              "const recovery={emissao:{sistema:original.emissao.sistema||\"QueroPassagem\",email:original.emissao.email,pagamento:{}},dadosManager:original.dadosManager};",
+              "if(original.reservaRodoviario)recovery.reservaRodoviario={sistema:original.reservaRodoviario.sistema||\"QueroPassagem\"};else recovery.emissao.codigoReserva=original.emissao.codigoReserva;",
+              "pm.environment.set(\"payloadRecuperacao\",JSON.stringify(recovery));",
+              "[\"codgReservaRodoviario\",\"codigoCompra\",\"codigoPassageiro\",\"codgRodoviarioTrecho\"].forEach(k=>pm.environment.unset(k));",
+              "if(original.reservaRodoviario)pm.environment.unset(\"codigoReservaTemporaria\");"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "let b = null;",
+              "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+              "",
+              "if(b) {",
+              " pm.test(\"Operacao completa\", () => pm.expect(b.success,b.mensagem||\"Incompleta\").to.equal(true));",
+              " pm.test(\"Sem conferencia pendente\", () => pm.expect(b.requerConferencia).to.equal(false));",
+              " const r=b.reserva&&b.reserva.reserva, f=b.fornecedor&&b.fornecedor.dados;",
+              " if(r&&r.codgReservaRodoviario) pm.environment.set(\"codgReservaRodoviario\",String(r.codgReservaRodoviario));",
+              " if(f&&f.codigoFornecedor) pm.environment.set(\"codigoCompra\",String(f.codigoFornecedor));",
+              " if(b.codigoReservaTemporaria) pm.environment.set(\"codigoReservaTemporaria\",b.codigoReservaTemporaria);",
+              " if(b.reserva&&Array.isArray(b.reserva.trechos)&&b.reserva.trechos.length===1) pm.environment.set(\"codgRodoviarioTrecho\",String(b.reserva.trechos[0].codgRodoviarioTrecho));",
+              " const ps=f&&Array.isArray(f.trechos)?f.trechos.flatMap(t=>t.passageiros||[]):[];",
+              " if(ps.length===1&&ps[0].codigoFornecedor) pm.environment.set(\"codigoPassageiro\",String(ps[0].codigoFornecedor)); else if(f) pm.environment.unset(\"codigoPassageiro\");",
+              " if(r&&r.status===1&&f) pm.test(\"Confirmacao coerente\",()=>{pm.expect(f.situacao).to.equal(\"paid\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>{pm.expect(p.bilhete.situacao).to.equal(\"emitted\");pm.expect(p.bilhete.numero).to.be.a(\"string\").and.not.empty;});});",
+              " if(r&&r.status===2&&f) pm.test(\"Cancelamento total coerente\",()=>{pm.expect(f.situacao).to.equal(\"canceled\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>pm.expect(p.bilhete.situacao).to.equal(\"canceled\"));});",
+              " if(b.requerConferencia) console.warn(\"Resultado parcial: consulte ou sincronize; nao repita checkout.\");",
+              "}",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    }
+  ]
+}

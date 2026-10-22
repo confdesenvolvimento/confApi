@@ -9,7 +9,7 @@ import org.springframework.http.*;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpStatusCodeException;
 
-@RestController @RequiredArgsConstructor @RequestMapping("/rodoviario")
+@RestController @RequiredArgsConstructor @RequestMapping({"/rodoviario", "/v1/rodoviario"})
 public class RodoviarioController {
     private final RodoviarioManagerClient client;
     @ExceptionHandler(HttpStatusCodeException.class)

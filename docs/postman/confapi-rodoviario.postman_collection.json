@@ -1,0 +1,2171 @@
+{
+  "info": {
+    "_postman_id": "15961d96-81d4-4d8a-a00c-28f4ea81e8cf",
+    "name": "ConfApi Rodoviario Hub e Manager",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "35 requisicoes do ConfApi rodoviario. Leia o guia e selecione o environment. reservar faz booking e checkout. Consultas sao enviadas mesmo sem token e permitem diagnosticar HTTP 401/403. Operacoes com efeito ficam bloqueadas por padrao. Nao execute a collection inteira para criar e cancelar automaticamente uma compra."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{appToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "01 Autenticacao",
+      "description": "Comece com appToken valido. /user/auth tambem esta protegido; a primeira chamada e renovacao opcional, nao bootstrap.",
+      "item": [
+        {
+          "name": "01 Renovar token ConfApi opcional",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/user/auth",
+            "description": "Requer Bearer atual. Obtenha o primeiro appToken pelo fluxo ja aprovado no ambiente. /api/auth/token e uma rotina de plantao.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"{{loginApp}}\",\n  \"senha\": \"{{senhaApp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"loginApp\", \"senhaApp\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 01 Renovar token ConfApi opcional\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b){pm.test(\"Token retornado\",()=>pm.expect(b.token).to.be.a(\"string\").and.not.empty);if(b.token)pm.environment.set(\"appToken\",b.token);}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "02 Login individual Manager",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/usuario/auth",
+            "description": "Captura chaveToken em usuarioToken. tokenAcesso nao e o JWT individual do Manager.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginUsuario\": \"{{loginUsuario}}\",\n  \"senha\": \"{{senhaUsuario}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"loginUsuario\", \"senhaUsuario\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 02 Login individual Manager\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b){pm.test(\"JWT individual em chaveToken\",()=>{pm.expect(b.chaveToken).to.be.a(\"string\");pm.expect(b.chaveToken.split(\".\").length).to.equal(3);});if(typeof b.chaveToken===\"string\"&&b.chaveToken.split(\".\").length===3)pm.environment.set(\"usuarioToken\",b.chaveToken);if(!pm.environment.get(\"codgAgencia\")&&b.agencia&&b.agencia.codgAgencia)pm.environment.set(\"codgAgencia\",String(b.agencia.codgAgencia));}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 Catalogos e vinculos",
+      "description": "Selecione codigos externos e vinculos locais reais para o sistema correto.",
+      "item": [
+        {
+          "name": "03 Listar viacoes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/viacoes?sistema={{sistema}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 03 Listar viacoes\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "04 Consultar viacao",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/viacoes/{{codigoViacao}}?sistema={{sistema}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codigoViacao\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 04 Consultar viacao\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "05 Listar localidades Hub",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/localidades?sistema={{sistema}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 05 Listar localidades Hub\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "06 Consultar localidade origem",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/localidades/{{origemCodigo}}?sistema={{sistema}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"origemCodigo\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 06 Consultar localidade origem\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "07 Listar destinos e conferir acentos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/destinos?codgSistema={{codgSistema}}&busca={{buscaDestino}}&page=0&size=100",
+            "description": "busca filtra por nome. Para listar tudo limpe buscaDestino e pagine page. Captura vinculos somente quando o codigo externo selecionado esta presente na pagina."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgSistema\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 07 Listar destinos e conferir acentos\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Pagina Manager\", () => pm.expect(b.content).to.be.an(\"array\"));if(b&&Array.isArray(b.content))b.content.forEach(d=>{if(d.codgDestinoSistema===pm.environment.get(\"origemCodigo\")){pm.environment.set(\"codgVinculoOrigem\",String(d.codgVinculoCidadeSistema));if(d.codgCidade)pm.environment.set(\"codgCidadeOrigem\",String(d.codgCidade));}if(d.codgDestinoSistema===pm.environment.get(\"destinoCodigo\")){pm.environment.set(\"codgVinculoDestino\",String(d.codgVinculoCidadeSistema));if(d.codgCidade)pm.environment.set(\"codgCidadeDestino\",String(d.codgCidade));}});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "08 Consultar terminais vinculados",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/destinos/{{codgVinculoOrigem}}/substops?codgSistema={{codgSistema}}&page=0&size=100",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgVinculoOrigem\", \"codgSistema\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 08 Consultar terminais vinculados\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Pagina Manager\", () => pm.expect(b.content).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "09 Chave publica de pagamento",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/chavepagamento?sistema={{sistema}}",
+            "description": "Nao tokeniza cartao nem realiza pagamento."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 09 Chave publica de pagamento\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 Pesquisa e assentos",
+      "description": "Escolha manualmente a viagem e uma poltrona disponivel. A collection nao seleciona automaticamente o primeiro resultado.",
+      "item": [
+        {
+          "name": "10 Pesquisar viagem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/pesquisar",
+            "description": "Origem e destino recebem codgCidade (inteiros). O Hub consulta os vinculos no Manager e converte para os codigos externos antes de chamar a QueroPassagem.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sistema\": \"{{sistema}}\",\n  \"origem\": {{codgCidadeOrigem}},\n  \"destino\": {{codgCidadeDestino}},\n  \"dataViagem\": \"{{dataViagem}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgCidadeOrigem\", \"codgCidadeDestino\", \"dataViagem\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 10 Pesquisar viagem\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "11 Pesquisar conexoes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/pesquisaconexoes",
+            "description": "Origem e destino recebem codgCidade (inteiros). O Hub consulta os vinculos no Manager e converte para os codigos externos antes de chamar a QueroPassagem.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sistema\": \"{{sistema}}\",\n  \"origem\": {{codgCidadeOrigem}},\n  \"destino\": {{codgCidadeDestino}},\n  \"dataViagem\": \"{{dataViagem}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgCidadeOrigem\", \"codgCidadeDestino\", \"dataViagem\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 11 Pesquisar conexoes\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "12 Sugerir conexoes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/sugestoesconexao",
+            "description": "Origem e destino recebem codgCidade (inteiros). O Hub consulta os vinculos no Manager e converte para os codigos externos antes de chamar a QueroPassagem.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sistema\": \"{{sistema}}\",\n  \"origem\": {{codgCidadeOrigem}},\n  \"destino\": {{codgCidadeDestino}},\n  \"dataViagem\": \"{{dataViagem}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgCidadeOrigem\", \"codgCidadeDestino\", \"dataViagem\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 12 Sugerir conexoes\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "13 Consultar mapa de assentos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/mapadeassentos",
+            "description": "Confira indiceTrecho, andar, tipo e poltronas[][].ocupada. Espacos vazios e emptyOrReservedSpace nao sao assentos disponiveis.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sistema\": \"{{sistema}}\",\n  \"codigoViagem\": \"{{codigoViagem}}\",\n  \"orientacao\": \"vertical\",\n  \"formato\": \"matrix\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codigoViagem\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 13 Consultar mapa de assentos\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Envelope Hub\", () => { pm.expect(b.sistema).to.be.a(\"string\").and.not.empty; pm.expect(b).to.have.property(\"dados\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 Operacoes completas",
+      "description": "Execute individualmente. A requisicao 14 reservar dispensa as variaveis de habilitacao e ja executa checkout, podendo cobrar. As demais operacoes com efeito exigem permitirOperacoesComEfeito=true e acaoPermitida igual a acao exata.",
+      "item": [
+        {
+          "name": "14 Reservar emitir e gravar Manager",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/reservar",
+            "description": "Exemplo de uma viagem direta e um passageiro. preApproved depende da habilitacao da conta. valores={} usa custo confirmado como venda. Informe valorTotalMkp explicitamente para venda propria.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n \"reservaRodoviario\": {\n  \"sistema\":\"{{sistema}}\",\n  \"viagens\":[{\"codigoViagem\":\"{{codigoViagem}}\",\"passageiros\":[{\n   \"nome\":\"{{nomePassageiro}} {{sobrenomePassageiro}}\",\n   \"documento\":\"{{cpfPassageiro}}\",\"tipoDocumento\":\"CPF\",\n   \"dataNascimento\":\"{{dataNascimento}}\",\"poltrona\":\"{{assento}}\"\n  }]}]\n },\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgVinculoOrigem}},\n             \"codgCidadeDestino\":{{codgVinculoDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"sistema\", \"codigoViagem\", \"assento\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgAgencia\", \"codgSistema\", \"codgVinculoOrigem\", \"codgVinculoDestino\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 14 Reservar emitir e gravar Manager\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}",
+                  "const original=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "const recovery={emissao:{sistema:original.emissao.sistema||\"QueroPassagem\",email:original.emissao.email,pagamento:{}},dadosManager:original.dadosManager};",
+                  "if(original.reservaRodoviario)recovery.reservaRodoviario={sistema:original.reservaRodoviario.sistema||\"QueroPassagem\"};else recovery.emissao.codigoReserva=original.emissao.codigoReserva;",
+                  "pm.environment.set(\"payloadRecuperacao\",JSON.stringify(recovery));",
+                  "[\"codgReservaRodoviario\",\"codigoCompra\",\"codigoPassageiro\",\"codgRodoviarioTrecho\"].forEach(k=>pm.environment.unset(k));",
+                  "if(original.reservaRodoviario)pm.environment.unset(\"codigoReservaTemporaria\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "",
+                  "if(b) {",
+                  " pm.test(\"Operacao completa\", () => pm.expect(b.success,b.mensagem||\"Incompleta\").to.equal(true));",
+                  " pm.test(\"Sem conferencia pendente\", () => pm.expect(b.requerConferencia).to.equal(false));",
+                  " const r=b.reserva&&b.reserva.reserva, f=b.fornecedor&&b.fornecedor.dados;",
+                  " if(r&&r.codgReservaRodoviario) pm.environment.set(\"codgReservaRodoviario\",String(r.codgReservaRodoviario));",
+                  " if(f&&f.codigoFornecedor) pm.environment.set(\"codigoCompra\",String(f.codigoFornecedor));",
+                  " if(b.codigoReservaTemporaria) pm.environment.set(\"codigoReservaTemporaria\",b.codigoReservaTemporaria);",
+                  " if(b.reserva&&Array.isArray(b.reserva.trechos)&&b.reserva.trechos.length===1) pm.environment.set(\"codgRodoviarioTrecho\",String(b.reserva.trechos[0].codgRodoviarioTrecho));",
+                  " const ps=f&&Array.isArray(f.trechos)?f.trechos.flatMap(t=>t.passageiros||[]):[];",
+                  " if(ps.length===1&&ps[0].codigoFornecedor) pm.environment.set(\"codigoPassageiro\",String(ps[0].codigoFornecedor)); else if(f) pm.environment.unset(\"codigoPassageiro\");",
+                  " if(r&&r.status===1&&f) pm.test(\"Confirmacao coerente\",()=>{pm.expect(f.situacao).to.equal(\"paid\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>{pm.expect(p.bilhete.situacao).to.equal(\"emitted\");pm.expect(p.bilhete.numero).to.be.a(\"string\").and.not.empty;});});",
+                  " if(r&&r.status===2&&f) pm.test(\"Cancelamento total coerente\",()=>{pm.expect(f.situacao).to.equal(\"canceled\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>pm.expect(p.bilhete.situacao).to.equal(\"canceled\"));});",
+                  " if(b.requerConferencia) console.warn(\"Resultado parcial: consulte ou sincronize; nao repita checkout.\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "15 Emitir booking existente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/emitir",
+            "description": "Alternativa para booking existente ainda nao finalizado. Nao repetir apos reservar a mesma compra.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\"codigoReserva\":\"{{codigoReservaTemporaria}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgVinculoOrigem}},\n             \"codgCidadeDestino\":{{codgVinculoDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"sistema\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgAgencia\", \"codgSistema\", \"codgVinculoOrigem\", \"codgVinculoDestino\", \"codigoReservaTemporaria\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 15 Emitir booking existente\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
+                  "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
+                  "const problemas=[];",
+                  "if(habilitado!==\"true\")problemas.push(\"permitirOperacoesComEfeito deve ser true; confira o valor no environment selecionado\");",
+                  "if(acao.toLowerCase()!==\"emitir\")problemas.push(\"acaoPermitida deve ser emitir; confira o valor no environment selecionado\");",
+                  "if(problemas.length)bloquear(problemas.join(\". \")+\". Bloqueio local do Postman: nenhuma chamada foi enviada ao backend.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}",
+                  "const original=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "const recovery={emissao:{sistema:original.emissao.sistema||\"QueroPassagem\",email:original.emissao.email,pagamento:{}},dadosManager:original.dadosManager};",
+                  "if(original.reservaRodoviario)recovery.reservaRodoviario={sistema:original.reservaRodoviario.sistema||\"QueroPassagem\"};else recovery.emissao.codigoReserva=original.emissao.codigoReserva;",
+                  "pm.environment.set(\"payloadRecuperacao\",JSON.stringify(recovery));",
+                  "[\"codgReservaRodoviario\",\"codigoCompra\",\"codigoPassageiro\",\"codgRodoviarioTrecho\"].forEach(k=>pm.environment.unset(k));",
+                  "if(original.reservaRodoviario)pm.environment.unset(\"codigoReservaTemporaria\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "",
+                  "if(b) {",
+                  " pm.test(\"Operacao completa\", () => pm.expect(b.success,b.mensagem||\"Incompleta\").to.equal(true));",
+                  " pm.test(\"Sem conferencia pendente\", () => pm.expect(b.requerConferencia).to.equal(false));",
+                  " const r=b.reserva&&b.reserva.reserva, f=b.fornecedor&&b.fornecedor.dados;",
+                  " if(r&&r.codgReservaRodoviario) pm.environment.set(\"codgReservaRodoviario\",String(r.codgReservaRodoviario));",
+                  " if(f&&f.codigoFornecedor) pm.environment.set(\"codigoCompra\",String(f.codigoFornecedor));",
+                  " if(b.codigoReservaTemporaria) pm.environment.set(\"codigoReservaTemporaria\",b.codigoReservaTemporaria);",
+                  " if(b.reserva&&Array.isArray(b.reserva.trechos)&&b.reserva.trechos.length===1) pm.environment.set(\"codgRodoviarioTrecho\",String(b.reserva.trechos[0].codgRodoviarioTrecho));",
+                  " const ps=f&&Array.isArray(f.trechos)?f.trechos.flatMap(t=>t.passageiros||[]):[];",
+                  " if(ps.length===1&&ps[0].codigoFornecedor) pm.environment.set(\"codigoPassageiro\",String(ps[0].codigoFornecedor)); else if(f) pm.environment.unset(\"codigoPassageiro\");",
+                  " if(r&&r.status===1&&f) pm.test(\"Confirmacao coerente\",()=>{pm.expect(f.situacao).to.equal(\"paid\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>{pm.expect(p.bilhete.situacao).to.equal(\"emitted\");pm.expect(p.bilhete.numero).to.be.a(\"string\").and.not.empty;});});",
+                  " if(r&&r.status===2&&f) pm.test(\"Cancelamento total coerente\",()=>{pm.expect(f.situacao).to.equal(\"canceled\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>pm.expect(p.bilhete.situacao).to.equal(\"canceled\"));});",
+                  " if(b.requerConferencia) console.warn(\"Resultado parcial: consulte ou sincronize; nao repita checkout.\");",
+                  "}",
+                  "",
+                  "pm.environment.set(\"acaoPermitida\",\"\");"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "16 Consultar e sincronizar status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/consultarReserva",
+            "description": "Consulta Manager e fornecedor; pode atualizar bilhetes e status locais.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"codgReservaRodoviario\":{{codgReservaRodoviario}},\"consulta\":{\"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgReservaRodoviario\", \"emailCompra\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 16 Consultar e sincronizar status\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "",
+                  "if(b) {",
+                  " pm.test(\"Operacao completa\", () => pm.expect(b.success,b.mensagem||\"Incompleta\").to.equal(true));",
+                  " pm.test(\"Sem conferencia pendente\", () => pm.expect(b.requerConferencia).to.equal(false));",
+                  " const r=b.reserva&&b.reserva.reserva, f=b.fornecedor&&b.fornecedor.dados;",
+                  " if(r&&r.codgReservaRodoviario) pm.environment.set(\"codgReservaRodoviario\",String(r.codgReservaRodoviario));",
+                  " if(f&&f.codigoFornecedor) pm.environment.set(\"codigoCompra\",String(f.codigoFornecedor));",
+                  " if(b.codigoReservaTemporaria) pm.environment.set(\"codigoReservaTemporaria\",b.codigoReservaTemporaria);",
+                  " if(b.reserva&&Array.isArray(b.reserva.trechos)&&b.reserva.trechos.length===1) pm.environment.set(\"codgRodoviarioTrecho\",String(b.reserva.trechos[0].codgRodoviarioTrecho));",
+                  " const ps=f&&Array.isArray(f.trechos)?f.trechos.flatMap(t=>t.passageiros||[]):[];",
+                  " if(ps.length===1&&ps[0].codigoFornecedor) pm.environment.set(\"codigoPassageiro\",String(ps[0].codigoFornecedor)); else if(f) pm.environment.unset(\"codigoPassageiro\");",
+                  " if(r&&r.status===1&&f) pm.test(\"Confirmacao coerente\",()=>{pm.expect(f.situacao).to.equal(\"paid\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>{pm.expect(p.bilhete.situacao).to.equal(\"emitted\");pm.expect(p.bilhete.numero).to.be.a(\"string\").and.not.empty;});});",
+                  " if(r&&r.status===2&&f) pm.test(\"Cancelamento total coerente\",()=>{pm.expect(f.situacao).to.equal(\"canceled\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>pm.expect(p.bilhete.situacao).to.equal(\"canceled\"));});",
+                  " if(b.requerConferencia) console.warn(\"Resultado parcial: consulte ou sincronize; nao repita checkout.\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "17 Recuperar sem novo checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/sincronizar",
+            "description": "Usa snapshot da tentativa original. Referencia ausente retorna 409, sem booking/checkout. Nao autoriza nova emissao.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{payloadRecuperacao}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"payloadRecuperacao\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 17 Recuperar sem novo checkout\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "",
+                  "if(b) {",
+                  " pm.test(\"Operacao completa\", () => pm.expect(b.success,b.mensagem||\"Incompleta\").to.equal(true));",
+                  " pm.test(\"Sem conferencia pendente\", () => pm.expect(b.requerConferencia).to.equal(false));",
+                  " const r=b.reserva&&b.reserva.reserva, f=b.fornecedor&&b.fornecedor.dados;",
+                  " if(r&&r.codgReservaRodoviario) pm.environment.set(\"codgReservaRodoviario\",String(r.codgReservaRodoviario));",
+                  " if(f&&f.codigoFornecedor) pm.environment.set(\"codigoCompra\",String(f.codigoFornecedor));",
+                  " if(b.codigoReservaTemporaria) pm.environment.set(\"codigoReservaTemporaria\",b.codigoReservaTemporaria);",
+                  " if(b.reserva&&Array.isArray(b.reserva.trechos)&&b.reserva.trechos.length===1) pm.environment.set(\"codgRodoviarioTrecho\",String(b.reserva.trechos[0].codgRodoviarioTrecho));",
+                  " const ps=f&&Array.isArray(f.trechos)?f.trechos.flatMap(t=>t.passageiros||[]):[];",
+                  " if(ps.length===1&&ps[0].codigoFornecedor) pm.environment.set(\"codigoPassageiro\",String(ps[0].codigoFornecedor)); else if(f) pm.environment.unset(\"codigoPassageiro\");",
+                  " if(r&&r.status===1&&f) pm.test(\"Confirmacao coerente\",()=>{pm.expect(f.situacao).to.equal(\"paid\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>{pm.expect(p.bilhete.situacao).to.equal(\"emitted\");pm.expect(p.bilhete.numero).to.be.a(\"string\").and.not.empty;});});",
+                  " if(r&&r.status===2&&f) pm.test(\"Cancelamento total coerente\",()=>{pm.expect(f.situacao).to.equal(\"canceled\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>pm.expect(p.bilhete.situacao).to.equal(\"canceled\"));});",
+                  " if(b.requerConferencia) console.warn(\"Resultado parcial: consulte ou sincronize; nao repita checkout.\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "18 Cancelar compra inteira",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/cancelarReserva",
+            "description": "Manager so recebe cancelamento total quando compra e todos os bilhetes estao canceled. Sem estorno automatico.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"codgReservaRodoviario\":{{codgReservaRodoviario}},\"consulta\":{\"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\"},\"motivo\":\"{{motivoCancelamento}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"codgReservaRodoviario\", \"emailCompra\", \"motivoCancelamento\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 18 Cancelar compra inteira\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
+                  "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
+                  "const problemas=[];",
+                  "if(habilitado!==\"true\")problemas.push(\"permitirOperacoesComEfeito deve ser true; confira o valor no environment selecionado\");",
+                  "if(acao.toLowerCase()!==\"cancelarreserva\")problemas.push(\"acaoPermitida deve ser cancelarReserva; confira o valor no environment selecionado\");",
+                  "if(problemas.length)bloquear(problemas.join(\". \")+\". Bloqueio local do Postman: nenhuma chamada foi enviada ao backend.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "",
+                  "if(b) {",
+                  " pm.test(\"Operacao completa\", () => pm.expect(b.success,b.mensagem||\"Incompleta\").to.equal(true));",
+                  " pm.test(\"Sem conferencia pendente\", () => pm.expect(b.requerConferencia).to.equal(false));",
+                  " const r=b.reserva&&b.reserva.reserva, f=b.fornecedor&&b.fornecedor.dados;",
+                  " if(r&&r.codgReservaRodoviario) pm.environment.set(\"codgReservaRodoviario\",String(r.codgReservaRodoviario));",
+                  " if(f&&f.codigoFornecedor) pm.environment.set(\"codigoCompra\",String(f.codigoFornecedor));",
+                  " if(b.codigoReservaTemporaria) pm.environment.set(\"codigoReservaTemporaria\",b.codigoReservaTemporaria);",
+                  " if(b.reserva&&Array.isArray(b.reserva.trechos)&&b.reserva.trechos.length===1) pm.environment.set(\"codgRodoviarioTrecho\",String(b.reserva.trechos[0].codgRodoviarioTrecho));",
+                  " const ps=f&&Array.isArray(f.trechos)?f.trechos.flatMap(t=>t.passageiros||[]):[];",
+                  " if(ps.length===1&&ps[0].codigoFornecedor) pm.environment.set(\"codigoPassageiro\",String(ps[0].codigoFornecedor)); else if(f) pm.environment.unset(\"codigoPassageiro\");",
+                  " if(r&&r.status===1&&f) pm.test(\"Confirmacao coerente\",()=>{pm.expect(f.situacao).to.equal(\"paid\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>{pm.expect(p.bilhete.situacao).to.equal(\"emitted\");pm.expect(p.bilhete.numero).to.be.a(\"string\").and.not.empty;});});",
+                  " if(r&&r.status===2&&f) pm.test(\"Cancelamento total coerente\",()=>{pm.expect(f.situacao).to.equal(\"canceled\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>pm.expect(p.bilhete.situacao).to.equal(\"canceled\"));});",
+                  " if(b.requerConferencia) console.warn(\"Resultado parcial: consulte ou sincronize; nao repita checkout.\");",
+                  "}",
+                  "",
+                  "pm.environment.set(\"acaoPermitida\",\"\");"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "19 Cancelar um bilhete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/cancelarBilhete",
+            "description": "ID externo do passageiro. Com varios passageiros escolha manualmente. Cancelamento parcial exige conferencia operacional.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"codgReservaRodoviario\":{{codgReservaRodoviario}},\"consulta\":{\"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\"codigoPassageiro\":{{codigoPassageiro}}},\"motivo\":\"{{motivoCancelamento}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"codgReservaRodoviario\", \"emailCompra\", \"motivoCancelamento\", \"codigoPassageiro\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 19 Cancelar um bilhete\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
+                  "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
+                  "const problemas=[];",
+                  "if(habilitado!==\"true\")problemas.push(\"permitirOperacoesComEfeito deve ser true; confira o valor no environment selecionado\");",
+                  "if(acao.toLowerCase()!==\"cancelarbilhete\")problemas.push(\"acaoPermitida deve ser cancelarBilhete; confira o valor no environment selecionado\");",
+                  "if(problemas.length)bloquear(problemas.join(\". \")+\". Bloqueio local do Postman: nenhuma chamada foi enviada ao backend.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "",
+                  "if(b) {",
+                  " pm.test(\"Operacao completa\", () => pm.expect(b.success,b.mensagem||\"Incompleta\").to.equal(true));",
+                  " pm.test(\"Sem conferencia pendente\", () => pm.expect(b.requerConferencia).to.equal(false));",
+                  " const r=b.reserva&&b.reserva.reserva, f=b.fornecedor&&b.fornecedor.dados;",
+                  " if(r&&r.codgReservaRodoviario) pm.environment.set(\"codgReservaRodoviario\",String(r.codgReservaRodoviario));",
+                  " if(f&&f.codigoFornecedor) pm.environment.set(\"codigoCompra\",String(f.codigoFornecedor));",
+                  " if(b.codigoReservaTemporaria) pm.environment.set(\"codigoReservaTemporaria\",b.codigoReservaTemporaria);",
+                  " if(b.reserva&&Array.isArray(b.reserva.trechos)&&b.reserva.trechos.length===1) pm.environment.set(\"codgRodoviarioTrecho\",String(b.reserva.trechos[0].codgRodoviarioTrecho));",
+                  " const ps=f&&Array.isArray(f.trechos)?f.trechos.flatMap(t=>t.passageiros||[]):[];",
+                  " if(ps.length===1&&ps[0].codigoFornecedor) pm.environment.set(\"codigoPassageiro\",String(ps[0].codigoFornecedor)); else if(f) pm.environment.unset(\"codigoPassageiro\");",
+                  " if(r&&r.status===1&&f) pm.test(\"Confirmacao coerente\",()=>{pm.expect(f.situacao).to.equal(\"paid\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>{pm.expect(p.bilhete.situacao).to.equal(\"emitted\");pm.expect(p.bilhete.numero).to.be.a(\"string\").and.not.empty;});});",
+                  " if(r&&r.status===2&&f) pm.test(\"Cancelamento total coerente\",()=>{pm.expect(f.situacao).to.equal(\"canceled\");pm.expect(ps.length).to.be.above(0);ps.forEach(p=>pm.expect(p.bilhete.situacao).to.equal(\"canceled\"));});",
+                  " if(b.requerConferencia) console.warn(\"Resultado parcial: consulte ou sincronize; nao repita checkout.\");",
+                  "}",
+                  "",
+                  "pm.environment.set(\"acaoPermitida\",\"\");"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05 Conferencia Manager",
+      "description": "Consultas limitadas pela identidade individual. IDs de componentes sao locais do Manager.",
+      "item": [
+        {
+          "name": "20 Listar reservas autorizadas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/findAllReservas?codgAgencia={{codgAgencia}}&codgSistema={{codgSistema}}&pagina=0&tamanho=20",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgAgencia\", \"codgSistema\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 20 Listar reservas autorizadas\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Pagina Manager\", () => pm.expect(b.content).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "21 Detalhar reserva salva",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/detalhe",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgReservaRodoviario\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 21 Detalhar reserva salva\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b)pm.test(\"Detalhe completo\",()=>{pm.expect(b.reserva.codgReservaRodoviario).to.equal(Number(pm.environment.get(\"codgReservaRodoviario\")));[\"trechos\",\"passageiros\",\"assentos\",\"bilhetes\",\"recebimentos\"].forEach(k=>pm.expect(b[k]).to.be.an(\"array\"));});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "22 Consultar historico",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/historico",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgReservaRodoviario\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 22 Consultar historico\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\",()=>pm.response.to.have.status(200));pm.test(\"Lista retornada\",()=>pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "23 Consultar recebimentos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/recebimentos",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgReservaRodoviario\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 23 Consultar recebimentos\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\",()=>pm.response.to.have.status(200));pm.test(\"Lista retornada\",()=>pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "24 Listar trechos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/trechos?codgReservaRodoviario={{codgReservaRodoviario}}&pagina=0&tamanho=20",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgReservaRodoviario\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 24 Listar trechos\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Pagina Manager\", () => pm.expect(b.content).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "25 Listar passageiros",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/passageiros?codgRodoviarioTrecho={{codgRodoviarioTrecho}}&pagina=0&tamanho=20",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgRodoviarioTrecho\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 25 Listar passageiros\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Pagina Manager\", () => pm.expect(b.content).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "26 Listar assentos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/assentos?codgRodoviarioTrecho={{codgRodoviarioTrecho}}&pagina=0&tamanho=20",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgRodoviarioTrecho\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 26 Listar assentos\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Pagina Manager\", () => pm.expect(b.content).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "27 Listar bilhetes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/bilhetes?codgRodoviarioTrecho={{codgRodoviarioTrecho}}&pagina=0&tamanho=20",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgRodoviarioTrecho\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 27 Listar bilhetes\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Pagina Manager\", () => pm.expect(b.content).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "28 Listar valores",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/valores?codgReservaRodoviario={{codgReservaRodoviario}}&pagina=0&tamanho=20",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgReservaRodoviario\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 28 Listar valores\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b) pm.test(\"Pagina Manager\", () => pm.expect(b.content).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "06 Registros opcionais",
+      "description": "Notas e conciliacao de transacao existente. Registro de recebimento exige usuario interno do Manager.",
+      "item": [
+        {
+          "name": "29 Adicionar nota no historico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/historico",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descricao\": \"{{notaHistorico}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"codgReservaRodoviario\", \"notaHistorico\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 29 Adicionar nota no historico\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
+                  "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
+                  "const problemas=[];",
+                  "if(habilitado!==\"true\")problemas.push(\"permitirOperacoesComEfeito deve ser true; confira o valor no environment selecionado\");",
+                  "if(acao.toLowerCase()!==\"adicionarnota\")problemas.push(\"acaoPermitida deve ser adicionarNota; confira o valor no environment selecionado\");",
+                  "if(problemas.length)bloquear(problemas.join(\". \")+\". Bloqueio local do Postman: nenhuma chamada foi enviada ao backend.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\",()=>pm.response.to.have.status(201));",
+                  "pm.environment.set(\"acaoPermitida\",\"\");"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "30 Registrar recebimento conciliado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/recebimentos",
+            "description": "Nao cobra nem confirma PIX. Valor/transacao ja devem estar conciliados. Use chave propria de 8 a 50 caracteres, preservando-a na repeticao do mesmo registro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"chaveIdempotencia\":\"{{chaveRecebimento}}\",\"codgFormaPagto\":{{codgFormaPagto}},\"valor\":{{valorRecebimento}},\"dataRecebimento\":\"{{dataRecebimento}}\",\"codgTransacao\":\"{{codgTransacao}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"codgReservaRodoviario\", \"chaveRecebimento\", \"codgFormaPagto\", \"valorRecebimento\", \"dataRecebimento\", \"codgTransacao\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 30 Registrar recebimento conciliado\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
+                  "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
+                  "const problemas=[];",
+                  "if(habilitado!==\"true\")problemas.push(\"permitirOperacoesComEfeito deve ser true; confira o valor no environment selecionado\");",
+                  "if(acao.toLowerCase()!==\"registrarrecebimento\")problemas.push(\"acaoPermitida deve ser registrarRecebimento; confira o valor no environment selecionado\");",
+                  "if(problemas.length)bloquear(problemas.join(\". \")+\". Bloqueio local do Postman: nenhuma chamada foi enviada ao backend.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\",()=>pm.response.to.have.status(201));pm.test(\"ID do recebimento\",()=>pm.expect(pm.response.json().codgRecebimento).to.be.a(\"number\").and.above(0));",
+                  "pm.environment.set(\"acaoPermitida\",\"\");"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "07 Testes negativos",
+      "description": "Falhas esperadas. Nao provocar cobranca ou cancelamento para testar erro.",
+      "item": [
+        {
+          "name": "31 Sem Bearer do ConfApi",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/viacoes",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 31 Sem Bearer do ConfApi\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Autenticacao exigida\",()=>pm.expect(pm.response.code).to.be.oneOf([401,403]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "32 Sem token individual",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/reservas/1/detalhe",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 32 Sem token individual\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401 sem X-Usuario-Token\",()=>pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "33 Recurso desconhecido",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "nao-utilizado"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/recurso-inexistente",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando GET - 33 Recurso desconhecido\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\",()=>pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "34 JSON malformado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/pesquisar",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 34 JSON malformado\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\",()=>pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "35 Codigo de outra compra",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Usuario-Token",
+                "value": "{{usuarioToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{prefix}}/consultarReserva",
+            "description": "No fluxo atual retorna 200 com success=false apos carregar o detalhe, sem chamar o Hub com codigo divergente.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"codgReservaRodoviario\":{{codgReservaRodoviario}},\"consulta\":{\"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\"codigoCompra\":-1}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const required=[\"baseUrl\", \"prefix\", \"codgReservaRodoviario\", \"emailCompra\"];",
+                  "function bloquear(motivo){",
+                  " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
+                  " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
+                  " pm.execution.skipRequest();",
+                  " throw new Error(motivo);",
+                  "}",
+                  "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
+                  "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
+                  "console.info(\"[ConfApi] Preparando POST - 35 Codigo de outra compra\");",
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
+                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "let b = null;",
+                  "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
+                  "if(b){pm.test(\"Divergencia rejeitada\",()=>pm.expect(b.success).to.equal(false));pm.test(\"Conferencia indicada\",()=>pm.expect(b.requerConferencia).to.equal(true));}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}
