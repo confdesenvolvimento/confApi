@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 /** Filtros da consulta financeira; nunca recebe ou determina a agencia do usuario. */
 public final class ChatFaturasFiltros {
     public static final Set<String> PARAMETROS = Set.of("faturaPagamento", "faturaTipoData",
-            "faturaInicio", "faturaFim", "faturaProduto", "faturaNumero", "faturaDocumento");
+            "faturaInicio", "faturaFim", "faturaProduto", "faturaNumero", "faturaDocumento", "faturaLimite");
     private static final DateTimeFormatter DATA_API = DateTimeFormatter.ofPattern("dd/MM/uuuu")
             .withResolverStyle(ResolverStyle.STRICT);
     private static final DateTimeFormatter DATA_ENTRADA = DateTimeFormatter.ofPattern("d/M/uuuu")
@@ -47,6 +47,8 @@ public final class ChatFaturasFiltros {
         String t = normalizar(texto);
         if (t.isBlank() || t.length() > 220 || foraDeConsulta(t)) return false;
         if (pedidoExplicito(t)) return true;
+        if (t.matches("(?:e\\s+)?(?:sem limite|sem quantidade)[?.!]*")) return true;
+        if (t.matches("(?:as?\\s+)?(?:ultimas?\\s+(?:\\d{1,5}|uma|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)|(?:\\d{1,5}|uma|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\\s+ultimas?)[?.!]*")) return true;
         if (t.matches("(?:consultar|buscar|pesquisar|mostrar|listar|tentar)(?: novamente| de novo)?")) return true;
         if (t.matches("(?:como|onde)\\s+(?:eu\\s+)?(?:(?:posso|consigo)\\s+)?(?:pego|baixo|baixar|obtenho|obter|acesso|acessar)(?:\\s+(?:(?:a|o)\\s+)?(?:ela|ele|isso|pdf|documento|arquivo|boleto|csv))?(?:\\s+em\\s+(?:pdf|csv))?[?.!]*")) return true;
         if (t.matches("(?:me\\s+)?(?:mande|envie|mostre|quero|preciso)(?:\\s+(?:de|do|da))?\\s+(?:(?:o|a)\\s+)?(?:pdf|csv|boleto|documento|arquivo)[?.!]*")) return true;
@@ -59,6 +61,13 @@ public final class ChatFaturasFiltros {
     public static Map<String, String> extrair(String texto, Map<String, String> anteriores, LocalDate hoje) {
         Map<String, String> p = filtrar(anteriores);
         String t = normalizar(texto);
+        Matcher ultimas = Pattern.compile("\\b(?:ultim[oa]s?\\s+(\\d{1,5}|uma|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)|(\\d{1,5}|uma|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\\s+ultim[oa]s?)\\b(?!\\s+(?:dias?|mes(?:es)?|anos?|semanas?|horas?)\\b)").matcher(t);
+        if (ultimas.find()) {
+            String quantidade = ultimas.group(1) == null ? ultimas.group(2) : ultimas.group(1);
+            List<String> nomes = List.of("uma", "duas", "tres", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez");
+            int indice = nomes.indexOf(quantidade);
+            p.put("faturaLimite", indice < 0 ? quantidade : Integer.toString(indice + 1));
+        } else if (t.matches(".*\\b(todas|todos|sem limite|sem quantidade)\\b.*")) p.remove("faturaLimite");
         boolean negarPago = t.matches(".*\\bnao\\s+(?:(?:as|os)\\s+)?pag[oa]s?\\b.*");
         boolean negarAberto = t.matches(".*\\bnao\\s+(?:(?:as|os)\\s+)?abert[oa]s?\\b.*");
         boolean aberto = (t.matches(".*\\b(?:abert[oa]s?|pendentes?)\\b.*") || negarPago) && !negarAberto;
@@ -100,6 +109,12 @@ public final class ChatFaturasFiltros {
         }
 
         extrairPeriodo(t, p, hoje);
+        if (p.containsKey("faturaLimite") && !p.containsKey("faturaInicio") && !p.containsKey("faturaFim")) {
+            // Ultimas N dentro de uma janela declarada, nunca uma promessa de todo o historico.
+            p.put("faturaInicio", hoje.minusYears(1).toString());
+            p.put("faturaFim", hoje.toString());
+            p.putIfAbsent("faturaTipoData", "DATA_EMISSAO");
+        }
         // Um novo periodo de "pagas em..." nao pode herdar silenciosamente o eixo
         // do turno anterior: a API nao disponibiliza a data do pagamento.
         if (pago && !emissao && !vencimento && temPeriodoExplicito(t)
@@ -199,6 +214,14 @@ public final class ChatFaturasFiltros {
 
     public static Consulta validar(Map<String, String> parametros, LocalDate hoje) {
         Map<String, String> p = filtrar(parametros);
+        if (p.containsKey("faturaLimite")) {
+            try {
+                int limite = Integer.parseInt(p.get("faturaLimite"));
+                if (limite < 1 || limite > 50) throw new NumberFormatException();
+            } catch (NumberFormatException ex) {
+                return perguntar(p, "Informe uma quantidade de 1 a 50 faturas por consulta.");
+            }
+        }
         String pagamento = padrao(p, "faturaPagamento", "ABERTO");
         String produto = padrao(p, "faturaProduto", "TODOS");
         if (!Set.of("ABERTO", "PAGO", "AMBOS").contains(pagamento))

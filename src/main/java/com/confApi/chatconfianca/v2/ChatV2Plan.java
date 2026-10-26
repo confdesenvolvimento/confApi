@@ -3,6 +3,8 @@ package com.confApi.chatconfianca.v2;
 import lombok.Data;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 /** No agency/user IDs or arbitrary action names can be supplied by the model. */
 @Data
@@ -21,6 +23,11 @@ public class ChatV2Plan {
     private boolean continuar;
     private String pergunta;
     private String assuntoHandoff;
+    // Server-owned task state, never accepted from the semantic schema.
+    private String pedidoOperacional;
+    private int esclarecimentosSemProgresso;
+    private boolean filtroBagagemPendente;
+    private List<Map<String,String>> opcoesAereas = new ArrayList<>();
     private Map<String,String> parametros = new LinkedHashMap<>();
     private String fonte = "V2_REGRAS";
     private String resultado = "AGUARDANDO_EXECUCAO";

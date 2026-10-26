@@ -3,10 +3,13 @@ package com.confApi.chatconfianca.service;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
+@ConditionalOnProperty(prefix = "chat-confianca.ia", name = "auto-encerramento-enabled",
+        havingValue = "true", matchIfMissing = true)
 public class ChatConfiancaIaAutoEncerramentoJob {
 
     private static final Logger LOGGER = Logger.getLogger(ChatConfiancaIaAutoEncerramentoJob.class.getName());

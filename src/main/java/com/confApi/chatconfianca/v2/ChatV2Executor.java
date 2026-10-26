@@ -40,7 +40,7 @@ public class ChatV2Executor {
             if(c==null)return finish(p,d,"CAPACIDADE_INDISPONIVEL","Nao identifiquei uma acao disponivel. Pode explicar o que precisa?");
             if(c==ChatV2Capability.SAUDACAO)return finish(p,d,"SAUDACAO","Ola! Posso ajudar com financeiro, reservas, voos, hoteis ou contatos da Confianca. O que voce precisa?");
             if(c==ChatV2Capability.AJUDA)return finish(p,d,"AGUARDANDO_DADOS","Posso consultar limites, faturas, boletos, reservas, regras, voos e hoteis, ou orientar sobre atendimento. Qual assunto deseja consultar?");
-            if(c==ChatV2Capability.HUMANO)return finish(p,d,"HANDOFF_SUGERIDO","Posso encaminhar para um atendente humano. Use Falar com atendente e confirme ou escolha o departamento desejado.");
+            if(c==ChatV2Capability.HUMANO)return finish(p,d,"HANDOFF_SUGERIDO","Para continuar com uma pessoa, selecione Falar com atendente. Você poderá confirmar o departamento sugerido ou escolher outro; a conversa e o pedido serão preservados.");
             if(c==ChatV2Capability.HOTEL_DADOS) {
                 if(hotel==null)return finish(p,d,"CAPACIDADE_INDISPONIVEL","A consulta de dados do hotel não está habilitada.");
                 var result=hotel.consultarHotel(p,session);
@@ -79,6 +79,7 @@ public class ChatV2Executor {
             if(outcome.equals("PESQUISA_PREPARADA"))text=mapper.writeValueAsString(result);
             else if(outcome.equals("CACHE_SEM_DADOS"))text+=" Nao ha dados no cache consultado; isso nao confirma ausencia de disponibilidade. Posso ajudar com outra data ou encaminhar ao atendimento.";
             List<ChatActionDTO> actions=result.get("actions")==null?List.of():mapper.convertValue(result.get("actions"),new TypeReference<List<ChatActionDTO>>(){});
+            registrarOpcoesAereas(p,args,actions,outcome);
             finish(p,d,outcome,text);
             return new ChatResponseDTO(null,text,List.of(new ToolCallDTO(p.capability().tool,result)),null,List.of(),List.of(),actions);
         }catch(Exception ex){throw new IllegalStateException("Nao foi possivel interpretar o resultado da consulta.",ex);}
@@ -101,7 +102,8 @@ public class ChatV2Executor {
             action="familias;"+companhia;
         }
         // Identity comes exclusively from the authenticated session. No model parameter is used here.
-        String input=session.input()+(localizador==null?"":"\nLocalizador "+localizador);
+        String input=session.input()+(localizador==null?"":"\nLocalizador "+localizador)
+                +(p.getPedidoOperacional()==null?"":"\nAssunto operacional preservado: "+p.getPedidoOperacional()+".");
         ConversationRequestDTO req=new ConversationRequestDTO(session.identificacao(),session.unidade(),session.idErp(),
                 session.codgAgencia(),session.codgUsuario(),input,new ArrayList<>(),null,false,new ArrayList<>());
         if(c==ChatV2Capability.FATURAS||c==ChatV2Capability.BOLETOS) {
@@ -149,11 +151,13 @@ public class ChatV2Executor {
             Sem documento/link retornado, nao prometa PDF nem invente link. Oriente usar Financeiro > Faturas e boletos.
             Se os dados reportarem falha/ausencia/permissao, explique isso, sem usar dados de outra agencia.
             Emissao, cancelamento, reembolso e pagamento NAO foram concluidos. As acoes sao apenas preparacao.
+            Preserve o pedidoOperacional informado: REEMBOLSO nao e CANCELAMENTO. Nao substitua um procedimento pelo outro.
             Responda a modalidade/pergunta do usuario, usando reais no formato brasileiro.
             """));
         messages.addAll(dados);
         messages.add(new ChatMessageDTO("user",mapper.writeValueAsString(Map.of(
-                "mensagem",session.input(),"intencao",p.getIntencao(),"parametros",p.getParametros()))));
+                "mensagem",session.input(),"intencao",p.getIntencao(),"parametros",p.getParametros(),
+                "pedidoOperacional",Objects.toString(p.getPedidoOperacional(),"")))));
         ChatResponseDTO r=chat.chat(new ChatRequestDTO(messages,null,false,List.of(),Map.of("coordenadorV2",true)),keywords,null);
         if(r==null||r.content()==null||r.content().isBlank())return finish(p,d,"SEM_RESULTADO","A consulta nao produziu uma resposta utilizavel. Posso encaminhar para um atendente humano.");
         finish(p,d,resultadoDados(dados),r.content());
@@ -217,11 +221,46 @@ public class ChatV2Executor {
         return finish(p,d,"SEM_CONHECIMENTO","Não consegui obter as informações solicitadas de uma fonte publicada em formato válido. Posso ajudar a solicitar atendimento humano.");
     }
     JsonNode decode(String text) { return new ChatV2ConhecimentoTexto(mapper).decode(text); }
+    /** Keep only criteria of options actually returned by this authorized query, never prices or arbitrary IDs. */
+    private void registrarOpcoesAereas(ChatV2Plan p,Map<String,Object> args,List<ChatActionDTO> actions,String outcome) {
+        p.getOpcoesAereas().clear();
+        if(!"DADOS_CONSULTADOS".equals(outcome)
+                ||!Set.of(ChatV2Capability.TARIFA_IDA,ChatV2Capability.TARIFA_VOLTA).contains(p.capability()))return;
+        for(ChatActionDTO action:actions) {
+            if(p.getOpcoesAereas().size()>=20)break;
+            if(action==null||!"pesquisar_voos".equals(action.code())||action.localizador()==null||!action.localizador().startsWith("?"))continue;
+            try {
+                Map<String,String> opcao=new LinkedHashMap<>();
+                for(String pair:action.localizador().substring(1).split("&")) {
+                    String[] parts=pair.split("=",2);if(parts.length!=2)continue;
+                    if(Set.of("origem","destino","dataIda","dataVolta","cabine").contains(parts[0]))
+                        opcao.put(parts[0],java.net.URLDecoder.decode(parts[1],java.nio.charset.StandardCharsets.UTF_8));
+                }
+                if(!Objects.equals(args.get("origem"),opcao.get("origem"))||!Objects.equals(args.get("destino"),opcao.get("destino")))continue;
+                LocalDate.parse(opcao.get("dataIda"));
+                if(opcao.containsKey("dataVolta")&&LocalDate.parse(opcao.get("dataVolta")).isBefore(LocalDate.parse(opcao.get("dataIda"))))continue;
+                if(opcao.containsKey("cabine")&&!Set.of("Y","W","C","F").contains(opcao.get("cabine")))continue;
+                if(!p.getOpcoesAereas().contains(opcao))p.getOpcoesAereas().add(opcao);
+            }catch(RuntimeException ignored) { /* Malformed option can never become future executable criteria. */ }
+        }
+    }
     private ChatResponseDTO finish(ChatV2Plan p,ChatConfiancaDecisaoIa d,String outcome,String text) {
+        if("AGUARDANDO_DADOS".equals(outcome)) {
+            p.setEsclarecimentosSemProgresso(Math.min(3,p.getEsclarecimentosSemProgresso()+1));
+            if(p.getEsclarecimentosSemProgresso()>=3) {
+                if(p.getAssuntoHandoff()==null)p.setAssuntoHandoff(p.getIntencao());
+                p.setIntencao(ChatV2Capability.HUMANO.code);p.setPergunta(null);
+                outcome="HANDOFF_SUGERIDO";
+                text="Não conseguimos avançar com os esclarecimentos. Posso continuar com atendimento humano sem você repetir o pedido. Selecione Falar com atendente para confirmar ou escolher o departamento.";
+            }
+        } else if(!"HANDOFF_SUGERIDO".equals(outcome))p.setEsclarecimentosSemProgresso(0);
         p.setResultado(outcome);
         d.setStatusResultado(outcome.equals("ERRO_INTEGRACAO")?"ERRO":
             Set.of("SEM_RESULTADO","SEM_CONHECIMENTO","CACHE_SEM_DADOS","CONSULTA_BLOQUEADA","CAPACIDADE_INDISPONIVEL").contains(outcome)?"FALLBACK":"SUCESSO");
         if(outcome.equals("ERRO_INTEGRACAO"))d.setErroCodigo(p.getErro()==null?"CONSULTA_FALHOU":p.getErro());
-        return new ChatResponseDTO(null,text,List.of(),null,List.of(),List.of(),List.of());
+        List<ChatActionDTO> actions="HANDOFF_SUGERIDO".equals(outcome)?List.of(new ChatActionDTO(
+                "FALAR_ATENDENTE","Falar com atendente","Confirmar ou escolher o departamento antes de encaminhar",
+                null,null,true,false,false,"Quero falar com um atendente")):List.of();
+        return new ChatResponseDTO(null,text,List.of(),null,List.of(),List.of(),actions);
     }
 }

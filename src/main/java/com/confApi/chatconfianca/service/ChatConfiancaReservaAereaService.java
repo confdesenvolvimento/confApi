@@ -67,6 +67,15 @@ public class ChatConfiancaReservaAereaService {
         return actions;
     }
 
+    /** Mesmas acoes legadas para resultados da consulta paginada; nenhuma operacao executada. */
+    public List<ChatActionDTO> acoesParaConsulta(List<ReservaAereaRecenteItem> reservas) {
+        if (reservas == null) return List.of();
+        reservas.stream().filter(Objects::nonNull).forEach(this::preencherAcoes);
+        var response = new ReservasAereasRecentesResponse();
+        response.setReservas(reservas);
+        return listarAcoes(response);
+    }
+
     private int normalizarLimite(Integer limit) {
         int valor = limit == null ? LIMITE_PADRAO : limit;
         if (valor < 1 || valor > LIMITE_MAXIMO) {
