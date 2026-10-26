@@ -192,44 +192,6 @@ public class AereoClient {
         );
     }
 
-    /** Read-only repricing for chat: never converts integration errors into an empty DTO. */
-    public TarifarResponse tarifarEstrita(TarifarRequest request) {
-        long inicio = System.currentTimeMillis();
-        try {
-            ConfAppResp token = confAppService.token();
-            ResponseEntity<TarifarResponse> response = restTemplate.exchange(
-                    montarUrl(API_AEREO + "/tarifar"), HttpMethod.POST,
-                    new HttpEntity<>(request, defaultHeaders(token.getToken())), TarifarResponse.class);
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new TarifacaoException("HTTP_ERRO");
-            }
-            if (response.getBody() == null) throw new TarifacaoException("RESPOSTA_VAZIA");
-            return response.getBody();
-        } catch (TarifacaoException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            String codigo = isTimeout(ex) ? "TIMEOUT"
-                    : ex instanceof RestClientResponseException ? "HTTP_ERRO" : "ERRO_INTEGRACAO";
-            // No exception message/cause/body: these may contain credentials or customer data.
-            LOG.log(Level.WARNING, "REMARCACAO_TARIFACAO_FALHA codigo={0} tipo={1}",
-                    new Object[]{codigo, ex.getClass().getSimpleName()});
-            throw new TarifacaoException(codigo);
-        } finally {
-            logTempoExecucao("Aereo - Tarifar Remarcacao", inicio);
-        }
-    }
-
-    public static class TarifacaoException extends IllegalStateException {
-        private final String codigo;
-
-        public TarifacaoException(String codigo) {
-            super("Tarifacao nao concluida.");
-            this.codigo = codigo;
-        }
-
-        public String getCodigo() { return codigo; }
-    }
-
     public List<PesquisaResponse> pesquisarDisponibilidade(PesquisaRequestDTO pesquisaRequestDTO) {
         return post(
                 "Aéreo - Pesquisar Disponibilidade",

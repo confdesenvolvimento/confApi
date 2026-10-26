@@ -15,7 +15,7 @@ import java.util.*;
 @Component
 public class ChatV2SemanticClient {
     public static final List<String> PARAMS=List.of("origem","destino","localizador","companhia",
-        "faturaPagamento","faturaTipoData","faturaInicio","faturaFim","faturaProduto","faturaNumero","faturaDocumento","faturaLimite",
+        "faturaPagamento","faturaTipoData","faturaInicio","faturaFim","faturaProduto","faturaNumero","faturaDocumento",
         "dataEmissao","produto","modalidade","mes","mesIda","mesVolta","dataIda","dataVolta",
         "dataInicio","dataFim","dataIdaInicio","dataIdaFim","dataVoltaInicio","dataVoltaFim",
         "duracaoMinimaDias","duracaoMaximaDias","duracaoDias","duracaoNoites","cabine","adt",
@@ -45,8 +45,7 @@ public class ChatV2SemanticClient {
             Campos ausentes sao null. Se houver ambiguidade, escreva uma pergunta curta, nao uma promessa de pesquisar.
             continuar=true somente se o pedido continua o mesmo assunto. Em mudanca de assunto, false.
             Preserve parametros do contexto apenas em continuacoes. Localizador isolado completa reserva/regras. Localizadores aereos podem ter de 5 a 13 caracteres alfanumericos; preserve o codigo completo, sem truncar.
-            Retorne os parametros informados/corrigidos e preserve os que continuam validos. Nunca remova origem/destino ao detalhar uma opcao ja mostrada.
-            null em uma continuacao nao autoriza apagar dados validos nao alterados pelo usuario; remocoes precisam ser expressamente solicitadas.
+            Retorne o estado COMPLETO dos parametros que continuam validos. null remove um parametro antigo.
             Uma resposta curta de mes/ano, data ou ocupacao a uma pergunta pendente continua a pesquisa: preserve origem, destino e os demais dados nao alterados.
             Exemplo: contexto origem=CGB, destino=BSB, mes=2026-01; mensagem 'janeiro de 2027' mantém CGB/BSB e altera somente o periodo para 2027-01.
             Nao pergunte novamente origem/destino ja preenchidos. Consulte cache sem exigir mes se o contrato aceita consulta sem periodo; 'todos os meses' remove somente o filtro de periodo.
@@ -58,7 +57,7 @@ public class ChatV2SemanticClient {
             Faturas e historico financeiro usam financeiro.faturas, boletos usam financeiro.boletos. Nunca sao totais de vendas.
             Use exclusivamente faturaPagamento=ABERTO/PAGO/AMBOS, faturaTipoData=DATA_EMISSAO/DATA_VENCIMENTO,
             faturaInicio/faturaFim ISO inclusivos, faturaProduto=TODOS/AEREO/TERRESTRE, faturaNumero inteiro positivo,
-            faturaDocumento=PDF/CSV/BOLETO quando solicitado e faturaLimite de 1 a 50 para ultimas N faturas. Nao use parametros de viagem para faturas.
+            faturaDocumento=PDF/CSV/BOLETO quando solicitado. Nao use parametros de viagem para faturas.
             Nao existe data efetiva de pagamento nessa integracao. 'Pagas em setembro' pede confirmacao de emissao ou vencimento;
             nao suponha vencimento nem afirme quando foram pagas. DATA_PAGAMENTO nao e suportada.
             Sem periodo em abertas, deixe datas null: o servidor informa o intervalo padrao. Pagas/ambas exigem periodo.
@@ -67,8 +66,7 @@ public class ChatV2SemanticClient {
             Somente AEREO e TERRESTRE sao filtraveis; hotel/carro/seguro isolados exigem esclarecer a limitacao do agrupamento TERRESTRE.
             Pagamento, baixa, cancelamento e comprovante de pagamento NAO sao executaveis. Nao prometa gerar documento.
             Ida e volta ja informada nao deve ser perguntada novamente. Mes/periodo e suficiente para consulta de cache.
-            Multitrecho nao e suportado: explique a limitacao e ofereca atendimento; nunca converta silenciosamente em ida e volta nem elimine uma cidade.
-            O cache de tarifas nao filtra bagagem: nao afirme que uma busca esta restrita a bagagem incluida.
+            Varios destinos: peca qual consultar primeiro; nao escolha silenciosamente so um.
             Para cidades, converta IATA conhecido; Rio sem aeroporto e RIO, Sao Paulo e SAO, Cuiaba e CGB.
             Sem origem informada nem contexto valido, origem=null. Nao use a unidade comercial como aeroporto.
             Datas ISO. Ano de viagem omitido: proxima ocorrencia futura; BSP usa o ano informado ou atual.
@@ -100,8 +98,7 @@ public class ChatV2SemanticClient {
             Nao ofereca filtro por status confirmado/cancelado/pendente nem totais de vendas: nao sao suportados pela listagem.
             Buscar disponibilidade ou valores continua hotel.busca_hospedagem, nao hotel.dados_hotel.
             Para pacote, quartos e quantidade; nao use quartosJson. Nao invente ocupacao se nao informada.
-            Reembolso pode ser regra, solicitacao ou acompanhamento: esclareca se o pedido nao especificar. Nunca substitua reembolso por cancelamento.
-            Pedido de atendente usa conversa.atendimento_humano e preserva o assunto; 'sim' depois dessa sugestao continua o handoff, nao reinicia a coleta.
+            Reembolso pode ser regra ou acompanhamento: esclareca se o pedido nao especificar.
             Preparar emissao/cancelamento nunca significa autorizar conclusao. Use aereo.acoes_reserva.
             Quando nao houver capacidade, use orientacao_geral e explique a limitacao numa pergunta curta.
             """+"\nHoje: "+hoje+"\nCatalogo: "+catalogo+"\nContratos dos parametros: "+mapper.writeValueAsString(contratos);
@@ -109,8 +106,6 @@ public class ChatV2SemanticClient {
         if(contexto!=null) {
             ctx.put("intencao",contexto.getIntencao()); ctx.put("parametros",contexto.getParametros());
             ctx.put("perguntaPendente",contexto.getPergunta()); ctx.put("resultadoAnterior",contexto.getResultado());
-            ctx.put("pedidoOperacional",Objects.toString(contexto.getPedidoOperacional(),""));
-            ctx.put("assuntoHandoff",Objects.toString(contexto.getAssuntoHandoff(),""));
             if(contexto.capability()==ChatV2Capability.HOTEL_LISTA&&contexto.getListaHotelEstado()!=null){
                 var lista=contexto.getListaHotelEstado();
                 ctx.put("listaHotel",Map.of("pagina",lista.getPagina(),"temMais",lista.isTemMais(),"quantidadeOpcoes",lista.getOpcoes().size(),"opcaoSelecionada",Objects.toString(lista.getOpcaoSelecionada(),"")));

@@ -1505,7 +1505,7 @@ public class ChatConfiancaService {
             EncerrarConversaRequest request = new EncerrarConversaRequest();
             request.setConversaId(conversa.getId());
             request.setCodgUsuario(conversa.getSolicitanteCodgUsuario());
-            request.setCategoria("INATIVIDADE_IA");
+            request.setCategoria("RESOLVIDA_IA_AUTO");
             request.setMotivo("Encerrada automaticamente por inatividade apos atendimento da ConfIA.");
             request.setGestor(false);
             try {
@@ -2139,13 +2139,12 @@ public class ChatConfiancaService {
             Set<Long> idsResolvidasIa = new HashSet<>();
 
             for (Conversa conversa : conversasConfia) {
-                if (conversaAutoEncerradaPelaConfia(conversa)) {
-                    dashboard.setConfiaAutoEncerradas(dashboard.getConfiaAutoEncerradas() + 1);
-                    continue;
-                }
                 if (conversaResolvidaPelaConfia(conversa)) {
                     dashboard.setConfiaResolvidas(dashboard.getConfiaResolvidas() + 1);
                     idsResolvidasIa.add(conversa.getId());
+                    if (conversaAutoEncerradaPelaConfia(conversa)) {
+                        dashboard.setConfiaAutoEncerradas(dashboard.getConfiaAutoEncerradas() + 1);
+                    }
                 } else if (conversaConfiaEncaminhadaHumano(conversa)) {
                     dashboard.setConfiaEncaminhadasHumano(dashboard.getConfiaEncaminhadasHumano() + 1);
                 } else if (conversaConfiaEmAndamento(conversa)) {
@@ -2177,14 +2176,12 @@ public class ChatConfiancaService {
             return false;
         }
         String motivo = conversa.getMotivoEncerramento();
-        return !isBlank(motivo) && motivo.trim().startsWith("RESOLVIDA_IA")
-                && !conversaAutoEncerradaPelaConfia(conversa);
+        return !isBlank(motivo) && motivo.trim().startsWith("RESOLVIDA_IA");
     }
 
     private boolean conversaAutoEncerradaPelaConfia(Conversa conversa) {
         String motivo = conversa == null ? null : conversa.getMotivoEncerramento();
-        return !isBlank(motivo) && (motivo.trim().startsWith("RESOLVIDA_IA_AUTO")
-                || motivo.trim().startsWith("INATIVIDADE_IA"));
+        return !isBlank(motivo) && motivo.trim().startsWith("RESOLVIDA_IA_AUTO");
     }
 
     private boolean conversaConfiaEncaminhadaHumano(Conversa conversa) {
@@ -2651,15 +2648,6 @@ public class ChatConfiancaService {
         mensagem.setVisibilidade(interna ? VisibilidadeMensagem.INTERNA : VisibilidadeMensagem.PUBLICA);
         mensagem.setConteudo(conteudo);
         mensagem.setConteudoJson(conteudoJson);
-        if (remetenteTipo == RemetenteTipo.BOT && !isBlank(conteudoJson)) {
-            try {
-                JsonNode observacao = HORARIO_OBJECT_MAPPER.readTree(conteudoJson).path("observabilidade");
-                if ("chat.resultado-turno.v1".equals(observacao.path("schema").asText())
-                        && observacao.path("conversaId").asLong(-1) == conversa.getId()
-                        && observacao.path("mensagemPerguntaId").asLong(0) > 0)
-                    mensagem.setRespostaMensagemId(observacao.path("mensagemPerguntaId").asLong());
-            } catch (Exception ignored) { /* Payloads legados continuam compativeis. */ }
-        }
         mensagem.setStatus(StatusMensagem.ENVIADA);
         mensagem = manager.post("chat-confianca/persistencia/mensagens", mensagem, Mensagem.class);
 

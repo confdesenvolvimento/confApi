@@ -128,7 +128,6 @@ public class ChatConfiancaRemarcacaoService {
     private static final String FORMA_SUJEITA_VALIDACAO = "SUJEITA_VALIDACAO";
     private static final DateTimeFormatter DATA_BR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final int LIMITE_OPCOES = 50;
-    private static final int LIMITE_FALHAS_TARIFACAO = 3;
     private static final int STATUS_RESERVA_EMITIDA = 3;
     private static final int PAGINA_PADRAO_RESERVAS = 0;
     private static final int TAMANHO_PADRAO_RESERVAS = 10;
@@ -150,8 +149,8 @@ public class ChatConfiancaRemarcacaoService {
     private final ReservaAereoApi reservaAereoApi;
 
     /**
-     * Rateia somente a referencia tarifaria dos trechos selecionados. Taxas e
-     * bases comerciais de multa permanecem integrais. Desabilitado por padrao.
+     * Mantem o rateio dos valores originais por trecho disponivel para testes
+     * com fornecedores. Por padrao, a simulacao usa o valor integral da reserva.
      */
     @Value("${chat-confianca.remarcacao.ratear-valores-originais-por-trecho:false}")
     private boolean ratearValoresOriginaisPorTrecho;
@@ -457,9 +456,6 @@ public class ChatConfiancaRemarcacaoService {
         }
 
         simulacao.setResultadosJson(json(opcoes));
-        SelecaoPersistida selecaoPesquisa = selecaoPersistida(simulacao);
-        selecaoPesquisa.setFalhasTarifacao(0);
-        simulacao.setOfertaSelecionadaJson(json(selecaoPesquisa));
         simulacao.setStatus(AGUARDANDO_OPCAO);
         simulacao = salvar(simulacao);
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
@@ -594,10 +590,6 @@ public class ChatConfiancaRemarcacaoService {
         }
         SimulacaoRemarcacao simulacao = buscarValidar(id, request.getCodgUsuario());
         List<Trecho> opcoes = lerOpcoes(simulacao.getResultadosJson());
-        if (selecaoPersistida(simulacao).getFalhasTarifacao() >= LIMITE_FALHAS_TARIFACAO) {
-            throw regra(409, "Refaca a pesquisa antes de tentar confirmar outra tarifa. "
-                    + "As tentativas anteriores nao produziram uma previa valida.");
-        }
         Trecho opcao = item(opcoes, request.getOpcaoIndice(), "Opcao de voo invalida ou expirada.");
         FamiliaPreco familia = item(opcao.getFamilias(), request.getFamiliaIndice(), "Familia tarifaria invalida.");
 
@@ -647,39 +639,28 @@ public class ChatConfiancaRemarcacaoService {
         simulacao.setStatus(CALCULANDO);
         simulacao = salvar(simulacao);
 
-        String correlacao = java.util.UUID.randomUUID().toString();
-        long inicioTarifacao = System.nanoTime();
-        TarifarResponse tarifa;
-        try {
-            tarifa = aereoClient.tarifarEstrita(
-                    montarTarifacao(ordenarSelecoes(indicesObrigatorios, selecao),
-                            passageirosSelecionados));
-        } catch (AereoClient.TarifacaoException ex) {
-            return respostaFalhaTarifacao(simulacao, selecao, reserva, opcoes,
-                    codigoTarifacaoSeguro(ex.getCodigo()), correlacao, inicioTarifacao);
-        } catch (RuntimeException ex) {
-            return respostaFalhaTarifacao(simulacao, selecao, reserva, opcoes,
-                    "ERRO_INTEGRACAO", correlacao, inicioTarifacao);
-        }
-        String falhaTarifa = tarifa == null ? "RESPOSTA_VAZIA"
-                : Boolean.TRUE.equals(tarifa.getSessaoExpirada()) ? "OFERTA_EXPIRADA"
-                : tarifa.getException() != null ? "FORNECEDOR_REJEITOU"
-                : tarifa.getPreco() == null ? "RESPOSTA_INVALIDA" : null;
-        if (falhaTarifa != null) {
-            return respostaFalhaTarifacao(simulacao, selecao, reserva, opcoes,
-                    falhaTarifa, correlacao, inicioTarifacao);
+        TarifarResponse tarifa = aereoClient.tarifar(
+                montarTarifacao(ordenarSelecoes(indicesObrigatorios, selecao),
+                        passageirosSelecionados));
+        if (tarifa == null || tarifa.getException() != null || tarifa.getPreco() == null) {
+            simulacao.setStatus(AGUARDANDO_OPCAO);
+            simulacao = salvar(simulacao);
+            RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
+                    "Nao foi possivel confirmar essa tarifa",
+                    "A disponibilidade pode ter mudado. Escolha outra opcao ou refaca a pesquisa.");
+            response.setOpcoes(montarOpcoes(opcoes));
+            registrarEvento(simulacao, "REMARCACAO_TARIFACAO_INDISPONIVEL",
+                    "Tarifa selecionada nao pode ser confirmada.", null);
+            registrarCard(simulacao, response);
+            return response;
         }
 
         if (!possuiTarifaParaTodos(tarifa.getPreco(), passageirosSelecionados)) {
-            return respostaFalhaTarifacao(simulacao, selecao, reserva, opcoes,
-                    "PRECOS_INCOMPLETOS", correlacao, inicioTarifacao);
+            return bloquear(simulacao,
+                    "A companhia nao retornou o valor completo para todos os tipos de passageiro selecionados. "
+                            + "A equipe precisa cotar essa opcao manualmente.");
         }
 
-        NormalizacaoPreco normalizacao = identificarNormalizacaoPreco(tarifa.getPreco(), passageirosSelecionados);
-        if (!normalizacao.valida) {
-            return respostaFalhaTarifacao(simulacao, selecao, reserva, opcoes,
-                    "PRECOS_INCONSISTENTES", correlacao, inicioTarifacao);
-        }
         List<SelecaoTrechoPersistida> selecoesOrdenadas =
                 ordenarSelecoes(indicesObrigatorios, selecao);
         SelecaoTrechoPersistida primeiraSelecao = selecoesOrdenadas.get(0);
@@ -691,17 +672,10 @@ public class ChatConfiancaRemarcacaoService {
                 primeiraSelecao.getOpcaoView(), primeiraSelecao.getFamiliaView(),
                 selecoesOrdenadas, indicesObrigatorios, simulacao);
         if (!calculoPassageiros.isPermitido()) {
-            if (calculoPassageiros.getCodigoFalha() != null) {
-                return respostaFalhaTarifacao(simulacao, selecao, reserva, opcoes,
-                        calculoPassageiros.getCodigoFalha(), correlacao, inicioTarifacao);
-            }
             simulacao.setRegraSnapshotJson(json(calculoPassageiros.getRegras()));
             return bloquear(simulacao, calculoPassageiros.getMotivo());
         }
         RemarcacaoSimulacaoResponse.Previa previa = calculoPassageiros.getPrevia();
-        // So houve progresso quando a previa completa foi calculada. Uma
-        // tarifa nova valida ainda pode falhar por valores originais ausentes.
-        selecao.setFalhasTarifacao(0);
         simulacao.setOfertaSelecionadaJson(json(selecao));
         simulacao.setCalculoJson(json(previa));
         simulacao.setRegraId(calculoPassageiros.getRegraId());
@@ -725,64 +699,6 @@ public class ChatConfiancaRemarcacaoService {
         dadosEvento.put("companhia", simulacao.getCompanhiaIata());
         registrarEvento(simulacao, "REMARCACAO_PREVIA_GERADA",
                 "Previa de remarcacao gerada para atendimento.", json(dadosEvento));
-        registrarCard(simulacao, response);
-        return response;
-    }
-
-    private String codigoTarifacaoSeguro(String codigo) {
-        return Set.of("TIMEOUT", "HTTP_ERRO", "RESPOSTA_VAZIA", "RESPOSTA_INVALIDA",
-                "ERRO_INTEGRACAO").contains(codigo == null ? "" : codigo) ? codigo : "ERRO_INTEGRACAO";
-    }
-
-    private RemarcacaoSimulacaoResponse respostaFalhaTarifacao(
-            SimulacaoRemarcacao simulacao, SelecaoPersistida selecao, Reserva reserva,
-            List<Trecho> opcoes, String codigo, String correlacao, long inicio) {
-        int tentativas = Math.min(LIMITE_FALHAS_TARIFACAO, selecao.getFalhasTarifacao() + 1);
-        selecao.setFalhasTarifacao(tentativas);
-        simulacao.setOfertaSelecionadaJson(json(selecao));
-        boolean recuperar = tentativas >= LIMITE_FALHAS_TARIFACAO || "OFERTA_EXPIRADA".equals(codigo);
-        if (recuperar) {
-            // Voltar uma etapa nao pode reidratar as ofertas que acabaram de
-            // falhar. Preservamos a escolha/criterios, mas invalidamos o cache.
-            selecao.getTrechos().forEach(item -> item.setResultadosPesquisa(null));
-            simulacao.setOfertaSelecionadaJson(json(selecao));
-        }
-        simulacao.setStatus(recuperar ? AGUARDANDO_CRITERIOS : AGUARDANDO_OPCAO);
-        if (recuperar) simulacao.setResultadosJson(null);
-        simulacao = salvar(simulacao);
-        String mensagem = switch (codigo) {
-            case "TIMEOUT" -> "A confirmacao da tarifa demorou alem do limite. Isso nao confirma falta de assentos.";
-            case "OFERTA_EXPIRADA" -> "A sessao desta oferta expirou. Refaca a pesquisa para obter ofertas atualizadas.";
-            case "FORNECEDOR_REJEITOU" -> "O fornecedor nao confirmou esta oferta. Isso nao permite concluir que todos os voos estejam indisponiveis.";
-            case "PRECOS_ORIGINAIS_INCOMPLETOS" -> "Faltam valores originais individualizados para os passageiros selecionados. "
-                    + "A equipe de Reemissao precisa validar a cotacao, sem estimar medias entre passageiros.";
-            case "TAXAS_ORIGINAIS_AMBIGUAS" -> "Nao foi possivel associar com seguranca as taxas de cada trecho aos passageiros selecionados. "
-                    + "A equipe de Reemissao precisa validar os valores antes de calcular a previa.";
-            case "RESPOSTA_VAZIA", "RESPOSTA_INVALIDA", "PRECOS_INCOMPLETOS", "PRECOS_INCONSISTENTES" ->
-                    "O fornecedor nao retornou valores completos e consistentes para calcular a previa com seguranca.";
-            default -> "Ocorreu uma falha tecnica ao confirmar a tarifa. Isso nao confirma falta de assentos.";
-        };
-        mensagem += recuperar
-                ? " Suas datas, trechos e passageiros foram preservados. Refaca a pesquisa ou use Falar com um atendente para solicitar a Reemissao. Nenhuma alteracao ou cobranca foi realizada."
-                : " Voce pode tentar novamente ou escolher outra oferta. Nenhuma alteracao ou cobranca foi realizada.";
-        RemarcacaoSimulacaoResponse response = recuperar
-                ? respostaCriterios(simulacao, trecho(reserva, simulacao.getTrechoIndice()), mensagem)
-                : respostaBase(simulacao, "Nao foi possivel confirmar essa tarifa", mensagem);
-        if (!recuperar) response.setOpcoes(montarOpcoes(opcoes));
-        preencherPassageirosSelecionados(response, simulacao);
-        Map<String, Object> dados = new LinkedHashMap<>();
-        dados.put("schema", "chat.remarcacao.tarifacao.v1");
-        dados.put("correlacao", correlacao);
-        dados.put("simulacaoId", simulacao.getId());
-        dados.put("codigo", codigo);
-        dados.put("tentativasSemProgresso", tentativas);
-        dados.put("recuperacaoNecessaria", recuperar);
-        dados.put("quantidadeTrechos", indicesTrechosSimulacao(simulacao).size());
-        dados.put("duracaoMs", Math.max(0, (System.nanoTime() - inicio) / 1_000_000));
-        registrarEventoNaoBloqueante(simulacao, "REMARCACAO_TARIFACAO_INDISPONIVEL",
-                "Confirmacao da tarifa nao concluida.", json(dados));
-        LOG.log(Level.WARNING, "REMARCACAO_TARIFACAO correlacao={0} simulacao={1} codigo={2} tentativas={3}",
-                new Object[]{correlacao, simulacao.getId(), codigo, tentativas});
         registrarCard(simulacao, response);
         return response;
     }
@@ -1108,8 +1024,7 @@ public class ChatConfiancaRemarcacaoService {
             selecao.setOpcao(primeira.getOpcaoView());
             selecao.setFamilia(primeira.getFamiliaView());
         }
-        simulacao.setOfertaSelecionadaJson(selecao.getTrechos().isEmpty() && selecao.getFalhasTarifacao() == 0
-                ? null : json(selecao));
+        simulacao.setOfertaSelecionadaJson(selecao.getTrechos().isEmpty() ? null : json(selecao));
     }
 
     public RemarcacaoSimulacaoResponse consultar(Long id, Integer codgUsuario) {
@@ -1994,8 +1909,7 @@ public class ChatConfiancaRemarcacaoService {
                 if (chaves.add(chave)) resultado.add(trecho);
             }
         }
-        resultado.sort(java.util.Comparator.comparing(this::valorMenor,
-                java.util.Comparator.nullsLast(BigDecimal::compareTo)));
+        resultado.sort((a, b) -> valorMenor(a).compareTo(valorMenor(b)));
         diagnostico.opcoes = resultado.stream().limit(LIMITE_OPCOES).collect(Collectors.toList());
         return diagnostico;
     }
@@ -2029,21 +1943,17 @@ public class ChatConfiancaRemarcacaoService {
         if (possuiTarifaParaTodos(preco, passageirosSelecionados)) {
             NormalizacaoPreco normalizacao = identificarNormalizacaoPreco(
                     preco, passageirosSelecionados);
-            if (!normalizacao.valida) return ResultadoTarifaMinima.DADOS_INCOMPLETOS;
             Map<String, Integer> quantidadesPorTipo = contagensPassageiros(passageirosSelecionados);
-            Map<String, Integer> ordensPorTipo = new HashMap<>();
             for (Passageiro passageiro : passageirosSelecionados) {
                 int indice = reserva == null || reserva.getPassageiros() == null
                         ? -1 : reserva.getPassageiros().indexOf(passageiro);
                 BigDecimal tarifaOriginal = valoresOriginaisPassageiro(
                         reserva, passageiro, indice).getTarifa();
-                tarifaOriginal = tarifaOriginalSelecionada(tarifaOriginal, reserva, 1);
                 String tipo = tipoPassageiro(passageiro);
-                int ordemTipo = ordensPorTipo.merge(tipo, 1, Integer::sum);
                 BigDecimal novaTarifa = normalizacao.porPassageiro(
                         decimal(precoTipo(preco, tipo).getValorTarifa()),
                         quantidadesPorTipo.getOrDefault(tipo, 1),
-                        ComponentePreco.TARIFA, ordemTipo);
+                        ComponentePreco.TARIFA);
                 if (tarifaOriginal == null || novaTarifa == null) return ResultadoTarifaMinima.DADOS_INCOMPLETOS;
                 if (!tarifaIgualOuMaior(tarifaOriginal, novaTarifa)) return ResultadoTarifaMinima.ABAIXO_MINIMO;
             }
@@ -2055,7 +1965,6 @@ public class ChatConfiancaRemarcacaoService {
             novaTarifaTotal = decimal(preco.getTarifa());
         }
         BigDecimal tarifaOriginal = tarifaOriginalPassageiros(reserva, passageirosSelecionados);
-        tarifaOriginal = tarifaOriginalSelecionada(tarifaOriginal, reserva, 1);
         if (tarifaOriginal == null || novaTarifaTotal == null) return ResultadoTarifaMinima.DADOS_INCOMPLETOS;
         return tarifaIgualOuMaior(tarifaOriginal, novaTarifaTotal)
                 ? ResultadoTarifaMinima.COMPATIVEL : ResultadoTarifaMinima.ABAIXO_MINIMO;
@@ -2260,42 +2169,22 @@ public class ChatConfiancaRemarcacaoService {
         Boolean familiaTarifariaAlterada = indicesTrechos.size() > 1
                 ? familiaTarifariaAlterada(reserva, indicesTrechos, selecoes)
                 : null;
-        Set<Integer> indicesTaxasAmbiguas = new HashSet<>();
         Map<Integer, List<BigDecimal>> taxasEmbarquePorTrecho =
-                carregarTaxasEmbarquePorTrecho(reserva, indicesTaxasAmbiguas);
+                carregarTaxasEmbarquePorTrecho(reserva);
         Map<String, Integer> quantidadesPorTipo = contagensPassageiros(passageirosSelecionados);
         NormalizacaoPreco normalizacaoPreco = identificarNormalizacaoPreco(preco, passageirosSelecionados);
-        Map<String, Integer> ordensPorTipo = new HashMap<>();
         for (Passageiro passageiro : passageirosSelecionados) {
             int indice = reserva.getPassageiros().indexOf(passageiro);
             ValoresPassageiro originais = valoresOriginaisPassageiro(reserva, passageiro, indice);
-            if (originais.getTarifa() == null || originais.getTotal() == null) {
-                resultado.setCodigoFalha("PRECOS_ORIGINAIS_INCOMPLETOS");
-                resultado.setMotivo("Faltam valores originais individualizados para os passageiros selecionados. "
-                        + "A equipe de Reemissao precisa validar a cotacao, sem estimar medias entre passageiros.");
-                return resultado;
-            }
-            if (indicesTrechos.size() < reserva.getViagens().size() && indicesTaxasAmbiguas.contains(indice)) {
-                resultado.setCodigoFalha("TAXAS_ORIGINAIS_AMBIGUAS");
-                return resultado;
-            }
             houveRateioOriginal = houveRateioOriginal || originais.isRateado();
             String tipoPassageiro = tipoPassageiro(passageiro);
             int quantidadeTipo = quantidadesPorTipo.getOrDefault(tipoPassageiro, 1);
-            int ordemTipo = ordensPorTipo.merge(tipoPassageiro, 1, Integer::sum);
             PrecoTipo novoPreco = precoTipo(preco, tipoPassageiro);
             BigDecimal novaTarifa = normalizacaoPreco.porPassageiro(
                     decimal(novoPreco == null ? null : novoPreco.getValorTarifa()),
-                    quantidadeTipo, ComponentePreco.TARIFA, ordemTipo);
-            BigDecimal tarifaOriginalSelecionada = tarifaOriginalSelecionada(
-                    originais.getTarifa(), reserva, indicesTrechos.size());
-            // O Manager usa valorTarifa tambem como base de multa percentual.
-            // Recompomos a parte nao alterada apenas para o calculo da diferenca,
-            // preservando a base integral de multa e o contrato comercial existente.
-            BigDecimal novaTarifaParaRegra = novaTarifa == null ? null : novaTarifa.add(
-                    originais.getTarifa().subtract(tarifaOriginalSelecionada));
+                    quantidadeTipo, ComponentePreco.TARIFA);
             BigDecimal novaTaxaEmbarqueTrecho = novasTaxasPassageiro(
-                    novoPreco, quantidadeTipo, normalizacaoPreco, ordemTipo);
+                    novoPreco, quantidadeTipo, normalizacaoPreco);
             BigDecimal novaTaxaEmbarque = indicesTrechos.size() > 1
                     ? novaTaxaEmbarqueTrecho
                     : novaTaxaEmbarqueComTrechos(
@@ -2307,10 +2196,10 @@ public class ChatConfiancaRemarcacaoService {
             // O valor enviado ao Manager representa somente o acréscimo de DU/taxas
             // de serviço. A tarifa original já pode conter DU, RC e RAV.
             BigDecimal taxaServicoNova = novaTaxaServicoPassageiro(
-                    novoPreco, quantidadeTipo, normalizacaoPreco, ordemTipo);
+                    novoPreco, quantidadeTipo, normalizacaoPreco);
             BigDecimal taxaServicoOriginal = taxaServicoOriginal(originais);
             BigDecimal diferencaTarifariaParaDu = diferencaTarifariaParaDu(
-                    tarifaOriginalSelecionada, novaTarifa);
+                    originais.getTarifa(), novaTarifa);
             BigDecimal diferencaTaxaServico = calcularDuRemarcacao(
                     diferencaTarifariaParaDu,
                     taxaServicoNova,
@@ -2321,7 +2210,7 @@ public class ChatConfiancaRemarcacaoService {
                     trecho,
                     originais.getTarifa(),
                     originais.getTaxaEmbarque(),
-                    novaTarifaParaRegra,
+                    novaTarifa,
                     novaTaxaEmbarque,
                     diferencaTaxaServico,
                     originais.getTotal(),
@@ -2331,7 +2220,7 @@ public class ChatConfiancaRemarcacaoService {
             RegraAereaAlteracaoConsultaResponse regra = regraService.simular(regraRequest);
             resultado.getRegras().add(regra);
             if (exigeTarifaIgualOuMaior(regra)
-                    && !tarifaIgualOuMaior(tarifaOriginalSelecionada, novaTarifa)) {
+                    && !tarifaIgualOuMaior(originais.getTarifa(), novaTarifa)) {
                 resultado.setMotivo(MENSAGEM_TARIFA_ABAIXO_MINIMO);
                 return resultado;
             }
@@ -2360,8 +2249,8 @@ public class ChatConfiancaRemarcacaoService {
             item.setNome(nomePassageiro(passageiro, indice < 0 ? 0 : indice));
             item.setTipo(tipoPassageiro(passageiro));
             item.setFamiliaOriginal(familiaOriginal);
-            item.setTarifaOriginal(zero(tarifaOriginalSelecionada));
-            item.setNovaTarifa(zero(novaTarifa));
+            item.setTarifaOriginal(zero(calculo.getValorTarifaBase()));
+            item.setNovaTarifa(zero(calculo.getValorNovaTarifa()));
             item.setTaxaEmbarqueOriginal(zero(calculo.getValorTaxasBase()));
             item.setNovaTaxaEmbarque(zero(calculo.getValorNovasTaxas()));
             item.setTaxaServicoOriginal(taxaServicoOriginal);
@@ -2395,17 +2284,13 @@ public class ChatConfiancaRemarcacaoService {
                         + indicesTrechos.size() + " trechos selecionados. "
                         + "Esta e uma estimativa; valores e assentos dependem de validacao final."
                 : houveRateioOriginal
-                ? "Estimativa por passageiro com valores originais individualizados. "
+                ? "Estimativa por passageiro com valores originais rateados entre os trechos. "
                         + "A companhia e o atendente devem validar valores e assentos antes da conclusao."
                 : "Esta e uma estimativa por passageiro, nao uma alteracao concluida. "
                         + "Valores e assentos dependem de nova validacao pela companhia.");
         LocalDateTime validadeTarifa = LocalDateTime.now().plusMinutes(15);
         previa.setValidoAte(simulacao.getExpiraEm() != null && simulacao.getExpiraEm().isBefore(validadeTarifa)
                 ? simulacao.getExpiraEm() : validadeTarifa);
-        if (ratearValoresOriginaisPorTrecho) {
-            previa.setAviso(previa.getAviso() + " A tarifa original corresponde proporcionalmente aos trechos selecionados; "
-                    + "taxas e bases comerciais de multa permanecem integrais.");
-        }
         resultado.setPrevia(previa);
         resultado.setPermitido(true);
         return resultado;
@@ -3318,7 +3203,7 @@ public class ChatConfiancaRemarcacaoService {
 
     private BigDecimal valorTarifaOriginal(Reserva reserva) {
         ValorBase base = reserva.getValorReserva() == null ? null : reserva.getValorReserva().getValorBase();
-        return decimal(base == null ? null : base.getTarifa());
+        return ratear(decimal(base == null ? null : base.getTarifa()), reserva);
     }
 
     private BigDecimal valorTaxasOriginais(Reserva reserva) {
@@ -3329,23 +3214,21 @@ public class ChatConfiancaRemarcacaoService {
                 .add(zero(decimal(base.getRAV())))
                 .add(zero(decimal(base.getRC())))
                 .add(zero(decimal(base.getTaxaAssento())));
-        return taxas;
+        return ratear(taxas, reserva);
     }
 
-    private BigDecimal tarifaOriginalSelecionada(BigDecimal valor, Reserva reserva, int selecionados) {
-        if (valor == null || !ratearValoresOriginaisPorTrecho) return valor;
-        int total = reserva == null || reserva.getViagens() == null || reserva.getViagens().isEmpty()
-                ? 1 : reserva.getViagens().size();
-        int quantidade = Math.max(1, Math.min(total, selecionados));
-        return valor.multiply(BigDecimal.valueOf(quantidade))
-                .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
+    private BigDecimal ratear(BigDecimal valor, Reserva reserva) {
+        if (valor == null) return null;
+        if (!ratearValoresOriginaisPorTrecho) return valor;
+        int trechos = reserva.getViagens() == null || reserva.getViagens().isEmpty() ? 1 : reserva.getViagens().size();
+        return valor.divide(BigDecimal.valueOf(trechos), 2, RoundingMode.HALF_UP);
     }
 
     private boolean possuiTarifaParaTodos(Preco preco, List<Passageiro> passageiros) {
         if (preco == null || passageiros == null || passageiros.isEmpty()) return false;
         for (Passageiro passageiro : passageiros) {
             PrecoTipo tipo = precoTipo(preco, tipoPassageiro(passageiro));
-            if (tipo == null || !tipo.isValorTarifaInformado() || tipo.getValorTarifa() == null) return false;
+            if (tipo == null || tipo.getValorTarifa() == null) return false;
         }
         return true;
     }
@@ -3366,7 +3249,7 @@ public class ChatConfiancaRemarcacaoService {
     private NormalizacaoPreco identificarNormalizacaoPreco(
             Preco preco,
             List<Passageiro> passageiros) {
-        NormalizacaoPreco resultado = new NormalizacaoPreco(
+        return new NormalizacaoPreco(
                 componenteAgrupado(preco, passageiros, ComponentePreco.TARIFA),
                 componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_EMBARQUE),
                 componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_COMBUSTIVEL),
@@ -3374,32 +3257,6 @@ public class ChatConfiancaRemarcacaoService {
                 componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_BAGAGEM),
                 componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_MENOR),
                 componenteAgrupado(preco, passageiros, ComponentePreco.TAXA_SERVICO));
-        for (ComponentePreco componente : ComponentePreco.values()) {
-            if (!componenteConsistente(preco, passageiros, componente)) resultado.valida = false;
-        }
-        return resultado;
-    }
-
-    private boolean componenteConsistente(Preco preco, List<Passageiro> passageiros, ComponentePreco componente) {
-        Map<String, Integer> quantidades = contagensPassageiros(passageiros);
-        BigDecimal unitarios = BigDecimal.ZERO;
-        BigDecimal agrupados = BigDecimal.ZERO;
-        boolean repetidoComValor = false;
-        for (Map.Entry<String, Integer> entrada : quantidades.entrySet()) {
-            if (entrada.getValue() == null || entrada.getValue() <= 0) continue;
-            PrecoTipo tipo = precoTipo(preco, entrada.getKey());
-            BigDecimal valor = valorComponente(tipo, componente);
-            if (tipo == null || valor == null) return false;
-            if (tipo.getQuantidade() != null && !tipo.getQuantidade().equals(entrada.getValue())) return false;
-            unitarios = unitarios.add(valor.multiply(BigDecimal.valueOf(entrada.getValue())));
-            agrupados = agrupados.add(valor);
-            repetidoComValor |= entrada.getValue() > 1 && valor.signum() > 0;
-        }
-        BigDecimal total = totalComponente(preco, componente);
-        // Sem um total verificavel, um valor para dois ADT pode ser unitario ou
-        // agrupado. Nao escolher um dos dois formatos por suposicao.
-        if (total == null) return !repetidoComValor;
-        return toleranciaTotal(total, unitarios) || toleranciaTotal(total, agrupados);
     }
 
     private boolean componenteAgrupado(
@@ -3431,7 +3288,8 @@ public class ChatConfiancaRemarcacaoService {
         BigDecimal diferencaAgrupada = totalInformado.subtract(totalPorTipo).abs();
         BigDecimal diferencaUnitarios = totalInformado.subtract(totalPorPassageiro).abs();
         // So divide quando o total informado confirma o comportamento
-        // agrupado. A validacao separada bloqueia ambiguidades sem total.
+        // agrupado. Se o fornecedor nao informar o total, preservamos o
+        // contrato padrao (valor unitario) para evitar uma divisao indevida.
         return diferencaAgrupada.compareTo(diferencaUnitarios) < 0
                 && toleranciaTotal(totalInformado, totalPorTipo);
     }
@@ -3440,9 +3298,7 @@ public class ChatConfiancaRemarcacaoService {
         if (preco == null) return null;
         switch (componente) {
             case TARIFA:
-                // preco.tarifa nao possui contrato de total do grupo; nao serve
-                // para decidir se o valor por tipo deve ser dividido.
-                return decimal(preco.getTotalTarifa());
+                return primeiroDecimal(preco.getTotalTarifa(), preco.getTarifa());
             case TAXA_EMBARQUE:
                 return decimal(preco.getTotalTaxaEmbarque());
             case TAXA_COMBUSTIVEL:
@@ -3484,6 +3340,8 @@ public class ChatConfiancaRemarcacaoService {
 
     private boolean toleranciaTotal(BigDecimal informado, BigDecimal calculado) {
         BigDecimal tolerancia = new BigDecimal("0.05");
+        BigDecimal percentual = informado.abs().multiply(new BigDecimal("0.005"));
+        if (percentual.compareTo(tolerancia) > 0) tolerancia = percentual;
         return informado.subtract(calculado).abs().compareTo(tolerancia) <= 0;
     }
 
@@ -3499,24 +3357,23 @@ public class ChatConfiancaRemarcacaoService {
     private BigDecimal novasTaxasPassageiro(
             PrecoTipo preco,
             int quantidade,
-            NormalizacaoPreco normalizacao,
-            int ordem) {
+            NormalizacaoPreco normalizacao) {
         if (preco == null) return null;
         return zero(normalizacao.porPassageiro(
                         decimal(preco.getValorTaxaEmbarque()), quantidade,
-                        ComponentePreco.TAXA_EMBARQUE, ordem))
+                        ComponentePreco.TAXA_EMBARQUE))
                 .add(zero(normalizacao.porPassageiro(
                         decimal(preco.getValorTaxaCombustivel()), quantidade,
-                        ComponentePreco.TAXA_COMBUSTIVEL, ordem)))
+                        ComponentePreco.TAXA_COMBUSTIVEL)))
                 .add(zero(normalizacao.porPassageiro(
                         decimal(preco.getValorTaxaAssento()), quantidade,
-                        ComponentePreco.TAXA_ASSENTO, ordem)))
+                        ComponentePreco.TAXA_ASSENTO)))
                 .add(zero(normalizacao.porPassageiro(
                         decimal(preco.getValorTaxaBagagem()), quantidade,
-                        ComponentePreco.TAXA_BAGAGEM, ordem)))
+                        ComponentePreco.TAXA_BAGAGEM)))
                 .add(zero(normalizacao.porPassageiro(
                         decimal(preco.getValorTaxaMenorDesacompanhado()), quantidade,
-                        ComponentePreco.TAXA_MENOR, ordem)));
+                        ComponentePreco.TAXA_MENOR)));
     }
 
     private BigDecimal novaTaxaEmbarqueComTrechos(
@@ -3529,6 +3386,12 @@ public class ChatConfiancaRemarcacaoService {
         if (quantidadeTrechos <= 1 || originais == null) {
             return nova;
         }
+        if (ratearValoresOriginaisPorTrecho) {
+            // Modo de teste: preserva o comportamento legado, sem recompor
+            // os trechos a partir do valor integral da reserva.
+            return nova;
+        }
+
         BigDecimal originalTotal = zero(originais.getTaxaEmbarqueIntegral());
         if (originalTotal.signum() == 0) {
             originalTotal = zero(originais.getTaxaEmbarque());
@@ -3557,8 +3420,7 @@ public class ChatConfiancaRemarcacaoService {
         return nova.add(originalNaoAlterado).setScale(2, RoundingMode.HALF_UP);
     }
 
-    private Map<Integer, List<BigDecimal>> carregarTaxasEmbarquePorTrecho(
-            Reserva reserva, Set<Integer> indicesAmbiguos) {
+    private Map<Integer, List<BigDecimal>> carregarTaxasEmbarquePorTrecho(Reserva reserva) {
         Map<Integer, List<BigDecimal>> resultado = new HashMap<>();
         if (reserva == null
                 || vazio(reserva.getLocalizador())
@@ -3579,13 +3441,8 @@ public class ChatConfiancaRemarcacaoService {
             int quantidadeTrechos = reserva.getViagens().size();
             for (int indice = 0; indice < reserva.getPassageiros().size(); indice++) {
                 Passageiro passageiro = reserva.getPassageiros().get(indice);
-                com.confApi.db.confManager.passageiro.Passageiro passageiroDb;
-                try {
-                    passageiroDb = localizarPassageiroDb(reservaDb, passageiro, indice, reserva);
-                } catch (AssociacaoPassageiroAmbiguaException ex) {
-                    indicesAmbiguos.add(indice);
-                    continue;
-                }
+                com.confApi.db.confManager.passageiro.Passageiro passageiroDb =
+                        localizarPassageiroDb(reservaDb, passageiro, indice);
                 if (passageiroDb == null
                         || passageiroDb.getReservaValores() == null
                         || passageiroDb.getReservaValores().size() != quantidadeTrechos) {
@@ -3608,65 +3465,36 @@ public class ChatConfiancaRemarcacaoService {
     private com.confApi.db.confManager.passageiro.Passageiro localizarPassageiroDb(
             ReservaAereo reservaDb,
             Passageiro passageiro,
-            int indice,
-            Reserva reservaHub) {
+            int indice) {
         if (reservaDb == null || reservaDb.getPassageiros() == null) {
             return null;
         }
 
         String cpf = somenteDigitos(passageiro == null ? null : passageiro.getCpf());
-        boolean cpfAmbiguo = false;
         if (!vazio(cpf)) {
-            List<com.confApi.db.confManager.passageiro.Passageiro> porCpf = reservaDb.getPassageiros().stream()
+            com.confApi.db.confManager.passageiro.Passageiro porCpf = reservaDb.getPassageiros().stream()
                     .filter(java.util.Objects::nonNull)
                     .filter(item -> cpf.equals(somenteDigitos(item.getCpf())))
-                    .collect(Collectors.toList());
-            boolean unicoNaReserva = passageiroUnicoPorCpf(reservaHub, cpf);
-            if (porCpf.size() == 1 && unicoNaReserva) return porCpf.get(0);
-            cpfAmbiguo = porCpf.size() > 1 || (!porCpf.isEmpty() && !unicoNaReserva);
+                    .findFirst()
+                    .orElse(null);
+            if (porCpf != null) {
+                return porCpf;
+            }
         }
 
         String nome = normalizar(nomePassageiro(passageiro, Math.max(0, indice)));
-        List<com.confApi.db.confManager.passageiro.Passageiro> porNome = reservaDb.getPassageiros().stream()
+        return reservaDb.getPassageiros().stream()
                 .filter(java.util.Objects::nonNull)
                 .filter(item -> nome.equals(normalizar(
                         (item.getNomePassageiro() == null ? "" : item.getNomePassageiro())
                                 + " "
                                 + (item.getSobrenomePassageiro() == null ? "" : item.getSobrenomePassageiro()))))
-                .filter(item -> vazio(cpf) || vazio(somenteDigitos(item.getCpf()))
-                        || cpf.equals(somenteDigitos(item.getCpf())))
-                .collect(Collectors.toList());
-        boolean nomeUnico = passageiroUnicoPorNome(reservaHub, nome);
-        if (porNome.size() == 1 && nomeUnico) return porNome.get(0);
-        if (cpfAmbiguo || porNome.size() > 1 || (!porNome.isEmpty() && !nomeUnico)) {
-            throw new AssociacaoPassageiroAmbiguaException();
-        }
-        return null;
-    }
-
-    private static class AssociacaoPassageiroAmbiguaException extends IllegalStateException {
-        private AssociacaoPassageiroAmbiguaException() {
-            super("Nao foi possivel associar o passageiro de forma unica.");
-        }
-    }
-
-    private boolean passageiroUnicoPorCpf(Reserva reserva, String cpf) {
-        return reserva != null && reserva.getPassageiros() != null && !vazio(cpf)
-                && reserva.getPassageiros().stream().filter(java.util.Objects::nonNull)
-                        .filter(item -> cpf.equals(somenteDigitos(item.getCpf()))).count() == 1;
-    }
-
-    private boolean passageiroUnicoPorNome(Reserva reserva, String nome) {
-        return reserva != null && reserva.getPassageiros() != null && !vazio(nome)
-                && reserva.getPassageiros().stream().filter(java.util.Objects::nonNull)
-                        .filter(item -> nome.equals(normalizar(nomePassageiro(item, 0)))).count() == 1;
+                .findFirst()
+                .orElse(null);
     }
 
     private BigDecimal novaTaxaServicoPassageiro(PrecoTipo preco) {
         if (preco == null) return BigDecimal.ZERO;
-        for (Double valor : new Double[]{preco.getValorTaxaServico(), preco.getValorFee(), preco.getValorRav()}) {
-            if (valor != null && (!Double.isFinite(valor) || valor < 0)) return null;
-        }
         return zero(decimal(preco.getValorTaxaServico()))
                 .add(zero(decimal(preco.getValorFee())))
                 .add(zero(decimal(preco.getValorRav())));
@@ -3675,13 +3503,12 @@ public class ChatConfiancaRemarcacaoService {
     private BigDecimal novaTaxaServicoPassageiro(
             PrecoTipo preco,
             int quantidade,
-            NormalizacaoPreco normalizacao,
-            int ordem) {
+            NormalizacaoPreco normalizacao) {
         return normalizacao == null
                 ? novaTaxaServicoPassageiro(preco)
                 : normalizacao.porPassageiro(
                         novaTaxaServicoPassageiro(preco), quantidade,
-                        ComponentePreco.TAXA_SERVICO, ordem);
+                        ComponentePreco.TAXA_SERVICO);
     }
 
     private BigDecimal diferencaTarifariaParaDu(BigDecimal tarifaOriginal, BigDecimal novaTarifa) {
@@ -3727,16 +3554,17 @@ public class ChatConfiancaRemarcacaoService {
         ValoresPassageiro resultado = new ValoresPassageiro();
         ValorBase base = reserva.getValorReserva() == null
                 ? null : reserva.getValorReserva().getValorBase();
-        ValorPassageiro valorPassageiro = localizarValorPassageiro(base, passageiro, indice, reserva);
+        ValorPassageiro valorPassageiro = localizarValorPassageiro(base, passageiro, indice);
         if (valorPassageiro != null) {
             resultado.setTaxaEmbarqueIntegral(
                     zero(decimal(valorPassageiro.getTaxaEmbarque())));
-            resultado.setTarifa(decimal(valorPassageiro.getTarifa()));
-            resultado.setTaxaEmbarque(zero(decimal(valorPassageiro.getTaxaEmbarque())));
-            resultado.setTaxaDu(decimal(valorPassageiro.getTaxaDU()));
-            resultado.setTaxaRc(decimal(valorPassageiro.getRC()));
-            resultado.setRav(decimal(valorPassageiro.getRAV()));
-            resultado.setTotal(decimal(valorPassageiro.getTotal()));
+            resultado.setTarifa(ratear(decimal(valorPassageiro.getTarifa()), reserva));
+            resultado.setTaxaEmbarque(ratear(
+                    zero(decimal(valorPassageiro.getTaxaEmbarque())), reserva));
+            resultado.setTaxaDu(ratear(decimal(valorPassageiro.getTaxaDU()), reserva));
+            resultado.setTaxaRc(ratear(decimal(valorPassageiro.getRC()), reserva));
+            resultado.setRav(ratear(decimal(valorPassageiro.getRAV()), reserva));
+            resultado.setTotal(ratear(decimal(valorPassageiro.getTotal()), reserva));
             if (resultado.getTotal() == null && resultado.getTarifa() != null) {
                 resultado.setTotal(somar(resultado.getTarifa(), resultado.getTaxaEmbarque()));
             }
@@ -3745,11 +3573,6 @@ public class ChatConfiancaRemarcacaoService {
 
         int quantidadePassageiros = Math.max(
                 1, reserva.getPassageiros() == null ? 0 : reserva.getPassageiros().size());
-        if (quantidadePassageiros > 1) {
-            // Totais agregados nao comprovam igualdade entre ADT/CHD/INF, nem
-            // entre dois adultos. Nao inventar uma tarifa individual por media.
-            return resultado;
-        }
         resultado.setTaxaEmbarqueIntegral(
                 zero(decimal(base == null ? null : base.getTaxaEmbarque()))
                         .divide(BigDecimal.valueOf(quantidadePassageiros), 2, RoundingMode.HALF_UP));
@@ -3772,44 +3595,37 @@ public class ChatConfiancaRemarcacaoService {
     private ValorPassageiro localizarValorPassageiro(
             ValorBase base,
             Passageiro passageiro,
-            int indice,
-            Reserva reserva) {
+            int indice) {
         if (base == null || base.getValorPassageiroList() == null
                 || base.getValorPassageiroList().isEmpty()) {
             return null;
         }
         String cpf = somenteDigitos(passageiro == null ? null : passageiro.getCpf());
         if (!vazio(cpf)) {
-            List<ValorPassageiro> porCpf = base.getValorPassageiroList().stream()
+            ValorPassageiro porCpf = base.getValorPassageiroList().stream()
                     .filter(java.util.Objects::nonNull)
                     .filter(item -> cpf.equals(somenteDigitos(item.getCpf())))
-                    .collect(Collectors.toList());
-            // Um documento repetido (por exemplo, responsavel e INF) nao
-            // identifica sozinho qual tarifa pertence a cada passageiro.
-            if (porCpf.size() == 1 && passageiroUnicoPorCpf(reserva, cpf)) return porCpf.get(0);
+                    .findFirst()
+                    .orElse(null);
+            if (porCpf != null) return porCpf;
         }
 
         String nome = normalizar(nomePassageiro(passageiro, Math.max(0, indice)));
-        List<ValorPassageiro> porNome = base.getValorPassageiroList().stream()
+        ValorPassageiro porNome = base.getValorPassageiroList().stream()
                 .filter(java.util.Objects::nonNull)
                 .filter(item -> !vazio(item.getNomePassageiro())
                         && nome.equals(normalizar(item.getNomePassageiro())))
-                .filter(item -> vazio(cpf) || vazio(somenteDigitos(item.getCpf()))
-                        || cpf.equals(somenteDigitos(item.getCpf())))
-                .collect(Collectors.toList());
-        if (porNome.size() == 1 && passageiroUnicoPorNome(reserva, nome)) return porNome.get(0);
-        ValorPassageiro porIndice = indice >= 0 && indice < base.getValorPassageiroList().size()
+                .findFirst()
+                .orElse(null);
+        if (porNome != null) return porNome;
+        return indice >= 0 && indice < base.getValorPassageiroList().size()
                 ? base.getValorPassageiroList().get(indice) : null;
-        // Identificadores divergentes nao podem ser ignorados pelo fallback de ordem.
-        return reserva.getPassageiros() != null && reserva.getPassageiros().size() == 1
-                && base.getValorPassageiroList().size() == 1
-                && porIndice != null && vazio(porIndice.getNomePassageiro()) && vazio(porIndice.getCpf())
-                ? porIndice : null;
     }
 
     private BigDecimal ratearPorPassageiro(BigDecimal valor, Reserva reserva, int passageiros) {
         if (valor == null) return null;
-        return valor.divide(BigDecimal.valueOf(Math.max(1, passageiros)), 2, RoundingMode.HALF_UP);
+        return ratear(valor, reserva)
+                .divide(BigDecimal.valueOf(Math.max(1, passageiros)), 2, RoundingMode.HALF_UP);
     }
 
     private String familiaOriginal(TrechoReserva trecho) {
@@ -3909,22 +3725,15 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     private BigDecimal valorMenor(Trecho trecho) {
-        if (trecho == null || trecho.getFamilias() == null) return null;
+        if (trecho == null || trecho.getFamilias() == null) return BigDecimal.valueOf(Long.MAX_VALUE);
         return trecho.getFamilias().stream().map(this::valorFamilia).filter(java.util.Objects::nonNull)
-                .min(BigDecimal::compareTo).orElse(null);
+                .min(BigDecimal::compareTo).orElse(BigDecimal.valueOf(Long.MAX_VALUE));
     }
 
     private BigDecimal valorFamilia(FamiliaPreco familia) {
         if (familia == null || familia.getPreco() == null) return null;
-        Double[] valores = {familia.getPreco().getTotalGeral(), familia.getPreco().getTotal(),
-                familia.getPreco().getTotalTarifa(), familia.getPreco().getTarifa()};
-        // totalGeral pode ser zero apenas por default do DTO. Preferir um total
-        // positivo valido sem transformar tarifas gratuitas legitimas em null.
-        for (Double valor : valores) if (valor != null && Double.isFinite(valor) && valor > 0) return decimal(valor);
-        // Sem outro total informado, zero de totalGeral pode ser apenas default.
-        // Nao apresentar uma oferta sem preco como se fosse gratuita.
-        return primeiroDecimal(familia.getPreco().getTotal(), familia.getPreco().getTotalTarifa(),
-                familia.getPreco().getTarifa());
+        return primeiroDecimal(familia.getPreco().getTotalGeral(), familia.getPreco().getTotal(),
+                familia.getPreco().getTotalTarifa(), familia.getPreco().getTarifa());
     }
 
     private String descricaoBagagem(FamiliaPreco familia) {
@@ -4043,13 +3852,12 @@ public class ChatConfiancaRemarcacaoService {
 
     private BigDecimal primeiroDecimal(Double... valores) {
         if (valores == null) return null;
-        for (Double valor : valores) if (valor != null && Double.isFinite(valor) && valor >= 0) return decimal(valor);
+        for (Double valor : valores) if (valor != null && valor >= 0) return decimal(valor);
         return null;
     }
 
     private BigDecimal decimal(Double valor) {
-        return valor == null || !Double.isFinite(valor) || valor < 0
-                ? null : BigDecimal.valueOf(valor).setScale(2, RoundingMode.HALF_UP);
+        return valor == null ? null : BigDecimal.valueOf(valor).setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal zero(BigDecimal valor) {
@@ -4140,7 +3948,6 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     private static class NormalizacaoPreco {
-        private boolean valida = true;
         private final boolean tarifaAgrupada;
         private final boolean taxaEmbarqueAgrupada;
         private final boolean taxaCombustivelAgrupada;
@@ -4170,20 +3977,10 @@ public class ChatConfiancaRemarcacaoService {
                 BigDecimal valor,
                 int quantidade,
                 ComponentePreco componente) {
-            return porPassageiro(valor, quantidade, componente, 1);
-        }
-
-        private BigDecimal porPassageiro(
-                BigDecimal valor, int quantidade, ComponentePreco componente, int ordem) {
             if (valor == null || quantidade <= 1 || !agrupado(componente)) {
                 return valor;
             }
-            BigDecimal unitario = valor.divide(BigDecimal.valueOf(quantidade), 2, RoundingMode.HALF_UP);
-            // O ultimo passageiro recebe somente o residuo de centavos para que
-            // a soma das linhas seja exatamente o total agrupado do fornecedor.
-            return ordem == quantidade
-                    ? valor.subtract(unitario.multiply(BigDecimal.valueOf(quantidade - 1)))
-                    : unitario;
+            return valor.divide(BigDecimal.valueOf(quantidade), 2, RoundingMode.HALF_UP);
         }
 
         private boolean agrupado(ComponentePreco componente) {
@@ -4210,7 +4007,6 @@ public class ChatConfiancaRemarcacaoService {
 
     @Data
     private static class SelecaoPersistida {
-        private int falhasTarifacao;
         private RemarcacaoSimulacaoResponse.OpcaoVoo opcao;
         private RemarcacaoSimulacaoResponse.Familia familia;
         private List<SelecaoTrechoPersistida> trechos = new ArrayList<>();
@@ -4248,7 +4044,6 @@ public class ChatConfiancaRemarcacaoService {
 
     @Data
     private static class CalculoPassageiros {
-        private String codigoFalha;
         private boolean permitido;
         private String motivo;
         private Long regraId;

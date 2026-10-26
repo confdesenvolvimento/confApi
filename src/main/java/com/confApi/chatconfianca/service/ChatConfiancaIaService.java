@@ -65,42 +65,6 @@ public class ChatConfiancaIaService {
     private ChatV2Executor v2Executor;
     private com.confApi.chatconfianca.configuracao.ChatIaConfiguracaoShadowService configuracaoShadow;
     private ChatIaTiRespostaService respostaTi;
-    private com.confApi.chatconfianca.reservas.ChatReservaConsultaService consultaReservas;
-    private com.confApi.chatconfianca.contexto.ChatAjudaContextualService ajudaContextual;
-    private com.confApi.chatconfianca.contexto.ChatReservaCopilotoConsultaService copilotoConsulta;
-    private com.confApi.chatconfianca.contexto.ChatCopilotoRegrasService copilotoRegras;
-    private com.confApi.chatconfianca.indicadores.ChatVendaAereaChatService indicadoresVendas;
-    private com.confApi.chatconfianca.operacional.ChatResumoOperacionalService resumoOperacional;
-    @Autowired(required=false)
-    public void setResumoOperacional(com.confApi.chatconfianca.operacional.ChatResumoOperacionalService service) {
-        this.resumoOperacional=service;
-    }
-    @Autowired(required=false)
-    public void setIndicadoresVendas(com.confApi.chatconfianca.indicadores.ChatVendaAereaChatService service) {
-        this.indicadoresVendas=service;
-    }
-    @Autowired(required=false)
-    public void setCopilotoConsulta(com.confApi.chatconfianca.contexto.ChatReservaCopilotoConsultaService service) {
-        this.copilotoConsulta=service;
-    }
-    @Autowired(required=false)
-    public void setCopilotoRegras(com.confApi.chatconfianca.contexto.ChatCopilotoRegrasService service) {
-        this.copilotoRegras=service;
-    }
-    @Autowired(required = false)
-    public void setAjudaContextual(com.confApi.chatconfianca.contexto.ChatAjudaContextualService service) {
-        this.ajudaContextual=service;
-    }
-    @Autowired(required = false)
-    public void setConsultaReservas(com.confApi.chatconfianca.reservas.ChatReservaConsultaService service) {
-        this.consultaReservas = service;
-    }
-    @org.springframework.beans.factory.annotation.Value("${chat-confianca.observabilidade.build:}")
-    private String observabilidadeBuild;
-    @org.springframework.beans.factory.annotation.Value("${chat-confianca.observabilidade.ambiente:}")
-    private String observabilidadeAmbiente;
-    @org.springframework.beans.factory.annotation.Value("${chat-confianca.observabilidade.teste:false}")
-    private boolean observabilidadeTeste;
 
     @Autowired(required = false)
     public void setRespostaTi(ChatIaTiRespostaService service) { this.respostaTi = service; }
@@ -147,7 +111,6 @@ public class ChatConfiancaIaService {
     public ChatConfiancaIaResponse perguntar(PerguntarConfiaRequest request) {
         long inicioTurno = System.nanoTime();
         validarPergunta(request);
-        request.setContextoCliente(com.confApi.chatconfianca.contexto.ChatContextoClienteContrato.validar(request.getContextoCliente()));
         SessaoChatResponse sessao = chatConfiancaService.montarSessao(request.getCodgUsuario(), request.getCodgAgenciaSessao());
         Conversa conversa = request.getConversaId() == null
                 ? null
@@ -160,16 +123,7 @@ public class ChatConfiancaIaService {
                 ? new ArrayList<>()
                 : chatConfiancaService.listarMensagens(conversa.getId(), request.getCodgUsuario(), false, false);
         Integer agenciaV2 = sessao.getAgencia() == null ? null : sessao.getAgencia().getCodgAgencia();
-        boolean operacionalSolicitado=resumoOperacional!=null&&resumoOperacional.podeAtender(request,sessao,historico);
-        if (operacionalSolicitado && Boolean.TRUE.equals(request.getEncaminharAtendente()))
-            throw regra("Peça o resumo separadamente do encaminhamento ao atendimento humano.");
-        boolean vendasSolicitadas=!operacionalSolicitado&&indicadoresVendas!=null&&indicadoresVendas.podeAtender(request,sessao,historico);
-        boolean ajudaSolicitada=!operacionalSolicitado&&!vendasSolicitadas&&ajudaContextual!=null&&ajudaContextual.podeAtender(request,sessao,historico);
-        boolean regrasCopilotoSolicitadas=copilotoRegras!=null&&copilotoRegras.podeAtender(request);
-        if ((operacionalSolicitado || vendasSolicitadas || ajudaSolicitada || regrasCopilotoSolicitadas
-                || com.confApi.chatconfianca.contexto.ChatContextoClienteContrato.suportaCopiloto(request.getContextoCliente()))
-                && conversa != null) validarConversaAjudaContextual(conversa);
-        ChatV2Plan planoV2 = v2Planner == null || operacionalSolicitado || vendasSolicitadas || ajudaSolicitada || regrasCopilotoSolicitadas ? null : v2Planner.planejar(
+        ChatV2Plan planoV2 = v2Planner == null ? null : v2Planner.planejar(
                 request.getMensagem(), conversa, historico, agenciaV2, request.getCodgUsuario());
         ChatConfiancaDecisaoIa decisao = planoV2 != null ? decisaoIaService.decidirV2(
                 planoV2, request.getMensagem(), request.getDepartamentoUnidadeId(), departamentosRoteamento,
@@ -208,29 +162,13 @@ public class ChatConfiancaIaService {
         response.setIntencao(roteamento.intencao());
         response.getTopicos().addAll(roteamento.topicos());
 
-        ChatIaTiRespostaService.Resultado pilotoTi = respostaTi == null || operacionalSolicitado || vendasSolicitadas || ajudaSolicitada || regrasCopilotoSolicitadas ? null : respostaTi.tentar(
+        ChatIaTiRespostaService.Resultado pilotoTi = respostaTi == null ? null : respostaTi.tentar(
                 conversa, mensagemUsuario == null ? null : mensagemUsuario.getId(), request, sessao, decisao, planoV2,
                 1L + historico.stream().filter(m -> m != null && m.getRemetenteTipo() == RemetenteTipo.USUARIO
                         && Objects.equals(m.getRemetenteCodgUsuario(), request.getCodgUsuario())).count());
         boolean tiAplicada = pilotoTi != null && pilotoTi.aplicada();
         ChatResponseDTO respostaConfia = tiAplicada ? pilotoTi.resposta()
-                : chamarConfia(request, sessao, historico, decisao, planoV2, conversa.getId());
-        if (operacionalSolicitado) {
-            Conversa atual=chatConfiancaService.buscarConversaNaSessao(conversa.getId(),request.getCodgUsuario(),sessao);
-            if(atual==null) throw new RegraDeNegocioException(409,"A conversa nao esta mais disponivel para este resumo.");
-            validarConversaAjudaContextual(atual);
-        }
-        if(copilotoConsulta!=null && ("CONSULTA_RESERVAS".equals(decisao.getFonte()) || "VENDAS_CONSULTA".equals(decisao.getFonte()))) {
-            respostaConfia=copilotoConsulta.enriquecer(request,sessao,conversa,respostaConfia);
-            JsonNode dado=com.confApi.chatconfianca.reservas.ChatReservaConsultaContexto.payload(respostaConfia,objectMapper);
-            JsonNode resultadoVendas="VENDAS_CONSULTA".equals(decisao.getFonte())
-                    ?com.confApi.chatconfianca.indicadores.ChatVendaAereaIndicadoresContexto.payload(respostaConfia,objectMapper):null;
-            // O resumo de vendas invalida selecoes antigas sem representar uma falha do proprio resumo.
-            if(dado!=null&&"CONSULTA_BLOQUEADA".equals(dado.path("statusConsulta").asText())
-                    &&(!"VENDAS_CONSULTA".equals(decisao.getFonte())||resultadoVendas==null)) {
-                decisao.setStatusResultado("FALLBACK");decisao.setErroCodigo("COPILOTO_REFERENCIA_BLOQUEADA");
-            }
-        }
+                : chamarConfia(request, sessao, historico, decisao, planoV2);
         if (respostaConfia != null) {
             String conclusao = ChatContinuidadeOperacional.concluirSemPromessa(respostaConfia.content());
             if (!Objects.equals(conclusao, respostaConfia.content())) {
@@ -241,11 +179,7 @@ public class ChatConfiancaIaService {
                 if (planoV2 != null) planoV2.setResultado("RESPOSTA_INCONCLUSIVA");
             }
         }
-        if (tiAplicada || "REMARCACAO_ESTADO".equals(decisao.getFonte()) || "FATURAS_CONSULTA".equals(decisao.getFonte())
-                || "GUARDA_OPERACIONAL".equals(decisao.getFonte()) || "RESERVA_SELECIONADA".equals(decisao.getFonte())
-                || "CONSULTA_RESERVAS".equals(decisao.getFonte()) || "AJUDA_CONTEXTUAL".equals(decisao.getFonte())
-                || "COPILOTO_REGRAS".equals(decisao.getFonte()) || "VENDAS_CONSULTA".equals(decisao.getFonte())
-                || "RESUMO_OPERACIONAL".equals(decisao.getFonte())) {
+        if (tiAplicada || "REMARCACAO_ESTADO".equals(decisao.getFonte()) || "FATURAS_CONSULTA".equals(decisao.getFonte())) {
             roteamento = roteamentoDaDecisao(decisao);
             response.setDepartamentoSugerido(null);
             response.setDepartamentoSugeridoConfianca(null);
@@ -304,16 +238,16 @@ public class ChatConfiancaIaService {
         if (jsonPesquisaAereo != null) {
             response.setResposta(jsonPesquisaAereo);
             response.setSugerirAtendente(false);
+            if (planoV2 != null) {
                 ObjectNode payloadPesquisa = objectMapper.createObjectNode();
                 payloadPesquisa.put("schema", "chat.pesquisa-viagem.v2");
-                if (planoV2 != null) payloadPesquisa.set("confiaV2", objectMapper.valueToTree(planoV2));
+                payloadPesquisa.set("confiaV2", objectMapper.valueToTree(planoV2));
                 try { payloadPesquisa.set("pesquisa", objectMapper.readTree(jsonPesquisaAereo)); }
                 catch (JsonProcessingException ex) { throw new IllegalStateException("Pesquisa V2 invalida", ex); }
                 response.setMensagemBot(chatConfiancaService.registrarMensagemBot(
                         conversa.getId(), "Pesquisa preparada para abertura no portal. Nenhuma reserva foi efetuada.",
-                        ChatResultadoTurno.anexar(payloadPesquisa.toString(), objectMapper, conversa.getId(),
-                                mensagemUsuario == null ? null : mensagemUsuario.getId(), decisao, planoV2,
-                                respostaConfia, "PESQUISA_PREPARADA", observabilidadeBuild, observabilidadeAmbiente, observabilidadeTeste)));
+                        payloadPesquisa.toString()));
+            }
             conversa=aplicarEncaminhamentoConfirmado(request,response,conversa);
             if (respostaTi != null) respostaTi.registrar(pilotoTi);
             compararConfiguracao(conversa, mensagemUsuario, sessao, decisao, planoV2, request, departamentosRoteamento);
@@ -331,36 +265,19 @@ public class ChatConfiancaIaService {
                 request.getMensagem());
         if (!isBlank(acaoSolicitada) && response.getActions().stream()
                 .filter(Objects::nonNull)
-                .anyMatch(action -> action.destino()==null && acaoSolicitada.equals(action.code()))) {
+                .anyMatch(action -> acaoSolicitada.equals(action.code()))) {
             response.setAcaoSolicitada(acaoSolicitada);
         }
-        boolean possuiAcaoHumana = response.getActions().stream().filter(Objects::nonNull)
-                .anyMatch(action -> action.destino()==null && "FALAR_ATENDENTE".equals(action.code()));
-        boolean possuiOpcaoHumanaCopiloto=response.getActions().stream().filter(Objects::nonNull)
-                .anyMatch(action -> action.destino()!=null && "FALAR_ATENDENTE".equals(action.code()));
-        if (possuiAcaoHumana && ChatPedidoOperacional.pedidoHumano(request.getMensagem()))
-            response.setAcaoSolicitada("FALAR_ATENDENTE");
         response.setSugerirAtendente((tiAplicada && pilotoTi.sugerirAtendente())
-                || possuiAcaoHumana || (!possuiOpcaoHumanaCopiloto && deveSugerirAtendente(request.getMensagem(), resposta)));
+                || deveSugerirAtendente(request.getMensagem(), resposta));
 
-        String metadadosResposta=metadadosPilotoTi(metadadosV2(metadadosRespostaConfia(response,
-                payloadReservasRecentes,payloadMelhoresTarifasAereas),planoV2),pilotoTi);
-        metadadosResposta=com.confApi.chatconfianca.financeiro.ChatFaturasContexto.anexar(metadadosResposta,respostaConfia,conversa.getId(),objectMapper);
-        metadadosResposta=com.confApi.chatconfianca.reservas.ChatReservaConsultaContexto.anexar(metadadosResposta,respostaConfia,conversa.getId(),objectMapper);
-        if ("RESUMO_OPERACIONAL".equals(decisao.getFonte()))
-            metadadosResposta=com.confApi.chatconfianca.operacional.ChatResumoOperacionalContexto.anexar(metadadosResposta,respostaConfia,objectMapper);
-        if ("VENDAS_CONSULTA".equals(decisao.getFonte()))
-            metadadosResposta=com.confApi.chatconfianca.indicadores.ChatVendaAereaIndicadoresContexto.anexar(metadadosResposta,respostaConfia,conversa.getId(),objectMapper);
-        if ("AJUDA_CONTEXTUAL".equals(decisao.getFonte()))
-            metadadosResposta=com.confApi.chatconfianca.contexto.ChatAjudaContextualHistorico.anexar(metadadosResposta,respostaConfia,objectMapper);
-        if("COPILOTO_REGRAS".equals(decisao.getFonte()))
-            metadadosResposta=com.confApi.chatconfianca.contexto.ChatReservaCopilotoConsultaService.anexarRegras(metadadosResposta,respostaConfia,objectMapper);
         Mensagem mensagemBot = chatConfiancaService.registrarMensagemBot(
                 conversa.getId(),
                 resposta,
-                ChatResultadoTurno.anexar(metadadosResposta,
-                        objectMapper, conversa.getId(), mensagemUsuario == null ? null : mensagemUsuario.getId(),
-                        decisao, planoV2, respostaConfia, null, observabilidadeBuild, observabilidadeAmbiente, observabilidadeTeste)
+                com.confApi.chatconfianca.financeiro.ChatFaturasContexto.anexar(metadadosPilotoTi(metadadosV2(metadadosRespostaConfia(
+                        response,
+                        payloadReservasRecentes,
+                        payloadMelhoresTarifasAereas), planoV2), pilotoTi), respostaConfia, conversa.getId(), objectMapper)
         );
         response.setMensagemBot(mensagemBot);
 
@@ -372,18 +289,6 @@ public class ChatConfiancaIaService {
                 conversa, mensagemUsuario, sessao, decisao,
                 request, response, inicioTurno);
         return response;
-    }
-
-    private void validarConversaAjudaContextual(Conversa conversa) {
-        boolean confia=false;
-        try { confia="CONFIA".equalsIgnoreCase(objectMapper.readTree(conversa.getMetadadosJson()).path("origem").asText()); }
-        catch (Exception ignored) { }
-        StatusConversa status=conversa.getStatus();
-        if (!confia || status==null || status==StatusConversa.ENCERRADA || status==StatusConversa.CANCELADA
-                || status==StatusConversa.RESOLVIDA || conversa.getEncerradoEm()!=null
-                || status==StatusConversa.AGUARDANDO_ATENDENTE || status==StatusConversa.EM_ATENDIMENTO
-                || status==StatusConversa.TRANSFERIDA || conversa.getAtendenteResponsavelCodgUsuario()!=null)
-            throw new RegraDeNegocioException(409,"Abra uma conversa ativa com a ConfIA para usar a ajuda contextual. O atendimento humano atual nao foi alterado.");
     }
 
     public ChatConfiancaIaResponse encaminharAtendente(PerguntarConfiaRequest request) {
@@ -457,125 +362,12 @@ public class ChatConfiancaIaService {
     private ChatResponseDTO chamarConfia(PerguntarConfiaRequest request,
                                          SessaoChatResponse sessao,
                                          List<Mensagem> historico,
-                                         ChatConfiancaDecisaoIa decisao, ChatV2Plan planoV2, Long conversaId) {
+                                         ChatConfiancaDecisaoIa decisao, ChatV2Plan planoV2) {
         List<ChatMessageDTO> messages = new ArrayList<>();
         try {
             Long codgAgencia = sessao.getAgencia() == null || sessao.getAgencia().getCodgAgencia() == null
                     ? 0L
                     : sessao.getAgencia().getCodgAgencia().longValue();
-            if (resumoOperacional != null) {
-                ChatResponseDTO resumo=resumoOperacional.tentar(request,sessao,conversaId,historico);
-                if(resumo!=null) {
-                    JsonNode dado=com.confApi.chatconfianca.operacional.ChatResumoOperacionalContexto.payload(resumo,objectMapper);
-                    String status=dado==null?"ERRO_INTEGRACAO":dado.path("statusConsulta").asText("ERRO_INTEGRACAO");
-                    decisao.setAplicada(true);decisao.setFonte("RESUMO_OPERACIONAL");decisao.setIntencao("agencia.resumo_operacional");
-                    decisao.setTopicos(List.of("agencia.resumo_operacional"));decisao.setAcao("consultar_resumo_operacional");
-                    decisao.setFerramenta(null);decisao.setMemorias(List.of());decisao.setDepartamento(null);decisao.setDepartamentoConfianca(0);
-                    decisao.setMotivo("Resumo factual por fonte e periodo, agencia revalidada; cobertura parcial explicita e nenhuma operacao comercial.");
-                    decisao.setStatusResultado("ERRO_INTEGRACAO".equals(status)?"ERRO":"DADOS_CONSULTADOS".equals(status)?"SUCESSO":"FALLBACK");
-                    decisao.setErroCodigo("ERRO_INTEGRACAO".equals(status)?"RESUMO_FONTES_INDISPONIVEIS":null);
-                    return resumo;
-                }
-            }
-            if (indicadoresVendas != null) {
-                ChatResponseDTO vendas=indicadoresVendas.tentar(request,sessao,conversaId,historico);
-                if (vendas != null) {
-                    JsonNode dado=com.confApi.chatconfianca.indicadores.ChatVendaAereaIndicadoresContexto.payload(vendas,objectMapper);
-                    String status=dado==null?"ERRO_INTEGRACAO":dado.path("statusConsulta").asText("ERRO_INTEGRACAO");
-                    decisao.setAplicada(true);decisao.setFonte("VENDAS_CONSULTA");decisao.setIntencao("aereo.vendas_indicadores");
-                    decisao.setTopicos(List.of("aereo.vendas_indicadores"));decisao.setAcao("consultar_vendas_aereas");
-                    decisao.setFerramenta(null);decisao.setMemorias(List.of());decisao.setDepartamento(null);decisao.setDepartamentoConfianca(0);
-                    decisao.setMotivo("Indicadores agregados na origem pela data de emissão e agência autorizada; situação atual e moedas separadas, sem somar páginas nem executar operação comercial.");
-                    decisao.setStatusResultado("ERRO_INTEGRACAO".equals(status)?"ERRO":
-                            Set.of("CONSULTA_BLOQUEADA","CAPACIDADE_INDISPONIVEL","SEM_RESULTADO").contains(status)
-                            ||dado!=null&&Set.of("VALOR_NAO_DISPONIVEL","DADOS_PARCIAIS").contains(dado.path("resultadoTarefa").asText())?"FALLBACK":"SUCESSO");
-                    decisao.setErroCodigo("ERRO_INTEGRACAO".equals(status)?"INDICADORES_VENDAS_INDISPONIVEIS":null);
-                    return vendas;
-                }
-            }
-            if(copilotoRegras!=null && copilotoRegras.podeAtender(request)) {
-                ChatResponseDTO regras=copilotoRegras.tentar(request,sessao,conversaId);
-                if(regras!=null) {
-                    JsonNode dado=com.confApi.chatconfianca.contexto.ChatReservaCopilotoConsultaService.payloadRegras(regras,objectMapper);
-                    String status=dado==null?"ERRO_INTEGRACAO":dado.path("statusConsulta").asText("ERRO_INTEGRACAO");
-                    decisao.setAplicada(true);decisao.setFonte("COPILOTO_REGRAS");decisao.setIntencao("aereo.regra_tarifaria");
-                    decisao.setTopicos(List.of("aereo.regra_tarifaria"));decisao.setAcao("consultar_regras");
-                    decisao.setFerramenta(null);decisao.setMemorias(List.of());decisao.setDepartamento(null);decisao.setDepartamentoConfianca(0);
-                    decisao.setMotivo("Consulta de regras pelo ID autorizado, PNR e companhia confirmados; nenhuma operacao comercial executada.");
-                    decisao.setStatusResultado("ERRO_INTEGRACAO".equals(status)?"ERRO":"DADOS_CONSULTADOS".equals(status)?"SUCESSO":"FALLBACK");
-                    decisao.setErroCodigo("ERRO_INTEGRACAO".equals(status)?"COPILOTO_REGRAS_INDISPONIVEL":null);
-                    return regras;
-                }
-            }
-            if(ajudaContextual!=null) {
-                ChatResponseDTO ajuda=ajudaContextual.tentar(request,sessao,conversaId,historico);
-                if(ajuda!=null) {
-                    JsonNode dado=com.confApi.chatconfianca.contexto.ChatAjudaContextualHistorico.payload(ajuda,objectMapper);
-                    String status=dado==null?"ERRO_INTEGRACAO":dado.path("resultadoTarefa").asText("ERRO_INTEGRACAO");
-                    String intencao=dado==null?"orientacao_geral":dado.path("intencao").asText("orientacao_geral");
-                    decisao.setAplicada(true);decisao.setIntencao(intencao);decisao.setTopicos(List.of(intencao));
-                    decisao.setFonte("AJUDA_CONTEXTUAL");decisao.setAcao("ajuda_contextual");decisao.setFerramenta(null);
-                    decisao.setMemorias(List.of());decisao.setDepartamento(null);decisao.setDepartamentoConfianca(0);
-                    decisao.setMotivo("Ajuda factual com referencia reconsultada e permissoes de servidor; documentos somente por clique autenticado.");
-                    decisao.setStatusResultado("ERRO_INTEGRACAO".equals(status)?"ERRO":Set.of("CONSULTA_BLOQUEADA","SEM_RESULTADO").contains(status)?"FALLBACK":"SUCESSO");
-                    decisao.setErroCodigo("ERRO_INTEGRACAO".equals(status)?"AJUDA_CONTEXTUAL_INDISPONIVEL":null);
-                    if(planoV2!=null){planoV2.setResultado(status);planoV2.setParametros(new LinkedHashMap<>());planoV2.setPergunta(null);}
-                    return ajuda;
-                }
-            }
-            // O mesmo executor factual atende V1/V2 antes de guardas de indicador ou lookup por PNR.
-            boolean contextoHotel = planoV2 != null && planoV2.getIntencao() != null
-                    && planoV2.getIntencao().startsWith("hotel.");
-            if (consultaReservas != null && !contextoHotel
-                    && !ChatV2Planner.preservarOperacaoPorLocalizador(request.getMensagem(), planoV2)) {
-                ChatResponseDTO consulta = consultaReservas.tentar(request.getMensagem(), conversaId,
-                        codgAgencia, request.getCodgUsuario().longValue(), historico);
-                if (consulta != null) {
-                    JsonNode dado = com.confApi.chatconfianca.reservas.ChatReservaConsultaContexto.payload(consulta, objectMapper);
-                    String status = dado == null ? "ERRO_INTEGRACAO" : dado.path("statusConsulta").asText("ERRO_INTEGRACAO");
-                    decisao.setAplicada(true);decisao.setIntencao("aereo.reservas_recentes");
-                    decisao.setTopicos(List.of("aereo.reservas_recentes"));decisao.setFonte("CONSULTA_RESERVAS");
-                    decisao.setAcao("consulta_reservas_aereas");decisao.setFerramenta(null);decisao.setMemorias(List.of());
-                    decisao.setDepartamento(null);decisao.setDepartamentoConfianca(0);
-                    decisao.setMotivo("Consulta factual de reservas com filtros validados e agencia da sessao; sem emissao ou cobranca.");
-                    decisao.setStatusResultado("ERRO_INTEGRACAO".equals(status)?"ERRO":
-                            Set.of("SEM_RESULTADO","CONSULTA_BLOQUEADA").contains(status)?"FALLBACK":"SUCESSO");
-                    decisao.setErroCodigo("ERRO_INTEGRACAO".equals(status)?"CONSULTA_RESERVAS_INDISPONIVEL":null);
-                    if(planoV2!=null){planoV2.setIntencao("aereo.reservas_recentes");planoV2.setParametros(new LinkedHashMap<>());
-                        planoV2.setResultado(status);planoV2.setErro(null);planoV2.setPergunta("AGUARDANDO_DADOS".equals(status)?consulta.content():null);}
-                    return consulta;
-                }
-            }
-            ChatPedidoOperacional.Orientacao pedido = ChatPedidoOperacional.avaliar(request.getMensagem());
-            if (pedido == null && ChatPedidoOperacional.pedidoCondicaoComercial(request.getMensagem())) {
-                String conteudo = ChatConhecimentoComercial.vigente(request.getMensagem(), baseMemoria(sessao),
-                        decisao.getMemorias(), LocalDate.now(), objectMapper);
-                if (conteudo == null) conteudo = ChatConhecimentoComercial.vigenteCadastro(request.getMensagem(),
-                        baseMemoria(sessao), chatService.listarCondicoesComerciais(baseMemoria(sessao)), LocalDate.now(), objectMapper);
-                pedido = conteudo == null ? ChatPedidoOperacional.condicaoSemFonte()
-                        : new ChatPedidoOperacional.Orientacao("financeiro.condicoes_comerciais", "ORIENTACAO_COM_FONTE", conteudo, false);
-            }
-            if (pedido == null && (planoV2 == null || planoV2.isLegado()) && ChatPedidoOperacional.pedidoHumano(request.getMensagem()))
-                pedido = new ChatPedidoOperacional.Orientacao("atendimento.humano", "HANDOFF_SUGERIDO",
-                        "Posso encaminhar sua solicitação com o histórico. Confirme a equipe sugerida ou escolha o departamento desejado antes de iniciar o atendimento humano.", true);
-            if (pedido != null) {
-                decisao.setIntencao(pedido.intencao());
-                decisao.setTopicos(List.of(pedido.intencao()));
-                decisao.setFonte("GUARDA_OPERACIONAL");
-                decisao.setMotivo("Pedido validado contra as capacidades disponíveis; nenhuma operação comercial executada.");
-                decisao.setAcao(pedido.humano() ? "FALAR_ATENDENTE" : null);
-                decisao.setFerramenta(null); decisao.setMemorias(List.of());
-                decisao.setDepartamento(null); decisao.setDepartamentoConfianca(0);
-                decisao.setStatusResultado(Set.of("CAPACIDADE_INDISPONIVEL", "SEM_CONHECIMENTO").contains(pedido.resultado()) ? "FALLBACK" : "SUCESSO");
-                decisao.setErroCodigo(null);
-                if (planoV2 != null) {
-                    planoV2.setAssuntoHandoff(pedido.intencao());
-                    planoV2.setIntencao(pedido.humano() ? "conversa.atendimento_humano" : "orientacao_geral");
-                    planoV2.setParametros(new LinkedHashMap<>()); planoV2.setPergunta(null);
-                    planoV2.setResultado(pedido.resultado()); planoV2.setLegado(false);
-                }
-                return pedido.resposta();
-            }
             String orientacaoEtapa = ChatContinuidadeOperacional.orientarEtapa(
                     request.getMensagem(), request.getConversaId(), historico, objectMapper);
             if (orientacaoEtapa != null) {
@@ -602,23 +394,6 @@ public class ChatConfiancaIaService {
             }
             String mensagemOperacional = ChatContinuidadeOperacional.completarLocalizador(
                     request.getMensagem(), historico, objectMapper);
-            var selecaoReserva = ChatSelecaoReserva.identificar(request.getMensagem(), request.getConversaId(), historico, objectMapper);
-            if (selecaoReserva != null && selecaoReserva.ambigua()) {
-                if (planoV2 != null) planoV2.setResultado("AGUARDANDO_DADOS");
-                decisao.setStatusResultado("SUCESSO");
-                return new ChatResponseDTO(null, "Mais de uma reserva da lista corresponde a esse nome. Informe o localizador da reserva desejada ou use a ação da própria lista.", List.of(), null, List.of(), List.of());
-            }
-            if (selecaoReserva != null) {
-                mensagemOperacional = "Consultar os dados da reserva " + selecaoReserva.localizador();
-                decisao.setIntencao("aereo.reserva_detalhes"); decisao.setAcao("reserva_aerea_detalhes");
-                decisao.setAplicada(true); decisao.setFonte("RESERVA_SELECIONADA");
-                decisao.setMemorias(List.of()); decisao.setDepartamento(null); decisao.setDepartamentoConfianca(0);
-                if (planoV2 != null) {
-                    planoV2.setIntencao("aereo.reserva_detalhes");
-                    planoV2.setParametros(new LinkedHashMap<>(Map.of("localizador", selecaoReserva.localizador())));
-                    planoV2.setPergunta(null); planoV2.setLegado(false);
-                }
-            }
             ConversationRequestDTO conversation = new ConversationRequestDTO(
                     "confia",
                     baseMemoria(sessao),
@@ -761,21 +536,6 @@ public class ChatConfiancaIaService {
                 marcarResultadoIa(decisao, null);
                 return null;
             }
-            boolean pediuCotacao = ChatPedidoOperacional.normalizar(request.getMensagem())
-                    .matches(".*\\b(cotacao|cotar|menor tarifa|melhores tarifas|pesquise voos|pesquisar voos)\\b.*");
-            boolean temPreco = resposta.content() != null && resposta.content().matches("(?s).*R\\$\\s*[0-9].*");
-            Map<String, Object> fonteCotacao = pediuCotacao && temPreco ? extrairPayloadMelhoresTarifasAereas(resposta) : null;
-            boolean temFonte = fonteCotacao != null && "OK".equalsIgnoreCase(Objects.toString(fonteCotacao.get("status"), ""));
-            if (!temFonte && resposta.toolCalls() != null) temFonte = resposta.toolCalls().stream()
-                    .filter(Objects::nonNull).anyMatch(t -> "search_cheapest_packages".equals(t.name())
-                        && t.arguments() != null
-                        && "chat.melhor-oferta-pacote.v1".equals(t.arguments().get("schema"))
-                        && "OK".equals(t.arguments().get("status")));
-            if (pediuCotacao && temPreco && !temFonte) {
-                decisao.setStatusResultado("FALLBACK"); decisao.setErroCodigo("COTACAO_SEM_FONTE");
-                if (planoV2 != null) planoV2.setResultado("SEM_RESULTADO");
-                return new ChatResponseDTO(null, "Não obtive uma cotação rastreável para confirmar esses valores. Posso preparar uma pesquisa ou encaminhar ao atendimento com os critérios informados; não há uma pesquisa em andamento em segundo plano.", List.of(), null, List.of(), List.of(), List.of(ChatPedidoOperacional.acaoHumana()));
-            }
             List<ChatActionDTO> todasAcoes = mesclarAcoes(actions, resposta.actions());
             ChatResponseDTO respostaFinal = new ChatResponseDTO(
                     resposta.id(),
@@ -910,11 +670,6 @@ public class ChatConfiancaIaService {
             long inicioTurno) {
         long duracaoTotalMs = Math.max(0L,
                 (System.nanoTime() - inicioTurno) / 1_000_000L);
-        if (response == null || response.getMensagemBot() == null) {
-            decisao.setStatusResultado("ERRO");
-            // Preservar a causa operacional ja conhecida; persistencia e verificada pelo monitor.
-            if (isBlank(decisao.getErroCodigo())) decisao.setErroCodigo("RESPOSTA_NAO_PERSISTIDA");
-        }
         chatIaDecisaoAuditService.registrar(
                 conversa == null ? null : conversa.getId(),
                 mensagemUsuario == null ? null : mensagemUsuario.getId(),
