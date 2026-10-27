@@ -3228,7 +3228,7 @@ public class ChatConfiancaRemarcacaoService {
         if (preco == null || passageiros == null || passageiros.isEmpty()) return false;
         for (Passageiro passageiro : passageiros) {
             PrecoTipo tipo = precoTipo(preco, tipoPassageiro(passageiro));
-            if (tipo == null || tipo.getValorTarifa() == null) return false;
+            if (tipo == null || !tipo.isValorTarifaInformado() || tipo.getValorTarifa() == null) return false;
         }
         return true;
     }

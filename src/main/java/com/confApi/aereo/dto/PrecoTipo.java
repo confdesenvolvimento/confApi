@@ -1,6 +1,10 @@
 package com.confApi.aereo.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Setter;
 
 @Data
 public class PrecoTipo {
@@ -11,6 +15,10 @@ public class PrecoTipo {
     private Double valorFee = 0.0;
     private Double valorRav = 0.0;
     private Double valorTarifa = 0.0;
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    @Setter(AccessLevel.NONE)
+    private boolean valorTarifaInformado;
     private Double valorTarifaNet = 0.0;
     private Double valorTaxaAssento = 0.0;
     private Double valorTaxaBagagem = 0.0;
@@ -22,4 +30,9 @@ public class PrecoTipo {
     private Double percMKP = 0.0;
     private Integer tipoMKP = 0;
     private Double totalPrecoTipo = 0.0;
+
+    public void setValorTarifa(Double valorTarifa) {
+        this.valorTarifa = valorTarifa;
+        this.valorTarifaInformado = valorTarifa != null;
+    }
 }
