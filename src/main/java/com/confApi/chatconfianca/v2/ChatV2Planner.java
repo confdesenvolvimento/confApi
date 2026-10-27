@@ -20,6 +20,8 @@ public class ChatV2Planner {
     private final ChatV2Properties properties;
     private final ChatV2SemanticClient semantic;
     private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Value("${chat-confianca.reservas-consulta.enabled:true}")
+    private boolean consultaReservasEnabled=true;
     public ChatV2Planner(ChatV2Properties properties, ChatV2SemanticClient semantic, ObjectMapper mapper) {
         this.properties=properties; this.semantic=semantic; this.mapper=mapper;
     }
@@ -28,9 +30,25 @@ public class ChatV2Planner {
                               Integer agencia, Integer usuario) {
         if(!properties.participa(agencia,usuario))return null;
         ChatV2Plan anterior=contexto(conversa,agencia,usuario);
+        // Consultas factuais conhecidas nao precisam de uma chamada ao modelo para escolher a ferramenta.
+        if(consultaReservasEnabled && properties.permite(ChatV2Capability.RESERVAS.code)
+                &&!preservarOperacaoPorLocalizador(mensagem,anterior)
+                &&(anterior==null||anterior.getIntencao()==null||!anterior.getIntencao().startsWith("hotel."))) {
+            var estado=com.confApi.chatconfianca.reservas.ChatReservaConsultaContexto.recuperar(historico,
+                    conversa==null?null:conversa.getId(),agencia==null?null:agencia.longValue(),usuario==null?null:usuario.longValue(),mapper);
+            var pedido=com.confApi.chatconfianca.reservas.ChatReservaConsultaService.interpretarConsulta(mensagem,estado);
+            if(pedido!=null){
+                var consulta=ChatV2Plan.of(ChatV2Capability.RESERVAS);consulta.setFonte("V2_CONSULTA_REGISTROS");
+                consulta.setPergunta(pedido.pergunta());consulta.setAgencia(agencia);consulta.setUsuario(usuario);
+                consulta.setAtualizadoEm(System.currentTimeMillis());return consulta;
+            }
+        }
         if(financeiroFaturas(anterior)&&!com.confApi.chatconfianca.financeiro.ChatFaturasContexto.permiteContinuidadeV2(historico,usuario,mapper))anterior=null;
         String t=normalizar(mensagem);
-        ChatV2Plan p=continuarFaturas(mensagem,anterior);
+        ChatV2Plan p=continuarHandoff(t,anterior);
+        if(p==null)p=confirmarBuscaSemBagagem(t,anterior);
+        if(p==null)p=detalharOpcaoAerea(mensagem,anterior);
+        if(p==null)p=continuarFaturas(mensagem,anterior);
         if(p==null)p=com.confApi.chatconfianca.hotel.ChatIaHotelListaContexto.comando(mensagem,anterior);
         if(p==null)p=com.confApi.chatconfianca.hotel.ChatIaHotelReservaContexto.escolher(mensagem,anterior);
         if(p==null)p=com.confApi.chatconfianca.hotel.ChatIaHotelContexto.escolher(mensagem,anterior);
@@ -48,10 +66,9 @@ public class ChatV2Planner {
             if(precisaSemantica&&properties.isSemanticEnabled()) {
                 try {
                     ChatV2Plan interpretado=semantic.decidir(mensagem,anterior,LocalDate.now());
-                    // Semantic output is a complete snapshot. Null explicitly clears a slot.
-                    // Merging here would resurrect cancelled dates/filters from the preceding turn.
                     if(anterior==null)interpretado.setContinuar(false);
                     completarCorrecaoDePeriodo(interpretado,anterior,t);
+                    preservarContinuacao(interpretado,anterior,t);
                     p=interpretado;
                 } catch(Exception ex) {
                     if(p==null) {
@@ -69,6 +86,7 @@ public class ChatV2Planner {
         if(p.capability()==ChatV2Capability.HUMANO&&anterior!=null) {
             p.setAssuntoHandoff(anterior.capability()==ChatV2Capability.HUMANO?anterior.getAssuntoHandoff():anterior.getIntencao());
         }
+        preservarPedidoOperacional(p,anterior,t);
         boolean contextoHotel=anterior!=null&&(anterior.capability()==ChatV2Capability.HOTEL_RESERVA||anterior.capability()==ChatV2Capability.HOTEL_LISTA)
                 &&!t.matches(".*\\b(aereo|aerea|voo|voos|passagem|passagens|financeiro|boleto|boletos|fatura|faturas|seguro|carro|pacote)\\b.*");
         boolean mencionaHotel=t.matches(".*\\b(hotel|hoteis|hospedagem|hospedagens)\\b.*");
@@ -123,7 +141,7 @@ public class ChatV2Planner {
                 p.setPergunta("Posso consultar faturas e orientar o acesso aos documentos, mas não efetuo pagamento, baixa ou cancelamento. Deseja consultar ou falar com o atendimento financeiro?");
             }
         }
-        if(!properties.permite(p.getIntencao())) { p.setLegado(true);p.setFonte("V2_FORA_ESCOPO"); }
+        if(p.capability()!=ChatV2Capability.HUMANO&&!properties.permite(p.getIntencao())) { p.setLegado(true);p.setFonte("V2_FORA_ESCOPO"); }
         // Origin may never be inferred from agency/base. Require evidence in the request or retained state.
         if(p.capability()!=null && p.capability().tool!=null && p.capability()!=ChatV2Capability.HOTEL
                 && (anterior==null || !p.isContinuar())
@@ -138,11 +156,45 @@ public class ChatV2Planner {
             if(consulta.pergunta()!=null)p.setPergunta(consulta.pergunta());
         }
         retirarPerguntaDeRotaJaInformada(p);
+        if(pesquisaAerea(p)&&t.matches(".*\\bbagage(?:m|ns)\\b.*")
+                && !t.matches(".*\\b(sem filtro de bagagem|ignorar bagagem|nao (?:precisa|preciso|quero) (?:de )?bagagem)\\b.*")) {
+            p.setFiltroBagagemPendente(true);
+            p.setPergunta("Esta pesquisa não permite filtrar bagagem incluída. Deseja consultar sem esse filtro e conferir a franquia nas regras da tarifa, ou falar com um atendente?");
+        }
+        if(anterior!=null&&Objects.equals(p.getIntencao(),anterior.getIntencao())&&p.isContinuar()
+                &&Objects.equals(p.getParametros(),anterior.getParametros())) {
+            p.setEsclarecimentosSemProgresso(anterior.getEsclarecimentosSemProgresso());
+            if(p.getOpcoesAereas().isEmpty())p.setOpcoesAereas(anterior.getOpcoesAereas());
+        }
+        // A short answer that the model fails to understand is not progress or a new task.
+        if(anterior!=null&&anterior.getPergunta()!=null&&p.capability()==ChatV2Capability.AJUDA
+                &&identificar(t)==null&&t.length()<120) {
+            p.setEsclarecimentosSemProgresso(anterior.getEsclarecimentosSemProgresso());
+            p.setAssuntoHandoff(anterior.getAssuntoHandoff()==null?anterior.getIntencao():anterior.getAssuntoHandoff());
+        }
         com.confApi.chatconfianca.hotel.ChatIaHotelContexto.restaurar(p,anterior);
         com.confApi.chatconfianca.hotel.ChatIaHotelReservaContexto.restaurar(p,anterior);
         com.confApi.chatconfianca.hotel.ChatIaHotelListaContexto.restaurar(p,anterior);
         p.setAgencia(agencia);p.setUsuario(usuario);p.setAtualizadoEm(System.currentTimeMillis());
         return p;
+    }
+
+    /** Um PNR informado para uma operacao existente nao muda o pedido para listagem. */
+    public static boolean preservarOperacaoPorLocalizador(String mensagem,ChatV2Plan anterior) {
+        String loc=LocalizadorAereo.extrair(mensagem);
+        if(loc==null)return false;
+        String t=normalizar(mensagem);
+        // O extrator legado pode confundir "reserva da Nazare/para Fortaleza" com PNR.
+        // Filtros estruturados de pessoa/rota e recencia tem precedencia sobre essa heuristica.
+        var consulta=com.confApi.chatconfianca.reservas.ChatReservaConsultaParser.interpretar(mensagem,null);
+        if(consulta!=null&&consulta.filtros()!=null
+                &&(consulta.filtros().getNomePassageiro()!=null||consulta.filtros().getDestino()!=null
+                ||consulta.filtros().getOrigem()!=null
+                ||(consulta.filtros().getLocalizador()==null&&t.matches(".*\\b(?:ultim[oa]s?|recentes?)\\b.*"))))return false;
+        ChatV2Capability explicita=identificar(t);
+        if(explicita!=null&&explicita.usaLocalizador())return true;
+        return t.replaceAll("[.!?]+$","").equals(loc.toLowerCase(Locale.ROOT))
+                &&anterior!=null&&anterior.capability()!=null&&anterior.capability().usaLocalizador();
     }
 
     ChatV2Plan contexto(Conversa conversa,Integer agencia,Integer usuario) {
@@ -170,7 +222,7 @@ public class ChatV2Planner {
         if(t.matches(".*\\b(pacote|pacotes)\\b.*"))return ChatV2Capability.PACOTE;
         if(t.matches(".*\\b(reemissao|remarcar|remarcacao)\\b.*")&&!t.matches(".*\\b(regra|regras|multa|multas)\\b.*"))return ChatV2Capability.REMARCACAO;
         if(t.matches(".*\\b(regra|regras|multa|multas)\\b.*"))return ChatV2Capability.REGRAS;
-        if(t.matches(".*\\b(preparar|cancelar|emitir|reembolsar|assentos|bilhetes|voucher)\\b.*"))return ChatV2Capability.ACOES_RESERVA;
+        if(t.matches(".*\\b(preparar|cancelar|emitir|reembolsar|reembolso|assentos|bilhetes|voucher)\\b.*"))return ChatV2Capability.ACOES_RESERVA;
         if(t.matches(".*\\b(ida e volta|retornando|voltando)\\b.*"))return ChatV2Capability.TARIFA_VOLTA;
         if(t.matches(".*\\b(voos?|passagens?|tarifas?|rota)\\b.*")) {
             if(t.matches(".*\\b(barat[a-z]*|menor|melhor[a-z]*)\\b.*"))return ChatV2Capability.TARIFA_IDA;
@@ -203,6 +255,112 @@ public class ChatV2Planner {
     }
     private static boolean pesquisaAerea(ChatV2Plan p) {
         return p!=null&&Set.of(ChatV2Capability.VOOS,ChatV2Capability.TARIFA_IDA,ChatV2Capability.TARIFA_VOLTA).contains(p.capability());
+    }
+    private static final List<String> PERIODO_AEREO=List.of("dataIda","dataVolta","dataInicio","dataFim",
+            "dataIdaInicio","dataIdaFim","dataVoltaInicio","dataVoltaFim","mes","mesIda","mesVolta");
+
+    /** Restore only the current authenticated task. Explicit changes/removals always win. */
+    private static void preservarContinuacao(ChatV2Plan atual,ChatV2Plan anterior,String texto) {
+        if(anterior==null)return;
+        boolean referencia=atual.capability()==anterior.capability()
+                &&(texto.matches(".*\\b(detalhe|detalhar|essa tarifa|essa opcao|esta tarifa|esta opcao)\\b.*")
+                ||anterior.getPergunta()!=null&&texto.matches("(?:sim|nao|aereo|aerea|hotel|reembolso|cancelamento)[?!. ]*"));
+        if(!atual.isContinuar()&&!referencia)return;
+        atual.setContinuar(true);
+        boolean pesquisa=pesquisaAerea(anterior)&&pesquisaAerea(atual);
+        boolean reserva=atual.capability()==anterior.capability()&&reservaComLocalizador(atual);
+        if(!pesquisa&&!reserva)return;
+        Map<String,String> anteriores=new LinkedHashMap<>(anterior.getParametros());
+        if(pesquisa) {
+            boolean periodo=atual.getParametros().keySet().stream().anyMatch(PERIODO_AEREO::contains);
+            boolean mudou=PERIODO_AEREO.stream().anyMatch(k->atual.getParametros().containsKey(k)
+                    &&!Objects.equals(atual.getParametros().get(k),anteriores.get(k)));
+            if(periodo&&mudou) {
+                boolean ida=texto.matches(".*\\bida\\b.*"),volta=texto.matches(".*\\b(volta|retorno)\\b.*");
+                if(ida&&!volta)List.of("mes","mesIda","dataIda","dataInicio","dataFim","dataIdaInicio","dataIdaFim").forEach(anteriores::remove);
+                else if(volta&&!ida)List.of("mesVolta","dataVolta","dataVoltaInicio","dataVoltaFim").forEach(anteriores::remove);
+                else PERIODO_AEREO.forEach(anteriores::remove);
+            }
+            if(respostaSomentePeriodo(texto)||texto.matches(".*\\b(todos os meses|qualquer periodo|sem (?:filtro de )?periodo)\\b.*"))
+                PERIODO_AEREO.forEach(anteriores::remove);
+            if(texto.matches(".*\\b(somente ida|so ida|apenas ida|sem volta)\\b.*")||atual.capability()==ChatV2Capability.TARIFA_IDA)
+                List.of("dataVolta","dataVoltaInicio","dataVoltaFim","mesVolta").forEach(anteriores::remove);
+            for(String key:List.of("origem","destino","cabine"))
+                if(texto.matches(".*\\b(retire|remova|remover|exclua|sem)\\b.{0,20}\\b"+key+"\\b.*"))anteriores.remove(key);
+            // A complete new route is not a continuation merely because a model says so.
+            if(texto.matches(".*\\b(nova pesquisa|outra rota|nova rota)\\b.*"))return;
+        }
+        anteriores.putAll(atual.getParametros());atual.setParametros(anteriores);
+        if(pesquisa) {
+            for(String key:List.of("origem","destino","cabine"))
+                if(texto.matches(".*\\b(retire|remova|remover|exclua|sem)\\b.{0,20}\\b"+key+"\\b.*"))anteriores.remove(key);
+            if(texto.matches(".*\\b(retire|remova|exclua|sem)\\b.{0,20}\\b(?:data de )?volta\\b.*")
+                    ||texto.matches(".*\\b(somente ida|so ida|apenas ida)\\b.*"))
+                List.of("dataVolta","dataVoltaInicio","dataVoltaFim","mesVolta").forEach(anteriores::remove);
+        }
+    }
+
+    private static ChatV2Plan continuarHandoff(String texto,ChatV2Plan anterior) {
+        if(anterior==null||!(anterior.capability()==ChatV2Capability.HUMANO
+                ||normalizar(anterior.getPergunta()).contains("deseja falar com o atendimento"))
+                ||!texto.matches("(?:sim|pode|pode sim|quero|confirmo|continuar|ok|certo|atendente)[?!. ]*"))return null;
+        ChatV2Plan p=ChatV2Plan.of(ChatV2Capability.HUMANO);p.setContinuar(true);
+        p.setAssuntoHandoff(anterior.capability()==ChatV2Capability.HUMANO?anterior.getAssuntoHandoff():anterior.getIntencao());
+        p.setPedidoOperacional(anterior.getPedidoOperacional());
+        p.setFonte("V2_CONFIRMACAO_ATENDIMENTO");return p;
+    }
+
+    private static ChatV2Plan confirmarBuscaSemBagagem(String texto,ChatV2Plan anterior) {
+        if(!pesquisaAerea(anterior)||!anterior.isFiltroBagagemPendente()
+                ||!texto.matches("(?:sim|pode|pode sim|sem (?:o )?filtro|sem bagagem|consultar sem (?:o )?filtro|continue)[?!. ]*"))return null;
+        ChatV2Plan p=ChatV2Plan.of(anterior.capability());p.setContinuar(true);
+        p.setParametros(new LinkedHashMap<>(anterior.getParametros()));p.setFonte("V2_CRITERIO_CONFIRMADO");return p;
+    }
+
+    private static ChatV2Plan detalharOpcaoAerea(String mensagem,ChatV2Plan anterior) {
+        if(!pesquisaAerea(anterior)||anterior.getOpcoesAereas()==null||anterior.getOpcoesAereas().isEmpty())return null;
+        String texto=normalizar(mensagem);
+        if(!texto.matches(".*\\b(detalhe|detalhar|detalhes|opcao|tarifa|essa|esta)\\b.*"))return null;
+        Matcher datas=Pattern.compile("(?<!\\d)(\\d{1,2})/(\\d{1,2})(?:/(\\d{4}))?(?!\\d)").matcher(texto);
+        List<String> pedidas=new ArrayList<>();while(datas.find())pedidas.add((datas.group(3)==null?"":datas.group(3)+"-")
+                +String.format(Locale.ROOT,"%02d-%02d",Integer.parseInt(datas.group(2)),Integer.parseInt(datas.group(1))));
+        List<Map<String,String>> candidatas=new ArrayList<>();
+        for(Map<String,String> opcao:anterior.getOpcoesAereas()) {
+            if(!Objects.equals(opcao.get("origem"),anterior.getParametros().get("origem")))continue;
+            if(!Objects.equals(opcao.get("destino"),anterior.getParametros().get("destino")))continue;
+            List<String> oferecidas=new ArrayList<>();
+            for(String key:List.of("dataIda","dataVolta"))if(opcao.get(key)!=null) {
+                oferecidas.add(opcao.get(key));if(opcao.get(key).length()==10)oferecidas.add(opcao.get(key).substring(5));
+            }
+            if(!pedidas.isEmpty()&&oferecidas.containsAll(pedidas))candidatas.add(opcao);
+        }
+        if(pedidas.isEmpty()&&anterior.getOpcoesAereas().size()==1)candidatas.add(anterior.getOpcoesAereas().get(0));
+        if(pedidas.isEmpty()&&candidatas.isEmpty()) {
+            Matcher indice=Pattern.compile("\\b(primeira|segunda|terceira|[1-9][0-9]?)\\s+(?:opcao|tarifa)\\b|\\bopcao\\s+([1-9][0-9]?)\\b").matcher(texto);
+            if(indice.find()) {
+                String valor=indice.group(1)==null?indice.group(2):indice.group(1);
+                int numero=switch(valor){case "primeira"->1;case "segunda"->2;case "terceira"->3;default->Integer.parseInt(valor);};
+                if(numero<=anterior.getOpcoesAereas().size())candidatas.add(anterior.getOpcoesAereas().get(numero-1));
+            }
+        }
+        if(candidatas.size()!=1)return null;
+        if(!Objects.equals(candidatas.get(0).get("origem"),anterior.getParametros().get("origem"))
+                ||!Objects.equals(candidatas.get(0).get("destino"),anterior.getParametros().get("destino")))return null;
+        ChatV2Plan p=ChatV2Plan.of(anterior.capability());p.setContinuar(true);
+        Map<String,String> params=new LinkedHashMap<>(anterior.getParametros());PERIODO_AEREO.forEach(params::remove);
+        params.putAll(candidatas.get(0));p.setParametros(params);p.setFonte("V2_OPCAO_AEREA_VALIDADA");return p;
+    }
+
+    private static void preservarPedidoOperacional(ChatV2Plan p,ChatV2Plan anterior,String texto) {
+        String afirmativo=texto.replaceAll("\\bnao\\s+(?:(?:e|quero|desejo|preciso)(?: de)?\\s+)?(?:reembolso|reembolsar|cancelamento|cancelar)\\b","");
+        String pedido=afirmativo.matches(".*\\b(reembolso|reembolsar)\\b.*")?"REEMBOLSO":
+                afirmativo.matches(".*\\b(cancelamento|cancelar)\\b.*")?"CANCELAMENTO":null;
+        if(pedido!=null)p.setPedidoOperacional(pedido);
+        else if(anterior!=null&&(p.isContinuar()||p.capability()==ChatV2Capability.HUMANO))p.setPedidoOperacional(anterior.getPedidoOperacional());
+        if("REEMBOLSO".equals(p.getPedidoOperacional())&&p.capability()==ChatV2Capability.ACOES_RESERVA
+                &&texto.matches(".*\\b(acompanhar|andamento|status|prazo)\\b.*")) {
+            p.setPergunta("Ainda não consulto o andamento de reembolso por aqui. Deseja falar com o atendimento responsável mantendo este pedido?");
+        }
     }
     /** A narrow date-only answer can change the period, never the already authorized route. */
     private static boolean respostaSomentePeriodo(String t) {

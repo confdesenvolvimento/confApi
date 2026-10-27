@@ -21,6 +21,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
+import java.net.URI;
 
 @Service
 public class ChatConfiancaManagerClient {
@@ -61,6 +62,61 @@ public class ChatConfiancaManagerClient {
         } catch (RestClientException ex) {
             throw new ServiceIndisponivelException("Nao foi possivel consultar o manager.");
         }
+    }
+
+    /** GET de caminho relativo já codificado, sem dupla codificação do overload String. */
+    public <T> T getEncoded(String relativeEncodedPath, Class<T> responseType) {
+        URI uri = encodedUrl(relativeEncodedPath);
+        try {
+            try {
+                return encodedGetAttempt(uri, responseType).response().getBody();
+            } catch (ManagerUnauthorizedException ex) {
+                tokenProvider.invalidateIfCurrent(ex.rejectedToken());
+                try {
+                    return encodedGetAttempt(uri, responseType).response().getBody();
+                } catch (ManagerUnauthorizedException secondUnauthorized) {
+                    tokenProvider.invalidateIfCurrent(secondUnauthorized.rejectedToken());
+                    throw new ServiceIndisponivelException("Nao foi possivel autenticar no manager.");
+                }
+            }
+        } catch (HttpClientErrorException.NotFound ex) {
+            return null;
+        } catch (HttpStatusCodeException ex) {
+            throw mapStatusException("consultar o manager", ex);
+        } catch (RestClientException ex) {
+            throw new ServiceIndisponivelException("Nao foi possivel consultar o manager.");
+        }
+    }
+
+    private <T> AuthenticatedResponse<T> encodedGetAttempt(URI uri, Class<T> responseType) {
+        String token = tokenProvider.bearerToken();
+        try {
+            ResponseEntity<T> response = measure(HttpMethod.GET,
+                    () -> restTemplate.exchange(uri, HttpMethod.GET, entity(null, token), responseType));
+            return new AuthenticatedResponse<>(response, token);
+        } catch (HttpClientErrorException.Unauthorized ex) {
+            throw new ManagerUnauthorizedException(token);
+        }
+    }
+
+    private URI encodedUrl(String relativeEncodedPath) {
+        if (relativeEncodedPath == null || relativeEncodedPath.isBlank()) {
+            throw new IllegalArgumentException("Caminho relativo do manager é obrigatório.");
+        }
+        final URI relative;
+        try {
+            relative = URI.create(relativeEncodedPath);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Caminho relativo do manager inválido.");
+        }
+        String decodedPath = relative.getPath();
+        if (relative.isAbsolute() || relative.getRawAuthority() != null || relative.getRawFragment() != null
+                || decodedPath == null || decodedPath.isEmpty() || decodedPath.startsWith("/")
+                || decodedPath.indexOf('\\') >= 0
+                || java.util.Arrays.stream(decodedPath.split("/", -1)).anyMatch(p -> ".".equals(p) || "..".equals(p))) {
+            throw new IllegalArgumentException("Somente caminhos relativos internos são permitidos no manager.");
+        }
+        return URI.create(url(relativeEncodedPath));
     }
 
     public <T> T post(String path, Object body, Class<T> responseType) {

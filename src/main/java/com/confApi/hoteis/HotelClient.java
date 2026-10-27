@@ -28,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.SocketTimeoutException;
+import java.net.URI;
 import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
@@ -68,11 +69,15 @@ public class HotelClient {
             HotelPesquisaModel hubRequest = HotelPesquisaMapper.toHub(req);
             System.out.println("URL: " + UrlConfig.URL_CONFIANCA_HUB + " - " + API_ACTION);
             ConfAppResp token = confAppService.token();
-            String url = UriComponentsBuilder
+            UriComponentsBuilder uriBuilder = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_HUB)
-                    .path(API_ACTION + (fornecedor == null ? "/disponibilidade" : "/disponibilidade/rapida/" + fornecedor))
-                    .toUriString();
-            System.out.println("URL DOIDA: " + url);
+                    .path(API_ACTION + (fornecedor == null ? "/disponibilidade" : "/disponibilidade/rapida"));
+            if (fornecedor != null) {
+                uriBuilder.pathSegment(fornecedor);
+            }
+            // A sobrecarga com URI preserva a codificação, sem recodificar '%' como '%25'.
+            URI url = uriBuilder.build().encode().toUri();
+            System.out.println("URL PESQUISA HOTEL: " + url);
             HttpHeaders headers = defaultHeaders(token.getToken());
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<HotelPesquisaModel> entity =
