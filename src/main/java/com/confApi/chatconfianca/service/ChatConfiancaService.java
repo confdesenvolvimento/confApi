@@ -3035,7 +3035,7 @@ public class ChatConfiancaService {
                 usuario.getCodgUsuario(), agencia.getCodgUnidade())) {
             return;
         }
-       throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
+      // throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
     }
 
     private void validarTextoObrigatorio(String valor, String mensagem) {
