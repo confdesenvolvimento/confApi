@@ -16,12 +16,9 @@ import com.confApi.chatgpt.dto.ChatActionDTO;
 import com.confApi.chatgpt.dto.ChatMessageDTO;
 import com.confApi.chatgpt.dto.ChatResponseDTO;
 import com.confApi.chatgpt.util.LocalizadorAereo;
-import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
-import com.confApi.db.confManager.regraAereaReembolso.dto.RegraAereaReembolsoConsultaResponse;
 import com.confApi.exception.RegraDeNegocioException;
 import com.confApi.model.IdentificacaoAgenciaModel;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -99,12 +96,9 @@ public class ChatCopilotoRegrasService {
             Reserva enriquecida=unica(regras.enriquecer(selecionada),localizador,companhia);
             RegrasAereasReservaResponse dados=enriquecida.getRegrasAereas();
             if (dados == null || falha(dados)) throw new Integracao();
-            List<String> linhas=formatar(dados);
-            if (linhas.isEmpty()) return resposta(req,sessao,conversaId,item,"SEM_REGRAS",
-                    "Nao localizei regras aplicaveis com os dados disponiveis para esta reserva. Isso nao significa isencao de multa ou permissao para alterar/reembolsar. Consulte o atendimento antes de decidir.",List.of());
-            String texto="Regras consultadas para a reserva "+localizador+":\n\n"+String.join("\n",linhas)
-                    +"\n\nSao condicoes cadastradas para os dados retornados. Nao representam autorizacao final nem garantem disponibilidade ou valor total da operacao. Nenhum cancelamento, reembolso, remarcacao ou cobranca foi executado.";
-            return resposta(req,sessao,conversaId,item,"DADOS_CONSULTADOS",texto,copiloto.acoes(item,req.getContextoCliente()));
+            var resumo=ChatCopilotoRegrasResumo.montar(dados,req.getMensagem(),localizador);
+            return resposta(req,sessao,conversaId,item,resumo.temRegras()?"DADOS_CONSULTADOS":"SEM_REGRAS",
+                    resumo.texto(),resumo.temRegras()?copiloto.acoes(item,req.getContextoCliente()):List.of());
         } catch (Ambigua ex) {
             return resposta(req,sessao,conversaId,item,"REFERENCIA_AMBIGUA","Nao consegui confirmar uma unica reserva correspondente a selecao e ao localizador informado. Abra novamente o registro correto ou consulte o atendimento; nao usei regras de outra reserva.",List.of());
         } catch (Bloqueio ex) {
@@ -185,55 +179,8 @@ public class ChatCopilotoRegrasService {
         return d.getAlteracoes()!=null && d.getAlteracoes().stream().filter(java.util.Objects::nonNull).anyMatch(r->erro(r.getStatus()));
     }
     private static boolean erro(String status){return status!=null && Set.of("ERRO_CONSULTA","ERRO","ERROR","FALHA","ERRO_INTEGRACAO").contains(chave(status));}
-
-    private static List<String> formatar(RegrasAereasReservaResponse d) {
-        List<String> linhas=new ArrayList<>();
-        List<RegraAereaReembolsoConsultaResponse> reembolsos=d.getReembolsos()==null||d.getReembolsos().isEmpty()
-                ?d.getReembolso()==null?List.of():List.of(d.getReembolso()):d.getReembolsos();
-        for(var r:reembolsos.stream().filter(java.util.Objects::nonNull).limit(3).toList())if(reembolsoValido(r.getStatus())&&r.getRegra()!=null) {
-            var regra=r.getRegra();String titulo="Reembolso"+momento(regra.getMomento());
-            boolean manual="VALIDACAO_MANUAL".equals(chave(r.getStatus()))||Boolean.TRUE.equals(regra.getRequerValidacaoManual());
-            linhas.add(titulo+": "+(manual?"a aplicabilidade exige validacao manual; nao ha permissao confirmada.":permissaoReembolso(r.getStatus()))
-                    +multa(aplicaMultaConsistente(r.getStatus(),regra.getAplicaMulta()),regra.getTipoMulta(),regra.getMoedaMulta(),regra.getValorMultaFixo(),regra.getPercentualMulta(),regra.getPorPassageiro(),regra.getPorTrecho(),false)
-                    +(Boolean.TRUE.equals(regra.getRequerSimulacao())?" Exige simulacao.":""));
-        }
-        List<RegraAereaAlteracaoConsultaResponse> alteracoes=d.getAlteracoes()==null||d.getAlteracoes().isEmpty()
-                ?d.getAlteracao()==null?List.of():List.of(d.getAlteracao()):d.getAlteracoes();
-        for(var r:alteracoes.stream().filter(java.util.Objects::nonNull).limit(3).toList())if(alteracaoValida(r.getStatus())&&r.getRegra()!=null) {
-            var regra=r.getRegra();linhas.add("Alteracao/remarcacao"+momento(regra.getMomento())+": "+("NAO_PERMITIDA".equals(chave(r.getStatus()))?"a regra cadastrada nao permite.":"a regra cadastrada permite, sujeita as condicoes aplicaveis.")
-                    +multa(aplicaMultaConsistente(r.getStatus(),regra.getAplicaMulta()),regra.getTipoMulta(),regra.getMoedaMulta(),regra.getValorMultaFixo(),regra.getPercentualMulta(),regra.getPorPassageiro(),regra.getPorTrecho(),regra.getValorMultaFixoEuropa()!=null||regra.getValorMultaFixoDemaisInternacionais()!=null)
-                    +(Boolean.TRUE.equals(regra.getCobraDiferencaTarifaria())?" Pode haver diferenca tarifaria.":"")
-                    +(Boolean.TRUE.equals(regra.getExigeRemarcacaoConjunta())?" A regra exige remarcacao conjunta dos trechos aplicaveis.":""));
-        }
-        return linhas;
-    }
-    private static String permissaoReembolso(String status){return switch(chave(status)){
-        case "REEMBOLSO_COM_MULTA","REEMBOLSO_PERMITIDO"->"a regra cadastrada permite, sujeita as condicoes aplicaveis.";
-        case "SOMENTE_TAXAS_REEMBOLSAVEIS"->"somente as taxas de embarque sao reembolsaveis nas condicoes da regra; isso nao indica reembolso da tarifa.";
-        default->"a regra cadastrada nao permite reembolso da tarifa.";};}
-    private static boolean reembolsoValido(String status){return Set.of("VALIDACAO_MANUAL","REEMBOLSO_COM_MULTA","REEMBOLSO_PERMITIDO","SOMENTE_TAXAS_REEMBOLSAVEIS","NAO_REEMBOLSAVEL").contains(chave(status));}
-    private static boolean alteracaoValida(String status){return Set.of("NAO_PERMITIDA","PERMITIDA_COM_MULTA","PERMITIDA_SEM_MULTA").contains(chave(status));}
-    private static Boolean aplicaMultaConsistente(String status,Boolean aplica){
-        String s=chave(status);
-        if(Set.of("REEMBOLSO_COM_MULTA","PERMITIDA_COM_MULTA").contains(s)&&!Boolean.TRUE.equals(aplica))return null;
-        if(Set.of("REEMBOLSO_PERMITIDO","PERMITIDA_SEM_MULTA").contains(s)&&Boolean.TRUE.equals(aplica))return null;
-        return aplica;
-    }
     private static String chave(String valor){return valor==null?"":valor.trim().toUpperCase(Locale.ROOT);}
-    private static String momento(String momento){return switch(momento==null?"":momento){case "ANTES_EMBARQUE"->" antes do embarque";case "APOS_EMBARQUE"->" apos o embarque";case "NO_SHOW"->" em caso de no-show";default->"";};}
-    private static String multa(Boolean aplica,String tipo,String moeda,BigDecimal fixa,BigDecimal percentual,Boolean passageiro,Boolean trecho,boolean valoresRegionais) {
-        if(aplica==null)return " Multa nao informada nesta regra.";
-        if(!aplica)return " A regra informa que nao aplica multa; isso nao garante ausencia de outros encargos.";
-        String por=(Boolean.TRUE.equals(passageiro)?" por passageiro":"")+(Boolean.TRUE.equals(trecho)?" por trecho":"");
-        boolean fixaValida=fixa!=null&&fixa.signum()>=0&&moeda!=null&&moeda.matches("[A-Z]{3}");
-        boolean percentualValido=percentual!=null&&percentual.signum()>=0&&percentual.compareTo(BigDecimal.valueOf(100))<=0;
-        String tipoNormalizado=chave(tipo);
-        if("PERCENTUAL".equals(tipoNormalizado)&&percentualValido)return " Multa percentual cadastrada: "+percentual.toPlainString()+"% sobre a base prevista na regra"+por+"; confirme o calculo na simulacao/atendimento.";
-        if(!valoresRegionais&&Set.of("FIXO","FIXA","VALOR_FIXO").contains(tipoNormalizado)&&fixaValida)return " Multa fixa cadastrada: "+moeda+" "+fixa.toPlainString()+por+".";
-        if(!valoresRegionais&&Set.of("MENOR_ENTRE_FIXO_E_PERCENTUAL","MAIOR_ENTRE_FIXO_E_PERCENTUAL").contains(tipoNormalizado)&&fixaValida&&percentualValido)
-            return " A multa cadastrada considera o "+(tipoNormalizado.startsWith("MENOR")?"menor":"maior")+" entre "+moeda+" "+fixa.toPlainString()+" e "+percentual.toPlainString()+"% sobre a base prevista na regra"+por+"; o resultado precisa de simulacao/atendimento.";
-        return " A regra preve multa; o valor precisa ser confirmado em simulacao/atendimento.";
-    }
+
 
     private ChatResponseDTO resposta(PerguntarConfiaRequest req,SessaoChatResponse sessao,Long conversaId,ReservaAereaRecenteItem item,String status,String texto,List<ChatActionDTO> acoes) {
         Map<String,Object> payload=new LinkedHashMap<>();payload.put("schema","chat.copiloto-regras.v1");payload.put("statusConsulta",status);payload.put("resultadoTarefa",status);

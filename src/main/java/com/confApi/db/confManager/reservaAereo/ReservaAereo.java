@@ -25,6 +25,9 @@ public class ReservaAereo implements Serializable {
     private Date dataLimiteEmissao;
     private Date dataCancelamento;
     private String localizador;
+    private String iata;
+    private String pcc;
+    private String tipoTarifa;
     private Integer status;
     private String descMotivoCancelamento;
     private String regraReserva;
@@ -49,6 +52,9 @@ public class ReservaAereo implements Serializable {
         this.dataLimiteEmissao = null;
         this.dataCancelamento = null;
         this.localizador = obj.getLocalizador();
+        this.iata = obj.getIata();
+        this.pcc = obj.getPcc();
+        this.tipoTarifa = obj.getTipoTarifa();
         this.status = 0;
         this.descMotivoCancelamento = obj.getDescMotivoCancelamento();
         this.regraReserva = obj.getRegraReserva();
@@ -190,6 +196,30 @@ public class ReservaAereo implements Serializable {
 
     public void setLocalizador(String localizador) {
         this.localizador = localizador;
+    }
+
+    public String getIata() {
+        return iata;
+    }
+
+    public void setIata(String iata) {
+        this.iata = iata;
+    }
+
+    public String getPcc() {
+        return pcc;
+    }
+
+    public void setPcc(String pcc) {
+        this.pcc = pcc;
+    }
+
+    public String getTipoTarifa() {
+        return tipoTarifa;
+    }
+
+    public void setTipoTarifa(String tipoTarifa) {
+        this.tipoTarifa = tipoTarifa;
     }
 
     public Integer getStatus() {

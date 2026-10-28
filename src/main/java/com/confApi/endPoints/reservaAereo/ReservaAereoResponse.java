@@ -30,6 +30,9 @@ import java.util.List;
 public class ReservaAereoResponse {
     private Long codgReservaAereoDB;
     private String localizador;
+    private String iata;
+    private String pcc;
+    private String tipoTarifa;
     private String statusReserva;
     private Date dataCriacao;
     private Date dataEmissao;
@@ -112,6 +115,8 @@ public class ReservaAereoResponse {
         var reservaApi = hub.getReservas().get(0);
 
         this.localizador = reservaApi.getLocalizador();
+        this.iata = reservaApi.getIata();
+        this.pcc = reservaApi.getPcc();
         this.sistema = reservaApi.getSistema() != null ? reservaApi.getSistema().toString() : null;
         this.dataCriacao = reservaApi.getDataCriacao();
         this.dataEmissao = reservaApi.getDataEmissao();
@@ -202,6 +207,13 @@ public class ReservaAereoResponse {
     private void preencherComDb(ReservaAereo db) {
 
         this.codgReservaAereoDB = db.getCodgReservaAereo().longValue();
+        if (db.getIata() != null) {
+            this.iata = db.getIata();
+        }
+        if (db.getPcc() != null) {
+            this.pcc = db.getPcc();
+        }
+        this.tipoTarifa = db.getTipoTarifa();
 
         // Se o DB tiver valores mais confiáveis de datas, sobrescreve
         if (db.getDataCriacao() != null) {

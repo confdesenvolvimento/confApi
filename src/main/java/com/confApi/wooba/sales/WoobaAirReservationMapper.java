@@ -65,6 +65,10 @@ public class WoobaAirReservationMapper {
 
         ReservaAereo reserva = new ReservaAereo();
         reserva.setLocalizador(firstNonBlank(text(header, "Locator"), webhook != null ? webhook.getLocator() : null));
+        JsonNode providerContext = productDetail.path("Provider").path("Context");
+        reserva.setIata(firstNonBlank(text(providerContext, "Iata")));
+        reserva.setPcc(firstNonBlank(text(providerContext, "PCC")));
+        reserva.setTipoTarifa("CONS");
         reserva.setStatus(mapManagerStatus(woobaStatus, statusDescription));
         reserva.setDataCriacao(firstDate(
                 parseDate(text(productDetail, "InsertDate")),

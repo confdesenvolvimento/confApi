@@ -30,6 +30,9 @@ public class ReservaAereoModel implements Serializable {
 
     private Long codgReservaAereoDB;
     private String localizador;
+    private String iata;
+    private String pcc;
+    private String tipoTarifa;
     private String statusReserva;
     private Date dataCriacao;
     private Date dataEmissao;
@@ -84,6 +87,9 @@ public class ReservaAereoModel implements Serializable {
     public ReservaAereoModel(ReservaAereoResponse reservaAereoResponse) {
         this.codgReservaAereoDB = reservaAereoResponse.getCodgReservaAereoDB();
         this.localizador = reservaAereoResponse.getLocalizador();
+        this.iata = reservaAereoResponse.getIata();
+        this.pcc = reservaAereoResponse.getPcc();
+        this.tipoTarifa = reservaAereoResponse.getTipoTarifa();
         this.statusReserva = reservaAereoResponse.getStatusReserva();
         this.dataCriacao = reservaAereoResponse.getDataCriacao();
         this.dataEmissao = reservaAereoResponse.getDataEmissao();
