@@ -6,7 +6,9 @@ O fluxo segue a organizacao de carro (`CarroReservaService`): operacao no fornec
 
 As URLs usam `confianca-hub` e `confianca-manager`, existentes em cada profile. O token de aplicacao e obtido de `ConfAppService`. As credenciais do fornecedor permanecem no Hub.
 
-O consumidor continua autenticado no ConfApi por `Authorization: Bearer ...`. Para operar uma reserva, deve enviar tambem `X-Usuario-Token` com o JWT individual do Manager. O Manager valida identidade e escopo; o token individual nao e encaminhado ao Hub.
+O consumidor se autentica no ConfApi por `Authorization: Bearer ...`, como nos demais produtos. O ConfApi usa o token da aplicacao de `ConfAppService` para acessar Hub e Manager. Nao e necessario enviar `X-Usuario-Token`, refazer login individual ou mudar o formato dos tokens. O filtro JWT do Manager continua exigindo autenticacao da aplicacao; os endpoints rodoviarios nao acrescentam uma segunda autenticacao de usuario.
+
+`dadosManager.reserva.codgUsuarioCriacao` e obrigatorio: informe o ID de um usuario ativo no Manager para identificar o autor, como nos dados de negocio dos demais produtos. Nao e necessario outro token. O ConfApi valida sua presenca antes de chamar o Hub; o Manager recebe esse campo no JSON, valida o usuario e grava o autor da reserva e seu historico. O banco nao permite autor nulo.
 
 Timeouts opcionais: `rodoviario.http.connect-timeout-ms` (8000) e `rodoviario.http.request-timeout-ms` (180000). O cliente dedicado nao repete chamadas nem segue redirecionamentos.
 
@@ -28,7 +30,7 @@ Os dois prefixos `/v1/rodoviario` e `/rodoviario` sao aceitos. Os endpoints ante
 | POST | `/cancelarReserva` ou `/cancelarcompra` | Cancelamento da compra no Hub e atualizacao do Manager quando confirmado |
 | POST | `/cancelarBilhete` ou `/cancelarbilhete` | Cancelamento de um passageiro; reserva inteira so muda quando todos foram cancelados |
 | POST | `/sincronizar` | Recupera uma compra pela referencia, grava/atualiza o Manager, sem booking ou checkout |
-| GET | `/findAllReservas` | Listagem paginada e limitada pelo escopo do usuario no Manager |
+| GET | `/findAllReservas` | Listagem paginada do Manager com filtros de agencia e sistema |
 
 Pesquisa, catalogos e mapa recebem os campos do contrato do Hub e preservam o envelope `{"sistema":"QueroPassagem","dados":...}`. GET aceita `sistema` opcional. O padrao do Hub e `QueroPassagem`.
 
@@ -36,7 +38,7 @@ As rotas `/pesquisar`, `/pesquisa`, `/pesquisaconexoes` e `/sugestoesconexao` re
 
 ## Reserva completa
 
-Exemplo estrutural; substitua os IDs por dados reais. `codgCidadeOrigem` e `codgCidadeDestino` recebem o **codgVinculoCidadeSistema** do catalogo `/destinos`, nao o ID da tabela cidade nem o codigo externo. Os vinculos sao conferidos contra os codigos do fornecedor no retorno. Nome, sobrenome e sexo sao metadados obrigatorios do Manager; sexo nao e inferido.
+Nos endpoints `/reservar`, `/emitir` e `/sincronizar`, `dadosManager.trechos[].trecho.codgCidadeOrigem` e `codgCidadeDestino` recebem **codgCidade**, o mesmo ID da tabela cidade usado na pesquisa. O ConfApi consulta `/destinos?codgSistema=...&codgCidade=...` e seleciona o vinculo que corresponde exatamente ao terminal/cidade retornado pelo fornecedor. Somente o payload interno enviado ao Manager recebe `codgVinculoCidadeSistema`; o request original e preservado. Vinculos ou trechos ambiguos continuam exigindo conferencia. O CRUD direto do Manager e os detalhes ja salvos mantem os vinculos de persistencia. Nome, sobrenome e sexo sao metadados obrigatorios; sexo nao e inferido.
 
 ```json
 {
@@ -57,7 +59,7 @@ Exemplo estrutural; substitua os IDs por dados reais. `codgCidadeOrigem` e `codg
   },
   "dadosManager": {
     "chaveIdempotencia": "pedido-rodoviario-0001",
-    "reserva": {"codgAgencia": 7, "codgSistema": 9},
+    "reserva": {"codgAgencia": 7, "codgSistema": 9, "codgUsuarioCriacao": 7},
     "valores": {"valorTotalMkp": 22.40},
     "trechos": [{
       "trecho": {"codgCidadeOrigem": 11, "codgCidadeDestino": 22},

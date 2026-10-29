@@ -7,8 +7,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MultiValueMap;
-import org.springframework.web.server.ResponseStatusException;
-import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 @Service
 @RequiredArgsConstructor
@@ -24,8 +22,7 @@ public class RodoviarioManagerClient {
 
     public <T> T trocar(String rota, HttpMethod metodo, Object corpo, MultiValueMap<String, String> parametros,
                         String usuario, Class<T> tipo, boolean individual) {
-        if (individual && (usuario == null || usuario.isBlank()))
-            throw new ResponseStatusException(UNAUTHORIZED, "X-Usuario-Token individual obrigatorio.");
+        // Mesmo fluxo dos demais produtos: Bearer da aplicacao fornecido pelo cliente HTTP.
         return http.trocar(RodoviarioHttpClient.Servico.MANAGER, rota, metodo, corpo, parametros, usuario, tipo, metodo != HttpMethod.GET);
     }
 

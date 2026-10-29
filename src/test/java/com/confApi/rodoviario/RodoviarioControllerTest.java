@@ -68,10 +68,23 @@ class RodoviarioControllerTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("REQUEST_INVALIDO"));
         verifyNoInteractions(hub, manager, service);
     }
-    @Test void reservaSemIdentidadeIndividualNaoChegaAOrquestracao() throws Exception {
-        mvc.perform(post("/v1/rodoviario/reservar").contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.codigo").value("TOKEN_INDIVIDUAL_OBRIGATORIO"));
-        verifyNoInteractions(hub, service, manager);
+    @Test void reservaUsaAutenticacaoPadraoSemExigirSegundoToken() throws Exception {
+        var result = new RodoviarioReservaOperacaoResponse(); result.setSuccess(true);
+        when(service.reservar(any(), isNull())).thenReturn(result);
+        mvc.perform(post("/v1/rodoviario/reservar").header("Authorization", "Bearer APP_TEST")
+                .contentType(MediaType.APPLICATION_JSON).content(RodoviarioReservaServiceTest.REQUEST))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true));
+        verify(service).reservar(any(RodoviarioCompraModel.class), isNull());
+        verifyNoInteractions(hub, manager);
+    }
+    @Test void consultasDoManagerNaoExigemSegundoToken() throws Exception {
+        when(manager.detalhe(10, null)).thenReturn(new ReservaRodoviarioDetalheDTO());
+        mvc.perform(get("/v1/rodoviario/reservas/10/detalhe").header("Authorization", "Bearer APP_TEST"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/v1/rodoviario/findAllReservas").header("Authorization", "Bearer APP_TEST"))
+                .andExpect(status().isOk());
+        verify(manager).detalhe(10, null);
+        verify(manager).crud(eq(RodoviarioManagerClient.Recurso.reservas), isNull(), eq(org.springframework.http.HttpMethod.GET), isNull(), any(), isNull());
     }
     @Test void contratoDeReservaDelegaOperacaoCompletaComTokenIndividual() throws Exception {
         var result = new RodoviarioReservaOperacaoResponse(); result.setSuccess(true);

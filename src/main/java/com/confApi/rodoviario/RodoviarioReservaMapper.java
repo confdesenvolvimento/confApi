@@ -22,6 +22,8 @@ public class RodoviarioReservaMapper {
         exigir(dados.getValores().getCodgRodoviarioValor() == null && dados.getValores().getCodgReservaRodoviario() == null,
                 "Valores devem ser de uma nova reserva.");
         var reserva = dados.getReserva();
+        exigir(reserva.getCodgUsuarioCriacao() != null && reserva.getCodgUsuarioCriacao() > 0,
+                "Informe dadosManager.reserva.codgUsuarioCriacao com o ID do usuario criador no Manager.");
         exigir(reserva.getCodgReservaRodoviario() == null && reserva.getCodgAgencia() != null && reserva.getCodgAgencia() > 0
                 && reserva.getCodgSistema() != null && reserva.getCodgSistema() > 0, "Informe uma nova reserva com agencia e sistema do Manager.");
         exigir(dados.getTrechos() != null && !dados.getTrechos().isEmpty() && dados.getTrechos().size() <= 20, "Informe os metadados dos trechos.");
@@ -29,8 +31,9 @@ public class RodoviarioReservaMapper {
             exigir(item != null && item.getTrecho() != null, "Trecho invalido.");
             var t = item.getTrecho();
             exigir(t.getCodgRodoviarioTrecho() == null && t.getCodgReservaRodoviario() == null
-                    && t.getCodgCidadeOrigem() != null && t.getCodgCidadeDestino() != null
-                    && !t.getCodgCidadeOrigem().equals(t.getCodgCidadeDestino()), "Informe os vinculos de origem e destino do Manager para um novo trecho.");
+                    && t.getCodgCidadeOrigem() != null && t.getCodgCidadeOrigem() > 0
+                    && t.getCodgCidadeDestino() != null && t.getCodgCidadeDestino() > 0
+                    && !t.getCodgCidadeOrigem().equals(t.getCodgCidadeDestino()), "Informe codgCidade de origem e destino para um novo trecho.");
             exigir(item.getPassageiros() != null && !item.getPassageiros().isEmpty() && item.getPassageiros().size() <= 50, "Informe os passageiros do trecho.");
             var nomes = new HashSet<String>();
             for (var pessoa : item.getPassageiros()) {
@@ -45,6 +48,49 @@ public class RodoviarioReservaMapper {
                 exigir(nomes.add(nome(p)), "Passageiros homonimos exigem conferencia manual.");
             }
         }
+    }
+
+    public SalvarReservaRodoviarioRequest mapearCidades(SalvarReservaRodoviarioRequest metadados, JsonNode compra,
+                                                       List<RodoviarioDestinoDTO> destinos) {
+        var dados = json.convertValue(metadados, SalvarReservaRodoviarioRequest.class);
+        var fornecedor = compra.path("trechos");
+        exigirFornecedor(fornecedor.isArray() && fornecedor.size() == dados.getTrechos().size(), "Trechos divergentes do fornecedor.");
+        var usados = new HashSet<Integer>();
+        var codigos = new HashMap<Integer, String>();
+        for (var item : dados.getTrechos()) {
+            var trecho = item.getTrecho();
+            int encontrado = -1;
+            Integer origem = null, destino = null;
+            for (int i = 0; i < fornecedor.size(); i++) {
+                if (usados.contains(i)) continue;
+                var viagem = fornecedor.get(i);
+                var origens = vinculos(destinos, trecho.getCodgCidadeOrigem(), viagem.path("origem").path("codigoFornecedor").asText());
+                var chegadas = vinculos(destinos, trecho.getCodgCidadeDestino(), viagem.path("destino").path("codigoFornecedor").asText());
+                if (!origens.isEmpty() && !chegadas.isEmpty()) {
+                    exigirFornecedor(encontrado == -1, "Trechos ambiguos para as cidades informadas.");
+                    exigirFornecedor(origens.size() == 1 && chegadas.size() == 1, "Multiplos vinculos para a mesma cidade e codigo do fornecedor.");
+                    encontrado = i; origem = origens.iterator().next(); destino = chegadas.iterator().next();
+                }
+            }
+            exigirFornecedor(encontrado != -1, "Origem/destino do fornecedor divergem das cidades informadas. Cidade de origem "
+                    + trecho.getCodgCidadeOrigem() + "; cidade de destino " + trecho.getCodgCidadeDestino()
+                    + ". Confira codgCidade no catalogo do Manager para os terminais retornados pelo Hub.");
+            usados.add(encontrado);
+            var viagem = fornecedor.get(encontrado);
+            codigos.put(origem, viagem.path("origem").path("codigoFornecedor").asText());
+            codigos.put(destino, viagem.path("destino").path("codigoFornecedor").asText());
+            trecho.setCodgCidadeOrigem(origem); trecho.setCodgCidadeDestino(destino);
+        }
+        return mapear(dados, compra, codigos);
+    }
+
+    private Set<Integer> vinculos(List<RodoviarioDestinoDTO> destinos, Integer cidade, String codigo) {
+        var encontrados = new HashSet<Integer>();
+        for (var destino : destinos)
+            if (Objects.equals(cidade, destino.codgCidade()) && Objects.equals(codigo, destino.codgDestinoSistema())
+                    && destino.codgVinculoCidadeSistema() != null && destino.codgVinculoCidadeSistema() > 0)
+                encontrados.add(destino.codgVinculoCidadeSistema());
+        return encontrados;
     }
 
     public SalvarReservaRodoviarioRequest mapear(SalvarReservaRodoviarioRequest metadados, JsonNode compra,

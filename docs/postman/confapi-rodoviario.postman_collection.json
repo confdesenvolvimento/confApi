@@ -83,7 +83,7 @@
           "response": []
         },
         {
-          "name": "02 Login individual Manager",
+          "name": "02 Login individual Manager (opcional)",
           "request": {
             "method": "POST",
             "header": [
@@ -97,7 +97,7 @@
               }
             ],
             "url": "{{baseUrl}}/api/usuario/auth",
-            "description": "Captura chaveToken em usuarioToken. tokenAcesso nao e o JWT individual do Manager.",
+            "description": "Login opcional. O rodoviario usa o Bearer da aplicacao e nao exige usuarioToken.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"loginUsuario\": \"{{loginUsuario}}\",\n  \"senha\": \"{{senhaUsuario}}\"\n}",
@@ -137,7 +137,8 @@
                   "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
                   "let b = null;",
                   "pm.test(\"Resposta JSON\", () => { b = pm.response.json(); pm.expect(b).to.be.an(\"object\"); });",
-                  "if(b){pm.test(\"JWT individual em chaveToken\",()=>{pm.expect(b.chaveToken).to.be.a(\"string\");pm.expect(b.chaveToken.split(\".\").length).to.equal(3);});if(typeof b.chaveToken===\"string\"&&b.chaveToken.split(\".\").length===3)pm.environment.set(\"usuarioToken\",b.chaveToken);if(!pm.environment.get(\"codgAgencia\")&&b.agencia&&b.agencia.codgAgencia)pm.environment.set(\"codgAgencia\",String(b.agencia.codgAgencia));}"
+                  "if(b){pm.test(\"JWT individual em chaveToken\",()=>{pm.expect(b.chaveToken).to.be.a(\"string\");pm.expect(b.chaveToken.split(\".\").length).to.equal(3);});if(typeof b.chaveToken===\"string\"&&b.chaveToken.split(\".\").length===3)pm.environment.set(\"usuarioToken\",b.chaveToken);if(!pm.environment.get(\"codgAgencia\")&&b.agencia&&b.agencia.codgAgencia)pm.environment.set(\"codgAgencia\",String(b.agencia.codgAgencia));}",
+                  "if(b&&Number.isInteger(b.id)&&b.id>0)pm.environment.set(\"codgUsuarioCriacao\",String(b.id));"
                 ]
               }
             }
@@ -758,17 +759,13 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/reservar",
-            "description": "Exemplo de uma viagem direta e um passageiro. preApproved depende da habilitacao da conta. valores={} usa custo confirmado como venda. Informe valorTotalMkp explicitamente para venda propria.",
+            "description": "Exemplo de uma viagem direta e um passageiro. preApproved depende da habilitacao da conta. valores={} usa custo confirmado como venda. Informe valorTotalMkp explicitamente para venda propria. Os campos de origem/destino em dadosManager recebem codgCidade; o ConfApi resolve os vinculos dos terminais da compra.",
             "body": {
               "mode": "raw",
-              "raw": "{\n \"reservaRodoviario\": {\n  \"sistema\":\"{{sistema}}\",\n  \"viagens\":[{\"codigoViagem\":\"{{codigoViagem}}\",\"passageiros\":[{\n   \"nome\":\"{{nomePassageiro}} {{sobrenomePassageiro}}\",\n   \"documento\":\"{{cpfPassageiro}}\",\"tipoDocumento\":\"CPF\",\n   \"dataNascimento\":\"{{dataNascimento}}\",\"poltrona\":\"{{assento}}\"\n  }]}]\n },\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgVinculoOrigem}},\n             \"codgCidadeDestino\":{{codgVinculoDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
+              "raw": "{\n \"reservaRodoviario\": {\n  \"sistema\":\"{{sistema}}\",\n  \"viagens\":[{\"codigoViagem\":\"{{codigoViagem}}\",\"passageiros\":[{\n   \"nome\":\"{{nomePassageiro}} {{sobrenomePassageiro}}\",\n   \"documento\":\"{{cpfPassageiro}}\",\"tipoDocumento\":\"CPF\",\n   \"dataNascimento\":\"{{dataNascimento}}\",\"poltrona\":\"{{assento}}\"\n  }]}]\n },\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\n   \"codgUsuarioCriacao\":{{codgUsuarioCriacao}},\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgCidadeOrigem}},\n             \"codgCidadeDestino\":{{codgCidadeDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -782,7 +779,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"sistema\", \"codigoViagem\", \"assento\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgAgencia\", \"codgSistema\", \"codgVinculoOrigem\", \"codgVinculoDestino\"];",
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"sistema\", \"codigoViagem\", \"assento\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgUsuarioCriacao\", \"codgAgencia\", \"codgSistema\", \"codgCidadeOrigem\", \"codgCidadeDestino\"];",
                   "function bloquear(motivo){",
                   " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
                   " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
@@ -793,7 +790,6 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 14 Reservar emitir e gravar Manager\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
                   "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}",
                   "const original=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
                   "const recovery={emissao:{sistema:original.emissao.sistema||\"QueroPassagem\",email:original.emissao.email,pagamento:{}},dadosManager:original.dadosManager};",
@@ -845,17 +841,13 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/emitir",
-            "description": "Alternativa para booking existente ainda nao finalizado. Nao repetir apos reservar a mesma compra.",
+            "description": "Alternativa para booking existente ainda nao finalizado. Nao repetir apos reservar a mesma compra. Os campos de origem/destino em dadosManager recebem codgCidade; o ConfApi resolve os vinculos dos terminais da compra.",
             "body": {
               "mode": "raw",
-              "raw": "{\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\"codigoReserva\":\"{{codigoReservaTemporaria}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgVinculoOrigem}},\n             \"codgCidadeDestino\":{{codgVinculoDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
+              "raw": "{\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\"codigoReserva\":\"{{codigoReservaTemporaria}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\n   \"codgUsuarioCriacao\":{{codgUsuarioCriacao}},\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgCidadeOrigem}},\n             \"codgCidadeDestino\":{{codgCidadeDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -869,7 +861,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"sistema\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgAgencia\", \"codgSistema\", \"codgVinculoOrigem\", \"codgVinculoDestino\", \"codigoReservaTemporaria\"];",
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"sistema\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgUsuarioCriacao\", \"codgAgencia\", \"codgSistema\", \"codgCidadeOrigem\", \"codgCidadeDestino\", \"codigoReservaTemporaria\"];",
                   "function bloquear(motivo){",
                   " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
                   " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
@@ -880,7 +872,6 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 15 Emitir booking existente\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
                   "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
                   "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
                   "const problemas=[];",
@@ -940,10 +931,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/consultarReserva",
@@ -975,7 +962,6 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 16 Consultar e sincronizar status\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
                   "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
                 ]
               }
@@ -1021,10 +1007,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/sincronizar",
@@ -1056,8 +1038,15 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 17 Recuperar sem novo checkout\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
-                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
+                  "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}",
+                  "const recuperacaoComAutor=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "if(!recuperacaoComAutor.dadosManager||!recuperacaoComAutor.dadosManager.reserva)bloquear(\"payloadRecuperacao sem dadosManager.reserva.\");",
+                  "if(!Number.isInteger(recuperacaoComAutor.dadosManager.reserva.codgUsuarioCriacao)||recuperacaoComAutor.dadosManager.reserva.codgUsuarioCriacao<1){",
+                  " const autor=Number(pm.variables.get(\"codgUsuarioCriacao\"));",
+                  " if(!Number.isInteger(autor)||autor<1)bloquear(\"Preencha codgUsuarioCriacao com o ID do usuario no Manager; nao e necessario outro token.\");",
+                  " recuperacaoComAutor.dadosManager.reserva.codgUsuarioCriacao=autor;",
+                  " const payloadComAutor=JSON.stringify(recuperacaoComAutor);pm.environment.set(\"payloadRecuperacao\",payloadComAutor);pm.variables.set(\"payloadRecuperacao\",payloadComAutor);",
+                  "}"
                 ]
               }
             },
@@ -1102,10 +1091,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/cancelarReserva",
@@ -1126,7 +1111,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"codgReservaRodoviario\", \"emailCompra\", \"motivoCancelamento\"];",
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"codgReservaRodoviario\", \"emailCompra\", \"motivoCancelamento\"];",
                   "function bloquear(motivo){",
                   " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
                   " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
@@ -1137,7 +1122,6 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 18 Cancelar compra inteira\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
                   "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
                   "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
                   "const problemas=[];",
@@ -1191,10 +1175,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/cancelarBilhete",
@@ -1215,7 +1195,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"codgReservaRodoviario\", \"emailCompra\", \"motivoCancelamento\", \"codigoPassageiro\"];",
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"codgReservaRodoviario\", \"emailCompra\", \"motivoCancelamento\", \"codigoPassageiro\"];",
                   "function bloquear(motivo){",
                   " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
                   " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
@@ -1226,7 +1206,6 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 19 Cancelar um bilhete\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
                   "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
                   "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
                   "const problemas=[];",
@@ -1282,10 +1261,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/findAllReservas?codgAgencia={{codgAgencia}}&codgSistema={{codgSistema}}&pagina=0&tamanho=20",
@@ -1307,8 +1282,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 20 Listar reservas autorizadas\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1335,10 +1309,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/detalhe",
@@ -1360,8 +1330,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 21 Detalhar reserva salva\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1388,10 +1357,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/historico",
@@ -1413,8 +1378,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 22 Consultar historico\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1438,10 +1402,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/recebimentos",
@@ -1463,8 +1423,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 23 Consultar recebimentos\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1488,10 +1447,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/trechos?codgReservaRodoviario={{codgReservaRodoviario}}&pagina=0&tamanho=20",
@@ -1513,8 +1468,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 24 Listar trechos\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1541,10 +1495,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/passageiros?codgRodoviarioTrecho={{codgRodoviarioTrecho}}&pagina=0&tamanho=20",
@@ -1566,8 +1516,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 25 Listar passageiros\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1594,10 +1543,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/assentos?codgRodoviarioTrecho={{codgRodoviarioTrecho}}&pagina=0&tamanho=20",
@@ -1619,8 +1564,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 26 Listar assentos\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1647,10 +1591,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/bilhetes?codgRodoviarioTrecho={{codgRodoviarioTrecho}}&pagina=0&tamanho=20",
@@ -1672,8 +1612,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 27 Listar bilhetes\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1700,10 +1639,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/valores?codgReservaRodoviario={{codgReservaRodoviario}}&pagina=0&tamanho=20",
@@ -1725,8 +1660,7 @@
                   "const missing=required.filter(k=>!String(pm.variables.get(k)??\"\").trim());",
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando GET - 28 Listar valores\");",
-                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");"
+                  "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");"
                 ]
               }
             },
@@ -1763,10 +1697,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/historico",
@@ -1787,7 +1717,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"codgReservaRodoviario\", \"notaHistorico\"];",
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"codgReservaRodoviario\", \"notaHistorico\"];",
                   "function bloquear(motivo){",
                   " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
                   " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
@@ -1798,7 +1728,6 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 29 Adicionar nota no historico\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
                   "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
                   "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
                   "const problemas=[];",
@@ -1834,10 +1763,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/reservas/{{codgReservaRodoviario}}/recebimentos",
@@ -1858,7 +1783,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"codgReservaRodoviario\", \"chaveRecebimento\", \"codgFormaPagto\", \"valorRecebimento\", \"dataRecebimento\", \"codgTransacao\"];",
+                  "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"codgReservaRodoviario\", \"chaveRecebimento\", \"codgFormaPagto\", \"valorRecebimento\", \"dataRecebimento\", \"codgTransacao\"];",
                   "function bloquear(motivo){",
                   " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
                   " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
@@ -1869,7 +1794,6 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 30 Registrar recebimento conciliado\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
                   "const habilitado=String(pm.variables.get(\"permitirOperacoesComEfeito\")??\"\").trim().toLowerCase();",
                   "const acao=String(pm.variables.get(\"acaoPermitida\")??\"\").trim();",
                   "const problemas=[];",
@@ -1947,7 +1871,7 @@
           "response": []
         },
         {
-          "name": "32 Sem token individual",
+          "name": "32 Consulta sem segundo token",
           "request": {
             "method": "GET",
             "header": [
@@ -1956,8 +1880,8 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}{{prefix}}/reservas/1/detalhe",
-            "description": ""
+            "url": "{{baseUrl}}{{prefix}}/findAllReservas?pagina=0&tamanho=1",
+            "description": "Consulta autenticada apenas pelo Bearer da aplicacao, sem X-Usuario-Token."
           },
           "event": [
             {
@@ -1984,7 +1908,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"HTTP 401 sem X-Usuario-Token\",()=>pm.response.to.have.status(401));"
+                  "pm.test(\"HTTP 200 com Bearer da aplicacao\",()=>pm.response.to.have.status(200));",
+                  "pm.test(\"Pagina Manager\",()=>pm.expect(pm.response.json().content).to.be.an(\"array\"));"
                 ]
               }
             }
@@ -1999,10 +1924,6 @@
               {
                 "key": "Accept",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "nao-utilizado"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/recurso-inexistente",
@@ -2110,10 +2031,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Usuario-Token",
-                "value": "{{usuarioToken}}"
               }
             ],
             "url": "{{baseUrl}}{{prefix}}/consultarReserva",
@@ -2145,7 +2062,6 @@
                   "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
                   "console.info(\"[ConfApi] Preparando POST - 35 Codigo de outra compra\");",
                   "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-                  "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
                   "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}"
                 ]
               }

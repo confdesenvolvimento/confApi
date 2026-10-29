@@ -28,17 +28,13 @@
           {
             "key": "Content-Type",
             "value": "application/json"
-          },
-          {
-            "key": "X-Usuario-Token",
-            "value": "{{usuarioToken}}"
           }
         ],
         "url": "{{baseUrl}}{{prefix}}/reservar",
-        "description": "Envio manual pelo botao Send. Nao exige permitirOperacoesComEfeito ou acaoPermitida. Executa booking e checkout, podendo gerar cobranca. Mantem validacao dos campos obrigatorios e snapshot de recuperacao. Nao execute no Runner em lote.",
+        "description": "Envio manual pelo botao Send. Nao exige permitirOperacoesComEfeito ou acaoPermitida. Executa booking e checkout, podendo gerar cobranca. Mantem validacao dos campos obrigatorios e snapshot de recuperacao. Nao execute no Runner em lote. Os campos de origem/destino em dadosManager recebem codgCidade; o ConfApi resolve os vinculos dos terminais da compra.",
         "body": {
           "mode": "raw",
-          "raw": "{\n \"reservaRodoviario\": {\n  \"sistema\":\"{{sistema}}\",\n  \"viagens\":[{\"codigoViagem\":\"{{codigoViagem}}\",\"passageiros\":[{\n   \"nome\":\"{{nomePassageiro}} {{sobrenomePassageiro}}\",\n   \"documento\":\"{{cpfPassageiro}}\",\"tipoDocumento\":\"CPF\",\n   \"dataNascimento\":\"{{dataNascimento}}\",\"poltrona\":\"{{assento}}\"\n  }]}]\n },\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgVinculoOrigem}},\n             \"codgCidadeDestino\":{{codgVinculoDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
+          "raw": "{\n \"reservaRodoviario\": {\n  \"sistema\":\"{{sistema}}\",\n  \"viagens\":[{\"codigoViagem\":\"{{codigoViagem}}\",\"passageiros\":[{\n   \"nome\":\"{{nomePassageiro}} {{sobrenomePassageiro}}\",\n   \"documento\":\"{{cpfPassageiro}}\",\"tipoDocumento\":\"CPF\",\n   \"dataNascimento\":\"{{dataNascimento}}\",\"poltrona\":\"{{assento}}\"\n  }]}]\n },\n \"emissao\": {\n  \"sistema\":\"{{sistema}}\",\"email\":\"{{emailCompra}}\",\n  \"pagamento\":{\"metodo\":\"preApproved\",\"parcelas\":1}\n },\n \"dadosManager\": {\n  \"chaveIdempotencia\":\"{{chaveCompra}}\",\n  \"reserva\":{\n   \"codgUsuarioCriacao\":{{codgUsuarioCriacao}},\"codgAgencia\":{{codgAgencia}},\"codgSistema\":{{codgSistema}}},\n  \"valores\":{},\n  \"trechos\":[{\n   \"trecho\":{\"codgCidadeOrigem\":{{codgCidadeOrigem}},\n             \"codgCidadeDestino\":{{codgCidadeDestino}}},\n   \"passageiros\":[{\"passageiro\":{\n    \"nomePassageiro\":\"{{nomePassageiro}}\",\n    \"sobrenomePassageiro\":\"{{sobrenomePassageiro}}\",\n    \"sexo\":{{sexoPassageiro}},\"cpf\":\"{{cpfPassageiro}}\",\n    \"dataNascimento\":\"{{dataNascimento}}\"\n   }}]\n  }]\n }\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -53,7 +49,7 @@
             "type": "text/javascript",
             "exec": [
               "// Envio individual pelo botao Send: esta operacao executa booking e checkout.",
-              "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"usuarioToken\", \"sistema\", \"codigoViagem\", \"assento\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgAgencia\", \"codgSistema\", \"codgVinculoOrigem\", \"codgVinculoDestino\"];",
+              "const required=[\"baseUrl\", \"prefix\", \"appToken\", \"sistema\", \"codigoViagem\", \"assento\", \"nomePassageiro\", \"sobrenomePassageiro\", \"cpfPassageiro\", \"dataNascimento\", \"sexoPassageiro\", \"emailCompra\", \"chaveCompra\", \"codgUsuarioCriacao\", \"codgAgencia\", \"codgSistema\", \"codgCidadeOrigem\", \"codgCidadeDestino\"];",
               "function bloquear(motivo){",
               " console.error(\"[ConfApi] REQUISICAO NAO ENVIADA: \"+motivo);",
               " pm.test(\"Configuracao para enviar a requisicao\",()=>{throw new Error(motivo);});",
@@ -64,7 +60,6 @@
               "if(missing.length)bloquear(\"Preencha as variaveis: \"+missing.join(\", \"));",
               "console.info(\"[ConfApi] Preparando POST /reservar - envio manual\");",
               "if(!String(pm.variables.get(\"appToken\")||\"\").trim())console.warn(\"[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.\");",
-              "if(!String(pm.variables.get(\"usuarioToken\")||\"\").trim())console.warn(\"[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.\");",
               "try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear(\"Body invalido: confira variaveis numericas e campos preenchidos.\");}",
               "const original=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
               "const recovery={emissao:{sistema:original.emissao.sistema||\"QueroPassagem\",email:original.emissao.email,pagamento:{}},dadosManager:original.dadosManager};",

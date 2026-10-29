@@ -70,7 +70,7 @@ public class RodoviarioHubController {
 
     @PostMapping("/reservar")
     public RodoviarioReservaOperacaoResponse reservar(@RequestBody RodoviarioCompraModel r,
-                                                      @RequestHeader("X-Usuario-Token") String usuario) {
+                                                      @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
         RodoviarioReservaOperacaoResponse teste = reservas.reservar(r, usuario);
         System.out.println("RESPONSE RESERVAR: " + teste);
         return teste;
@@ -78,37 +78,37 @@ public class RodoviarioHubController {
 
     @PostMapping("/emitir")
     public RodoviarioReservaOperacaoResponse emitir(@RequestBody RodoviarioCompraModel r,
-                                                    @RequestHeader("X-Usuario-Token") String usuario) {
+                                                    @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
         return reservas.emitir(r, usuario);
     }
 
     @PostMapping({"/consultarReserva", "/consultar"})
     public RodoviarioReservaOperacaoResponse consultar(@RequestBody RodoviarioConsultaRequest r,
-                                                       @RequestHeader("X-Usuario-Token") String usuario) {
+                                                       @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
         return reservas.consultarReserva(r, usuario);
     }
 
     @PostMapping({"/cancelarReserva", "/cancelarcompra"})
     public RodoviarioReservaOperacaoResponse cancelar(@RequestBody RodoviarioConsultaRequest r,
-                                                      @RequestHeader("X-Usuario-Token") String usuario) {
+                                                      @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
         return reservas.cancelarReserva(r, usuario, false);
     }
 
     @PostMapping({"/cancelarBilhete", "/cancelarbilhete"})
     public RodoviarioReservaOperacaoResponse cancelarBilhete(@RequestBody RodoviarioConsultaRequest r,
-                                                             @RequestHeader("X-Usuario-Token") String usuario) {
+                                                             @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
         return reservas.cancelarReserva(r, usuario, true);
     }
 
     @PostMapping("/sincronizar")
     public RodoviarioReservaOperacaoResponse sincronizar(@RequestBody RodoviarioCompraModel r,
-                                                         @RequestHeader("X-Usuario-Token") String usuario) {
+                                                         @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
         return reservas.reconciliar(r, usuario);
     }
 
     @GetMapping("/findAllReservas")
     public JsonNode listar(@RequestParam MultiValueMap<String, String> filtros,
-                           @RequestHeader("X-Usuario-Token") String usuario) {
+                           @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
         return manager.crud(RodoviarioManagerClient.Recurso.reservas, null, HttpMethod.GET, null, filtros, usuario);
     }
 }
