@@ -8,4 +8,6 @@ import java.util.List;
 public class ConsultarLocalizadorResponse {
     private Object exception;
     private List<Reserva> reservas = new ArrayList<>();
+    private Boolean valoresAtualizados;
+    private Boolean valoresSincronizados;
 }

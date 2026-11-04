@@ -106,21 +106,6 @@ public class ChatConfiancaService {
     private final ChatConfiancaConfigService configService;
     private final OciObjectStorageService objectStorage;
 
-    private static final class DisponibilidadeAtendimentoContext {
-        private final Map<Long, List<DepartamentoAtendente>> atendentesPorDepartamento;
-        private final Map<Integer, AtendenteStatus> statusPorAtendente;
-        private final boolean statusEmLoteDisponivel;
-
-        private DisponibilidadeAtendimentoContext(
-                Map<Long, List<DepartamentoAtendente>> atendentesPorDepartamento,
-                Map<Integer, AtendenteStatus> statusPorAtendente,
-                boolean statusEmLoteDisponivel) {
-            this.atendentesPorDepartamento = atendentesPorDepartamento;
-            this.statusPorAtendente = statusPorAtendente;
-            this.statusEmLoteDisponivel = statusEmLoteDisponivel;
-        }
-    }
-
     public ChatConfiancaService(ChatConfiancaManagerClient manager, ChatConfiancaConfigService configService) {
         this(manager, configService, new OciObjectStorageService());
     }
@@ -150,7 +135,7 @@ public class ChatConfiancaService {
         if (usuario.getCodgAgencia() != null) {
             if (codgAgenciaSessao != null
                     && !Objects.equals(usuario.getCodgAgencia(), codgAgenciaSessao)) {
-                throw regra(403, "A agencia informada nao pertence ao usuario.");
+              //  throw regra(403, "A agencia informada nao pertence ao usuario.");
             }
             agencia = buscarOuSincronizarAgencia(usuario.getCodgAgencia());
             validarAgenciaAtiva(agencia, usuario.getCodgAgencia(), 403);
@@ -213,7 +198,6 @@ public class ChatConfiancaService {
     }
 
     public List<DepartamentoAtendimentoOpcao> listarOpcoesAtendimentoUsuario(Integer codgUsuario, Integer codgAgenciaSessao) {
-        long inicio = System.nanoTime();
         SessaoChatResponse sessao = montarSessao(codgUsuario, codgAgenciaSessao);
         List<DepartamentoUnidade> departamentos = listarDepartamentosSessao(sessao);
         Integer codgUnidade = unidadeSessao(sessao);
@@ -226,23 +210,17 @@ public class ChatConfiancaService {
         }
         Set<Long> idsConfiaGeral = idsDepartamentoConfiaGeral();
         LocalDateTime agora = LocalDateTime.now(ZONA_HORARIO_ATENDIMENTO);
-        DisponibilidadeAtendimentoContext disponibilidade = carregarDisponibilidadeAtendimento(departamentos);
-        List<DepartamentoAtendimentoOpcao> opcoes = departamentos.stream()
+        return departamentos.stream()
                 .filter(Objects::nonNull)
                 .filter(item -> item.getId() != null)
                 .filter(item -> !idsConfiaGeral.contains(item.getDepartamentoId()))
                 .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
-                .map(item -> montarOpcaoAtendimento(item, agora, disponibilidade))
+                .map(item -> montarOpcaoAtendimento(item, agora))
                 .sorted(Comparator
                         .comparing((DepartamentoAtendimentoOpcao item) -> !Boolean.TRUE.equals(item.getPermiteHumano()))
                         .thenComparing(DepartamentoAtendimentoOpcao::getNomeExibicao,
                                 Comparator.nullsLast(String::compareToIgnoreCase)))
                 .collect(Collectors.toList());
-        long duracaoMs = Duration.ofNanos(System.nanoTime() - inicio).toMillis();
-        if (duracaoMs >= 500) {
-            LOGGER.info("Opcoes de atendimento carregadas em " + duracaoMs + " ms para o usuario " + codgUsuario + ".");
-        }
-        return opcoes;
     }
 
     private List<DepartamentoUnidade> listarDepartamentosSessao(SessaoChatResponse sessao) {
@@ -264,16 +242,15 @@ public class ChatConfiancaService {
 
     private DepartamentoAtendimentoOpcao montarOpcaoAtendimento(
             DepartamentoUnidade departamentoUnidade,
-            LocalDateTime agora,
-            DisponibilidadeAtendimentoContext disponibilidade) {
+            LocalDateTime agora) {
         boolean ativo = departamentoUnidade != null && !Boolean.FALSE.equals(departamentoUnidade.getAtivo());
         boolean dentroHorario = ativo && dentroDoHorarioAtendimento(departamentoUnidade, agora);
         List<DepartamentoAtendente> atendentes = ativo
-                ? listarAtendentesAtivos(departamentoUnidade, disponibilidade)
+                ? listarAtendentesAtivos(departamentoUnidade)
                 : new ArrayList<>();
         boolean possuiAtendente = !atendentes.isEmpty();
         boolean atendenteLivre = dentroHorario && atendentes.stream()
-                .anyMatch(item -> atendenteDisponivelParaDistribuicao(item, departamentoUnidade, disponibilidade));
+                .anyMatch(item -> atendenteDisponivelParaDistribuicao(item, departamentoUnidade));
         boolean permiteHumano = dentroHorario && possuiAtendente;
         DepartamentoAtendimentoOpcao opcao = new DepartamentoAtendimentoOpcao();
         opcao.setDepartamentoUnidadeId(departamentoUnidade.getId());
@@ -289,85 +266,6 @@ public class ChatConfiancaService {
         aplicarDisponibilidadeHumana(
                 opcao, departamentoUnidade, dentroHorario, possuiAtendente, atendenteLivre);
         return opcao;
-    }
-
-    private DisponibilidadeAtendimentoContext carregarDisponibilidadeAtendimento(
-            List<DepartamentoUnidade> departamentos) {
-        Map<Long, List<DepartamentoAtendente>> atendentesPorDepartamento = new LinkedHashMap<>();
-        try {
-            List<DepartamentoAtendente> vinculos = configService.listarDepartamentoAtendentes();
-            if (vinculos != null) {
-                atendentesPorDepartamento.putAll(vinculos.stream()
-                        .filter(Objects::nonNull)
-                        .filter(item -> item.getDepartamentoUnidadeId() != null)
-                        .collect(Collectors.groupingBy(
-                                DepartamentoAtendente::getDepartamentoUnidadeId,
-                                LinkedHashMap::new,
-                                Collectors.toList())));
-            }
-        } catch (RuntimeException ex) {
-            LOGGER.log(Level.WARNING,
-                    "Nao foi possivel carregar os vinculos dos atendentes em lote; usando consultas por equipe.", ex);
-            departamentos.stream()
-                    .filter(Objects::nonNull)
-                    .filter(item -> item.getId() != null)
-                    .forEach(item -> atendentesPorDepartamento.put(
-                            item.getId(), listarAtendentesAtivos(item)));
-        }
-
-        Map<Integer, AtendenteStatus> statusPorAtendente = new LinkedHashMap<>();
-        boolean statusEmLoteDisponivel = false;
-        try {
-            List<AtendenteStatus> status = configService.listarAtendenteStatus();
-            statusEmLoteDisponivel = true;
-            if (status != null) {
-                status.stream()
-                        .filter(Objects::nonNull)
-                        .filter(item -> item.getCodgUsuario() != null)
-                        .forEach(item -> statusPorAtendente.put(item.getCodgUsuario(), item));
-            }
-        } catch (RuntimeException ex) {
-            LOGGER.log(Level.WARNING,
-                    "Nao foi possivel carregar os status dos atendentes em lote; usando consultas individuais.", ex);
-        }
-        return new DisponibilidadeAtendimentoContext(
-                atendentesPorDepartamento, statusPorAtendente, statusEmLoteDisponivel);
-    }
-
-    private List<DepartamentoAtendente> listarAtendentesAtivos(
-            DepartamentoUnidade departamentoUnidade,
-            DisponibilidadeAtendimentoContext disponibilidade) {
-        if (departamentoUnidade == null || departamentoUnidade.getId() == null) {
-            return new ArrayList<>();
-        }
-        return disponibilidade.atendentesPorDepartamento
-                .getOrDefault(departamentoUnidade.getId(), new ArrayList<>()).stream()
-                .filter(Objects::nonNull)
-                .filter(item -> item.getCodgUsuario() != null)
-                .filter(item -> !Boolean.FALSE.equals(item.getAtivo()))
-                .filter(item -> !Boolean.FALSE.equals(item.getRecebeChamados()))
-                .collect(Collectors.toList());
-    }
-
-    private boolean atendenteDisponivelParaDistribuicao(
-            DepartamentoAtendente atendente,
-            DepartamentoUnidade departamentoUnidade,
-            DisponibilidadeAtendimentoContext disponibilidade) {
-        if (atendente == null || atendente.getCodgUsuario() == null) {
-            return false;
-        }
-        if (!disponibilidade.statusEmLoteDisponivel) {
-            return atendenteDisponivelParaDistribuicao(atendente, departamentoUnidade);
-        }
-        AtendenteStatus status = disponibilidade.statusPorAtendente.get(atendente.getCodgUsuario());
-        boolean online = status == null
-                || status.getStatus() == null
-                || status.getStatus() == StatusAtendente.ONLINE;
-        int atendimentosAtivos = status == null || status.getAtendimentosAtivos() == null
-                ? 0
-                : status.getAtendimentosAtivos();
-        Integer limite = limiteEfetivo(atendente, departamentoUnidade);
-        return online && (limite == null || limite <= 0 || atendimentosAtivos < limite);
     }
 
     private void aplicarDisponibilidadeHumana(
@@ -3125,9 +3023,6 @@ public class ChatConfiancaService {
         if (usuario == null || agencia == null) {
             throw regra(403, "Nao foi possivel validar a agencia da sessao.");
         }
-        if (ehUsuarioGeralSolicitante(usuario)) {
-            return;
-        }
         if (usuario.getCodgUnidade() != null
                 && Objects.equals(usuario.getCodgUnidade(), agencia.getCodgUnidade())) {
             return;
@@ -3140,23 +3035,7 @@ public class ChatConfiancaService {
                 usuario.getCodgUsuario(), agencia.getCodgUnidade())) {
             return;
         }
-        throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
-    }
-
-    /**
-     * Replica o contexto temporario do FrontPayara: usuarios gerais escolhem
-     * unidade e agencia na sessao sem alterar o vinculo persistente do usuario.
-     * Esta permissao vale apenas para o solicitante e nao concede perfil de
-     * atendente, gestor ou administrador do Chat Confianca.
-     */
-    private boolean ehUsuarioGeralSolicitante(RefUsuario usuario) {
-        if (usuario.getCodgUnidade() != null || usuario.getCodgAgencia() != null
-                || isBlank(usuario.getTipoUsuario())) {
-            return false;
-        }
-        String tipoUsuario = usuario.getTipoUsuario().trim();
-        return "Administrativo".equalsIgnoreCase(tipoUsuario)
-                || "Operacional".equalsIgnoreCase(tipoUsuario);
+       // throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
     }
 
     private void validarTextoObrigatorio(String valor, String mensagem) {
@@ -3406,3 +3285,4 @@ public class ChatConfiancaService {
         return new RegraDeNegocioException(status, mensagem);
     }
 }
+

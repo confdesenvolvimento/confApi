@@ -836,10 +836,34 @@ public class ChatService {
         return -1;
     }
 
+    /** Leitura editorial limitada a base autenticada; nao concede credito ou executa acoes. */
+    public List<ChatMemoria> listarCondicoesComerciais(String base) {
+        if (base == null || base.isBlank()) return List.of();
+        List<ChatMemoria> registros = chatMemoriaService.findByBase(base);
+        if (registros == null) return List.of();
+        String escopo = normalizarTexto(base);
+        return registros.stream().filter(Objects::nonNull)
+                .filter(m -> Integer.valueOf(1).equals(m.getStatus()))
+                .filter(m -> "geral".equals(normalizarTexto(m.getBase())) || escopo.equals(normalizarTexto(m.getBase())))
+                .filter(m -> m.getText() != null && m.getText().length() <= 16000)
+                .filter(m -> {
+                    try { return "chat.condicao-comercial.v1".equals(mapper.readTree(m.getText()).path("schema").asText()); }
+                    catch (Exception e) { return false; }
+                }).toList();
+    }
+
     private String inferirKeywordOperacional(String input) {
         String normalizado = normalizarTexto(input);
         if (normalizado.isBlank()) {
             return null;
+        }
+        // Recencia sem codigo explicito nao e localizador (ex.: a palavra CRIADO).
+        // Nao interfere em pedidos de regra ou simulacao que possuem fluxo proprio.
+        if (normalizado.matches(".*\\b(?:ultimo|ultima)\\s+(?:localizador|reserva|bilhete)\\b.*")
+                && (extrairLocalizadorDeterministico(input) == null
+                    || Set.of("CRIADO", "CRIADA", "CRIADOS", "CRIADAS").contains(extrairLocalizadorDeterministico(input)))
+                && !normalizado.matches(".*\\b(?:regra|multa|reembolso|cancelar|cancelamento|remarcar|remarcacao|simular)\\b.*")) {
+            return "ultimas_reservas_aereas";
         }
 
         if (contemAlgum(normalizado, "limite", "limites")
@@ -897,9 +921,9 @@ public class ChatService {
             return "reserva_aerea_regras";
         }
         boolean assuntoListagemReserva = contemAlgum(normalizado,
-                "reserva", "reservas", "venda", "vendas", "passagem", "passagens", "aereo", "aereas", "voo", "voos");
+                "reserva", "reservas", "venda", "vendas", "passagem", "passagens", "aereo", "aereas", "voo", "voos", "localizador");
         boolean referenciaRecencia = contemAlgum(normalizado,
-                "ultima", "ultimas", "recente", "recentes");
+                "ultima", "ultimas", "ultimo", "ultimos", "recente", "recentes");
         boolean assuntoPlural = contemAlgum(normalizado,
                 "reservas", "vendas", "passagens", "voos");
         boolean comandoListagem = contemAlgum(normalizado,
@@ -2296,7 +2320,7 @@ public class ChatService {
 
     /** Usa o fuso da tela da reserva aerea sem depender do fuso padrao do servidor. */
     private String formatarDataReserva(Date date, String pattern) {
-        if (date == null) {
+        if (!dataComAnoValido(date)) {
             return null;
         }
         SimpleDateFormat formato = new SimpleDateFormat(pattern, Locale.forLanguageTag("pt-BR"));
@@ -2305,10 +2329,16 @@ public class ChatService {
     }
 
     private String formatarDataSistema(Date date) {
-        if (date == null) {
+        if (!dataComAnoValido(date)) {
             return null;
         }
         return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").format(date);
+    }
+
+    private static boolean dataComAnoValido(Date date) {
+        if (date == null) return false;
+        int ano = java.time.Instant.ofEpochMilli(date.getTime()).atZone(java.time.ZoneId.of("America/Sao_Paulo")).getYear();
+        return ano >= 1900 && ano <= 2100;
     }
 
 

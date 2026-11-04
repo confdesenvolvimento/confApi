@@ -91,6 +91,20 @@ class ChatConfiancaManagerClientTest {
         assertEquals(1L, timerCount("GET", "401"));
         assertEquals(1L, timerCount("GET", "2xx"));
     }
+    @Test void putConfirmaResposta204DoManager() {
+        when(tokenProvider.bearerToken()).thenReturn("token");
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.PUT), any(HttpEntity.class), eq(Void.class)))
+                .thenReturn(ResponseEntity.noContent().build());
+        client.put("reservaAereo/atualizarValoresFornecedor/10", java.util.Map.of("total", 2212.37));
+        verify(restTemplate, times(1)).exchange(anyString(), eq(HttpMethod.PUT), any(HttpEntity.class), eq(Void.class));
+    }
+    @Test void putNaoRepeteConflitoDeValoresAnteriores() {
+        when(tokenProvider.bearerToken()).thenReturn("token");
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.PUT), any(HttpEntity.class), eq(Void.class)))
+                .thenThrow(httpError(HttpStatus.CONFLICT));
+        assertThrows(RegraDeNegocioException.class, () -> client.put("reservaAereo/atualizarValoresFornecedor/10", java.util.Map.of()));
+        verify(restTemplate, times(1)).exchange(anyString(), eq(HttpMethod.PUT), any(HttpEntity.class), eq(Void.class));
+    }
 
     @Test
     void naoDeveRenovarTokenApos403() {

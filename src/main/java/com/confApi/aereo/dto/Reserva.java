@@ -17,6 +17,8 @@ public class Reserva {
     private Date dataEmissao;
     private List<Object> eMDs;
     private String localizador;
+    private String iata;
+    private String pcc;
     private Boolean mapaDeAssentosDisponivel;
     private List<Passageiro> passageiros;
     private Boolean permiteCancelar;

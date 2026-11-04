@@ -4,6 +4,8 @@ import com.confApi.db.wooba.checkin.dto.Checkin72Horas;
 import com.confApi.db.wooba.checkin.dto.CheckinRQ;
 import com.confApi.db.wooba.checkin.dto.TrechoCheckin;
 import java.net.URI;
+import java.text.Normalizer;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -15,9 +17,31 @@ final class ChatCheckinResumo {
     private static final DateTimeFormatter DATA = DateTimeFormatter.ofPattern("dd/MM/uuuu")
             .withResolverStyle(ResolverStyle.STRICT);
     private final ZoneId zona;
+    private final Clock relogio;
 
-    ChatCheckinResumo() { this(ZoneId.systemDefault()); }
-    ChatCheckinResumo(ZoneId zona) { this.zona = Objects.requireNonNull(zona); }
+    ChatCheckinResumo() { this(Clock.systemDefaultZone()); }
+    ChatCheckinResumo(ZoneId zona) { this(Clock.system(zona), zona); }
+    ChatCheckinResumo(Clock relogio) { this(relogio, relogio.getZone()); }
+    ChatCheckinResumo(Clock relogio, ZoneId zona) {
+        this.relogio = Objects.requireNonNull(relogio);
+        this.zona = Objects.requireNonNull(zona);
+    }
+
+    CheckinRQ consultaProximos(String idErp) {
+        LocalDate hoje = LocalDate.now(relogio);
+        CheckinRQ consulta = new CheckinRQ(idErp, 2);
+        consulta.setDataForm(DATA.format(hoje));
+        consulta.setDataTo(DATA.format(hoje.plusDays(3)));
+        return consulta;
+    }
+
+    static boolean pedidoCheckins(String mensagem) {
+        if (mensagem == null || mensagem.isBlank()) return false;
+        String normalizada = Normalizer.normalize(mensagem, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT);
+        if (normalizada.matches("(?s).*\\b(?:onde|como)\\b.*")) return false;
+        return normalizada.matches("(?s).*\\b(?:check[\\s-]*ins?|proximos\\s+embarques|voos\\s+de\\s+hoje)\\b.*");
+    }
 
     Map<String, Object> montar(List<Checkin72Horas> reservas, CheckinRQ consulta) {
         LocalDate inicio = LocalDate.parse(consulta.getDataForm(), DATA);

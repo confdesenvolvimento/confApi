@@ -66,11 +66,13 @@ public class HotelClient {
     public List<HotelResponse> pesquisar(HotelPesquisaModelFront req, String fornecedor) {
         try {
             HotelPesquisaModel hubRequest = HotelPesquisaMapper.toHub(req);
+            System.out.println("URL: " + UrlConfig.URL_CONFIANCA_HUB + " - " + API_ACTION);
             ConfAppResp token = confAppService.token();
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_HUB)
                     .path(API_ACTION + (fornecedor == null ? "/disponibilidade" : "/disponibilidade/rapida/" + fornecedor))
                     .toUriString();
+            System.out.println("URL DOIDA: " + url);
             HttpHeaders headers = defaultHeaders(token.getToken());
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<HotelPesquisaModel> entity =
@@ -278,12 +280,14 @@ public class HotelClient {
 
     public String cancelarReserva(CancelarReservaRequestHotelFront req) {
         try {
+            System.out.println("URL: " + UrlConfig.URL_CONFIANCA_HUB + " - " + API_ACTION);
             ConfAppResp token = confAppService.token();
             String url = UriComponentsBuilder
                     .fromHttpUrl(UrlConfig.URL_CONFIANCA_HUB)
                     .path(API_ACTION + "/cancelaHotel")
                     .toUriString();
 
+            System.out.println("URL CANCELAMENTO: " + url);
             HttpHeaders headers = defaultHeaders(token.getToken());
             headers.setContentType(MediaType.APPLICATION_JSON);
 
@@ -304,6 +308,7 @@ public class HotelClient {
             }
 
             String resposta = hubResponse.getBody();
+            System.out.println("Resultado cancelarReserva: " + resposta);
 
             return resposta;
 

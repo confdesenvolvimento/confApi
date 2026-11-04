@@ -16,6 +16,8 @@ public class ReservaHub {
     private Date dataEmissao;
     private List<Object> eMDs;
     private String localizador;
+    private String iata;
+    private String pcc;
     private Boolean mapaDeAssentosDisponivel;
     private List<PassageiroHub> passageiros;
     private Boolean permiteCancelar;

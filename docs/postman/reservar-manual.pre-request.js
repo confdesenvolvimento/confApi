@@ -1,5 +1,5 @@
 // Envio individual pelo botao Send: esta operacao executa booking e checkout.
-const required=["baseUrl", "prefix", "appToken", "usuarioToken", "sistema", "codigoViagem", "assento", "nomePassageiro", "sobrenomePassageiro", "cpfPassageiro", "dataNascimento", "sexoPassageiro", "emailCompra", "chaveCompra", "codgAgencia", "codgSistema", "codgVinculoOrigem", "codgVinculoDestino"];
+const required=["baseUrl", "prefix", "appToken", "sistema", "codigoViagem", "assento", "nomePassageiro", "sobrenomePassageiro", "cpfPassageiro", "dataNascimento", "sexoPassageiro", "emailCompra", "chaveCompra", "codgUsuarioCriacao", "codgAgencia", "codgSistema", "codgCidadeOrigem", "codgCidadeDestino"];
 function bloquear(motivo){
  console.error("[ConfApi] REQUISICAO NAO ENVIADA: "+motivo);
  pm.test("Configuracao para enviar a requisicao",()=>{throw new Error(motivo);});
@@ -10,7 +10,6 @@ const missing=required.filter(k=>!String(pm.variables.get(k)??"").trim());
 if(missing.length)bloquear("Preencha as variaveis: "+missing.join(", "));
 console.info("[ConfApi] Preparando POST /reservar - envio manual");
 if(!String(pm.variables.get("appToken")||"").trim())console.warn("[ConfApi] appToken vazio. A chamada sera enviada e o ConfApi deve responder 401/403; preencha Authorization > Bearer Token.");
-if(!String(pm.variables.get("usuarioToken")||"").trim())console.warn("[ConfApi] usuarioToken vazio. O acesso ao Manager exige X-Usuario-Token.");
 try{JSON.parse(pm.variables.replaceIn(pm.request.body.raw));}catch(e){bloquear("Body invalido: confira variaveis numericas e campos preenchidos.");}
 const original=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));
 const recovery={emissao:{sistema:original.emissao.sistema||"QueroPassagem",email:original.emissao.email,pagamento:{}},dadosManager:original.dadosManager};

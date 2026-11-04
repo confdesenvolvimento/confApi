@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -61,14 +62,23 @@ public final class ChatFaturasConsulta {
             }
         }
         List<Map<String, Object>> exibidas = new ArrayList<>();
+        List<FaturaSicaRS> ordenadas = new ArrayList<>(recebidas);
+        boolean ultimas = parametros.containsKey("faturaLimite");
+        int limite = ultimas ? Integer.parseInt(parametros.get("faturaLimite")) : LIMITE;
+        if (ultimas) {
+            boolean emissao = "DATA_EMISSAO".equals(parametros.get("faturaTipoData"));
+            ordenadas.sort(Comparator.comparing((FaturaSicaRS f) ->
+                    data(emissao ? f.getDataFatura() : f.getDataVen()), Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(Comparator.comparingInt(FaturaSicaRS::getNumfat).reversed()));
+        }
         int excluidas = 0;
-        for (FaturaSicaRS fatura : recebidas) {
+        for (FaturaSicaRS fatura : ordenadas) {
             if (!compativel(fatura, request)) return erro(req, parametros, boletos);
             if (boletos && (fatura.isCancelado() || credito(fatura) || aFaturar(fatura))) {
                 excluidas++;
                 continue;
             }
-            if (exibidas.size() < LIMITE) exibidas.add(registroSeguro(fatura));
+            if (exibidas.size() < limite) exibidas.add(registroSeguro(fatura));
         }
         String status = recebidas.isEmpty() ? "SEM_RESULTADO" : "DADOS_CONSULTADOS";
         String texto = renderizar(parametros, boletos, exibidas, recebidas.size(), excluidas);
@@ -175,7 +185,10 @@ public final class ChatFaturasConsulta {
                         .append("\nVencimento: ").append(f.get("vencimento"));
             }
         }
-        if (total - excluidas > LIMITE) texto.append("\n\nExibindo os primeiros 20 registros de ").append(total - excluidas)
+        int limite = Integer.parseInt(p.getOrDefault("faturaLimite", Integer.toString(LIMITE)));
+        if (p.containsKey("faturaLimite")) texto.append("\n\nExibindo até ").append(limite)
+                .append(" documentos mais recentes dentro da janela informada, ordenados pela data do filtro. Isso não representa todo o histórico.");
+        if (total - excluidas > limite) texto.append("\n\nExibindo os primeiros ").append(lista.size()).append(" registros de ").append(total - excluidas)
                 .append(". Informe um período menor ou o número da fatura para restringir a consulta.");
         if (total > 0) texto.append("\n\nOs valores são de documentos financeiros e não representam o total de vendas ou o total pago. Registros de crédito, cancelados e à faturar têm naturezas diferentes.");
         String documento = p.getOrDefault("faturaDocumento", boletos ? "BOLETO" : null);

@@ -4,8 +4,9 @@ Importe a collection e o environment JSON desta pasta. Selecione o environment a
 
 1. Ajuste baseUrl (padrão http://localhost:8088, sem barra final) e o contexto do WAR, quando houver.
 2. Preencha appToken com um JWT aceito pelo ConfApi, sem Bearer. /user/auth também está protegido na configuração atual: a primeira chamada da collection apenas renova um acesso já autenticado. Para o primeiro token, use o fluxo já aprovado no ambiente. /api/auth/token é rotina de plantão, não login JWT de aplicação.
-3. Preencha loginUsuario e senhaUsuario e execute 02 Login individual Manager. O script guarda chaveToken em usuarioToken; não use tokenAcesso como JWT individual.
-4. Configure codgSistema, codgAgencia, códigos externos e vínculos do Manager. Na reserva, os campos dadosManager.trechos[].trecho.codgCidadeOrigem/codgCidadeDestino recebem codgVinculoCidadeSistema. Na pesquisa, origem/destino recebem codgCidade da tabela cidade.
+3. O rodoviario usa apenas o Bearer da aplicacao, como os outros produtos. Nao e necessario executar o login individual nem preencher usuarioToken ou X-Usuario-Token.
+   Preencha `codgUsuarioCriacao` com o ID do usuario criador no Manager. Esse dado e obrigatorio no banco e nao e um token. Se usar o login opcional, o script captura o campo `id` automaticamente.
+4. Configure codgSistema, codgAgencia e as cidades. Tanto na pesquisa quanto em dadosManager.trechos[].trecho.codgCidadeOrigem/codgCidadeDestino, informe codgCidade da tabela cidade. O ConfApi seleciona internamente os vinculos correspondentes aos terminais retornados na compra.
 5. Para pesquisar, preencha codgCidadeOrigem e codgCidadeDestino com IDs da tabela cidade. O Hub resolve os codigos externos pelo Manager antes de chamar o fornecedor. Defina data futura, pesquise e selecione manualmente codigoViagem e assento. O exemplo de compra é direto, com um passageiro. Para conexões/ida e volta, informe todos os trechos efetivos e poltronas de conexão.
 6. Preencha passageiro, sexo conforme cadastro, email e chaveCompra única de 8 a 64 caracteres.
 7. A requisição 14 Reservar emitir e gravar Manager dispensa as variáveis de habilitação. Para as demais operações com efeito, defina permitirOperacoesComEfeito=true e acaoPermitida com a ação exata. Execute individualmente. Nessas demais operações, a ação é limpa depois da resposta.
@@ -22,7 +23,7 @@ Antes de reservar/emitir, o script salva payloadRecuperacao com os metadados e c
 
 Confirmada 1 exige compra paid e todos os bilhetes emitted com número. Compra pendente fica 0. Cancelada 2 exige compra e todos os bilhetes canceled. Cancelamento parcial exige conferência operacional, pois o Manager atual impede editar componentes de reservas confirmadas. Não há estorno automático.
 
-Registrar recebimento apenas concilia uma transação existente; exige usuário interno e chave própria, sem cobrar cartão ou confirmar PIX. Conserve a chave ao repetir o mesmo registro.
+Registrar recebimento apenas concilia uma transação existente; usa a autenticacao da aplicacao e chave própria, sem cobrar cartão ou confirmar PIX. Conserve a chave ao repetir o mesmo registro.
 
 ## Variáveis
 
@@ -31,7 +32,7 @@ Registrar recebimento apenas concilia uma transação existente; exige usuário 
 | `baseUrl` | http://localhost:8088 | URL sem barra final; inclua o contexto do WAR. |
 | `prefix` | /v1/rodoviario | Prefixo rodoviario. |
 | `appToken` | vazio | JWT aceito pelo ConfApi, sem Bearer. |
-| `usuarioToken` | vazio | JWT individual retornado em chaveToken. |
+| `usuarioToken` | vazio | Legado do login individual opcional; nao e exigido no rodoviario. |
 | `loginApp` | vazio | Login para renovacao opcional. |
 | `senhaApp` | vazio | Senha local para renovacao opcional. |
 | `loginUsuario` | vazio | Login individual do Manager. |
@@ -39,8 +40,9 @@ Registrar recebimento apenas concilia uma transação existente; exige usuário 
 | `sistema` | QueroPassagem | Nome do fornecedor no Hub. |
 | `codgSistema` | vazio | ID do sistema no Manager. |
 | `codgAgencia` | vazio | ID da agencia autorizada. |
-| `codgCidadeOrigem` | vazio | ID da tabela cidade enviado na pesquisa como origem numerica. |
-| `codgCidadeDestino` | vazio | ID da tabela cidade enviado na pesquisa como destino numerico. |
+| `codgUsuarioCriacao` | vazio | ID do usuario ativo no Manager que cria a reserva; obrigatorio. |
+| `codgCidadeOrigem` | vazio | ID da tabela cidade usado na pesquisa e na reserva. |
+| `codgCidadeDestino` | vazio | ID da tabela cidade usado na pesquisa e na reserva. |
 | `origemCodigo` | vazio | Codigo externo CIT_n ou ROD_n. |
 | `destinoCodigo` | vazio | Codigo externo CIT_n ou ROD_n. |
 | `codgVinculoOrigem` | vazio | codgVinculoCidadeSistema da origem. |
@@ -80,19 +82,20 @@ Execute `node docs/postman/validate-postman.cjs` a partir da raiz do repositóri
 ## Testes negativos e diagnóstico
 
 - Sem Bearer: 401 ou 403, conforme o filtro de segurança implantado.
-- Sem X-Usuario-Token, mantendo appToken válido: 401.
+- Sem X-Usuario-Token, mantendo appToken válido: fluxo normal; a consulta 32 verifica esse contrato.
 - Recurso desconhecido/JSON malformado: 400.
+- Sem `dadosManager.reserva.codgUsuarioCriacao`: 400 antes de booking ou checkout. Preencha o ID do usuario; nao gere outra compra para corrigir o dado. Na requisicao 17 atualizada, a variavel `codgUsuarioCriacao` preenche o autor ausente no snapshot, mantendo a chave original.
 - Código de outra compra: 200 com success=false e requerConferencia=true no service atual.
-- Fora de agência/unidade: o Manager recusa o acesso com 403. Na criacao, esse acesso ocorre apos o Hub; o resultado parcial preserva a compra e exige conferencia.
-- Manager 401 ou `TOKEN_INDIVIDUAL_INVALIDO`: o header `X-Usuario-Token` precisa conter `chaveToken` do login individual, sem `Bearer`. A mensagem de token obrigatorio do Manager tambem cobre JWT invalido, expirado ou de outro ambiente. Execute **02 Login individual Manager** no mesmo environment. Se ja houver compra no Hub, preserve `chaveCompra` e `payloadRecuperacao` e execute **17 Recuperar sem novo checkout**, sem repetir a requisicao 14. Compras `in_confirmation_process` sao salvas como pendentes (status 0), sem afirmar que os bilhetes foram emitidos.
+- A aplicacao autenticada segue o mesmo acesso dos outros produtos; agencia e sistema permanecem filtros e vinculos de negocio.
+- Manager 401 ou `AUTENTICACAO_MANAGER_REJEITADA`: confira o token da aplicacao e o ambiente da integracao. Nao e necessario outro token individual. Se ja houver compra no Hub, preserve `chaveCompra` e `payloadRecuperacao` e execute **17 Recuperar sem novo checkout**, sem repetir a requisicao 14. Compras `in_confirmation_process` sao salvas como pendentes (status 0).
 - Sem resposta nem status HTTP: abra o Console do Postman. A versão anterior pulava a chamada quando appToken estava vazio no environment. Reimporte a collection atualizada; mantenha o environment já preenchido. Agora consultas sem token são enviadas para receber HTTP 401/403. A validação usa os valores efetivos do Postman (pm.variables.get), respeitando a prioridade dos escopos; um valor vazio no environment ainda sobrepõe um token global.
 - Mensagem REQUISICAO NAO ENVIADA no Console: confira as variáveis indicadas ou a ação habilitada; há também um teste de configuração com falha.
 - Após reiniciar o ConfApi com o código atualizado, procure Rodoviario entrada/saida nos logs INFO. A saída inclui status e duracaoMs; o header X-Rodoviario-Request-Id relaciona a resposta aos logs de integração HUB/MANAGER. Essas linhas não imprimem query strings, tokens ou corpos. Etapa autenticacao sem envio indica espera no ConfApp; etapa envio indica espera no Hub/Manager.
 - Sem log de entrada após clicar Send: confirme que a requisição foi enviada no Console, a porta 8088, o contexto do WAR e a versão em execução. Teste 31 sem Bearer deve receber 401/403 mesmo antes do controller.
 - 404 geral: confira contexto do WAR, prefixo e versões implantadas.
 - `404 Reserva nao encontrada` na busca `/reservaRodoviario/findByLocalizador/...`: resultado esperado quando a compra existe no Hub e ainda nao foi gravada no Manager. O ConfApi segue para conferir vinculos e chamar `salvarCompleta`; esse 404 nao encerra a recuperacao.
-- `VINCULOS_DESTINO_INVALIDOS`: os IDs informados em `dadosManager` nao foram encontrados no catalogo de vinculos ativos do sistema. A resposta identifica o sistema e os IDs ausentes. Na pesquisa, `origem`/`destino` recebem `codgCidade`; na reserva, `dadosManager.trechos[].trecho.codgCidadeOrigem/codgCidadeDestino` recebem `codgVinculoCidadeSistema`. Confira o cadastro dos terminais da compra; vinculos de cidade `CIT_...` nao substituem automaticamente os terminais `ROD_...` retornados pelo fornecedor.
-- `CONFERENCIA_NECESSARIA` com origem/destino divergentes: compare os codigos `origem.codigoFornecedor` e `destino.codigoFornecedor` da compra com `codgDestinoSistema` dos vinculos ativos no mesmo `codgSistema`. Os campos `dadosManager.trechos[].trecho.codgCidadeOrigem` e `codgCidadeDestino` recebem `codgVinculoCidadeSistema`, nao o ID da cidade nem o numero apos ROD_/CIT_. Corrija esses IDs tambem dentro de `payloadRecuperacao`: alterar apenas as variaveis do environment nao modifica a snapshot ja salva. Mantenha a chave original e recupere pela requisicao 17. A resposta mostra os IDs/codigos divergentes sem dados pessoais.
+- `VINCULOS_DESTINO_INVALIDOS`: a cidade informada em `dadosManager` nao possui destinos ativos no sistema. Use `codgCidade`, o mesmo ID usado na pesquisa, e confira o cadastro dos terminais no Manager.
+- `CONFERENCIA_NECESSARIA` com origem/destino divergentes: confirme que cada terminal retornado pelo Hub esta vinculado a cidade informada no mesmo `codgSistema`. Origem/destino do request recebem `codgCidade`; os vinculos sao resolvidos internamente. Corrija os IDs de cidade tambem dentro de `payloadRecuperacao`: alterar apenas o environment nao modifica a snapshot. Mantenha a chave original e recupere pela requisicao 17.
 - `SocketException` no transporte do Manager: interrupcao de conexao, sem resposta HTTP. Uma consulta GET sem efeito pode ser repetida uma unica vez. O log indica motivo classificado e tentativa, sem imprimir a mensagem original. Nao ha repeticao automatica de reserva, emissao, gravacao, timeout, conexao recusada ou respostas HTTP de erro. Falha persistente exige verificar o processo/log do Manager no mesmo horario e recuperar a compra pela requisicao 17.
 - 502/503/504: confira servico e codigo na resposta, URLs e credenciais internas. Havendo efeito incerto, recupere por consulta.
 
@@ -114,7 +117,7 @@ Se o ConfApi retornar `VINCULOS_DESTINO_INVALIDOS` antes de chamar `salvarComple
 
 ## Alternativa: envio manual da reserva
 
-Voce tambem pode importar apenas `confapi-rodoviario-reserva-manual.postman_collection.json`. Abra a nova collection **ConfApi Rodoviario - Reserva manual**, selecione o environment ja preenchido e use sua unica requisicao. Assim como a requisicao 14 atualizada, esta alternativa nao depende de `permitirOperacoesComEfeito` nem de `acaoPermitida`. Body, Bearer appToken, X-Usuario-Token, validacao de campos e snapshot para recuperacao continuam iguais.
+Voce tambem pode importar apenas `confapi-rodoviario-reserva-manual.postman_collection.json`. Abra a nova collection **ConfApi Rodoviario - Reserva manual**, selecione o environment ja preenchido e use sua unica requisicao. Assim como a requisicao 14 atualizada, esta alternativa nao depende de `permitirOperacoesComEfeito` nem de `acaoPermitida`. Usa somente Bearer appToken, mantendo validacao dos campos e snapshot para recuperacao.
 
 Para corrigir diretamente a requisicao ja aberta, substitua todo o conteudo de **Scripts > Pre-request** pelo arquivo `reservar-manual.pre-request.js` e salve a requisicao. Editar arquivos do repositorio nao atualiza automaticamente uma requisicao ja importada no Postman.
 

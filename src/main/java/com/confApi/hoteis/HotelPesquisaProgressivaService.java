@@ -25,6 +25,9 @@ public class HotelPesquisaProgressivaService {
             new ArrayBlockingQueue<>(32), new ThreadPoolExecutor.AbortPolicy());
     private final ScheduledExecutorService limpeza = Executors.newSingleThreadScheduledExecutor();
     private static final long PRAZO = 180_000, RETENCAO = 600_000;
+    // Contrato da rota /api/hotel/disponibilidade/rapida/{fornecedor} do HUB.
+    // O cadastro do produto também contém sistemas internos sem integração nessa rota.
+    private static final Set<String> FORNECEDORES_PESQUISA_RAPIDA_HUB = Set.of("ezlink", "omnibees", "hoteldo");
 
     public HotelPesquisaProgressivaService(HotelSearchService service, ObjectMapper mapper, SistemaService sistemaService) {
         this.service = service; this.mapper = mapper; this.sistemaService = sistemaService;
@@ -52,6 +55,7 @@ public class HotelPesquisaProgressivaService {
                 .map(Sistema::getNomeSistema)
                 .filter(nome -> nome != null && !nome.isBlank())
                 .map(String::trim)
+                .filter(nome -> FORNECEDORES_PESQUISA_RAPIDA_HUB.contains(nome.toLowerCase(Locale.ROOT)))
                 .distinct()
                 .toList();
         Pesquisa p = new Pesquisa(dono, mapper.convertValue(criterio, HotelPesquisaModelFront.class), fornecedores.size());
