@@ -7,9 +7,12 @@ const known=new Set(environment.values.map(v=>v.key));
 const sample=Object.fromEntries(environment.values.map(v=>[v.key,v.value||'exemplo']));
 Object.assign(sample,{appToken:'app.jwt.test',usuarioToken:'user.jwt.test',loginApp:'teste',senhaApp:'fixture',loginUsuario:'teste',senhaUsuario:'fixture',codgSistema:'9',codgAgencia:'7',origemCodigo:'ROD_1',destinoCodigo:'CIT_15',codgVinculoOrigem:'11',codgVinculoDestino:'22',dataViagem:'2030-01-15',codigoViagem:'travel-1',assento:'01',codigoViacao:'9',cpfPassageiro:'12345678909',sexoPassageiro:'1',emailCompra:'teste@example.com',chaveCompra:'postman-rodoviario-0001',codgReservaRodoviario:'10',codigoCompra:'123456',codigoReservaTemporaria:'booking-1',codigoPassageiro:'321',codgRodoviarioTrecho:'100',chaveRecebimento:'recebimento-0001',codgFormaPagto:'1',valorRecebimento:'22.40',dataRecebimento:'2026-01-01',codgTransacao:'gateway-0001',permitirOperacoesComEfeito:'false',acaoPermitida:''});
 const replace=(text,values)=>text.replace(/{{([^{}]+)}}/g,(_,k)=>String(values[k]??''));
-Object.assign(sample,{codgCidadeOrigem:'101',codgCidadeDestino:'202'});
+Object.assign(sample,{codgCidadeOrigem:'101',codgCidadeDestino:'202',codgUsuarioCriacao:'7'});
 const buy=requests.find(x=>x.name.startsWith('14 '));
 const original=JSON.parse(replace(buy.request.body.raw,sample));
+assert.equal(original.dadosManager.trechos[0].trecho.codgCidadeOrigem,101);
+assert.equal(original.dadosManager.trechos[0].trecho.codgCidadeDestino,202);
+assert.equal(original.dadosManager.reserva.codgUsuarioCriacao,7);
 sample.payloadRecuperacao=JSON.stringify({reservaRodoviario:{sistema:sample.sistema},emissao:{sistema:sample.sistema,email:sample.emailCompra,pagamento:{}},dadosManager:original.dadosManager});
 let assertions=0;
 function expect(v,message,negative=false){
@@ -25,7 +28,7 @@ const SKIP=Symbol('skip');
 function context(item,vars,body={},status=200,overrides={}){
  const values={...vars}; const logs=[], failures=[];
  const env={get:k=>values[k],set:(k,v)=>{values[k]=v;},unset:k=>delete values[k]};
- const pm={environment:env,variables:{get:k=>Object.hasOwn(overrides,k)?overrides[k]:values[k],replaceIn:s=>replace(s,{...values,...overrides})},request:item.request,
+ const pm={environment:env,variables:{get:k=>Object.hasOwn(overrides,k)?overrides[k]:values[k],set:(k,v)=>{overrides[k]=v;values[k]=v;},replaceIn:s=>replace(s,{...values,...overrides})},request:item.request,
   execution:{skipRequest:()=>{throw SKIP;}},response:{code:status,json:()=>body,to:{have:{status:c=>{assert.equal(status,c);assertions++;}}}},
   expect,test:(name,fn)=>{try{fn();}catch(error){failures.push({name,error});}}};
  return {ctx:{pm,console:{warn:m=>logs.push(m),info:m=>logs.push(m),error:m=>logs.push(m)}},values,logs,failures};
@@ -56,7 +59,7 @@ for(const item of requests){
  }
  let b={content:[]}, status=200;
  if(number===1)b={token:'novo.jwt.test'};
- else if(number===2)b={chaveToken:'individual.jwt.test',agencia:{codgAgencia:7}};
+ else if(number===2)b={id:7,codigo:900,chaveToken:'individual.jwt.test',agencia:{codgAgencia:7}};
  else if((number>=3&&number<=6)||number===9||(number>=10&&number<=13))b={sistema:'QueroPassagem',dados:[]};
  else if(number>=14&&number<=19)b={success:true,requerConferencia:false,mensagem:'Ok',reserva:{reserva:{codgReservaRodoviario:10,status:1},trechos:[{codgRodoviarioTrecho:100}]},fornecedor:{dados:{codigoFornecedor:123456,situacao:'paid',trechos:[{passageiros:[{codigoFornecedor:321,bilhete:{situacao:'emitted',numero:'ABC123'}}]}]}}};
  else if(number===21)b={reserva:{codgReservaRodoviario:10},trechos:[],passageiros:[],assentos:[],bilhetes:[],recebimentos:[]};
@@ -64,10 +67,11 @@ for(const item of requests){
  else if(number===29){b={};status=201;}
  else if(number===30){b={codgRecebimento:500};status=201;}
  else if(number===31){b={};status=403;}
- else if(number===32){b={};status=401;}
+ else if(number===32){b={content:[]};status=200;}
  else if([33,34].includes(number)){b={};status=400;}
  else if(number===35)b={success:false,requerConferencia:true};
  const post=context(item,vars,b,status);vm.runInNewContext(source(item,'test'),post.ctx);assert.deepEqual(post.failures,[]);posts++;
+ if(number===2)assert.equal(post.values.codgUsuarioCriacao,'7');
  if(action)assert.equal(post.values.acaoPermitida,'');
 }
 for(const k of ['appToken','usuarioToken','senhaApp','senhaUsuario','payloadRecuperacao'])assert.equal(environment.values.find(v=>v.key===k).value,'');
@@ -83,13 +87,18 @@ const tokenEmOutroEscopo=context(viacoes,{...sample,appToken:undefined},{},200,{
 vm.runInNewContext(source(viacoes,'prerequest'),tokenEmOutroEscopo.ctx);
 assert.ok(!tokenEmOutroEscopo.logs.some(x=>x.includes('appToken vazio')));
 assert.ok(!tokenEmOutroEscopo.logs.join().includes('SEGREDO_ESCOPO'));
-// Sem token individual, a leitura pode retornar 401 do servidor.
+// O rodoviario nao exige token individual adicional ao Bearer da aplicacao.
 const detalhe=requests.find(x=>x.name.startsWith('21 '));
 const semIndividual=context(detalhe,{...sample,usuarioToken:''});
 vm.runInNewContext(source(detalhe,'prerequest'),semIndividual.ctx);assert.deepEqual(semIndividual.failures,[]);
-assert.ok(semIndividual.logs.some(x=>x.includes('X-Usuario-Token')));
+assert.ok(!semIndividual.logs.some(x=>x.includes('X-Usuario-Token')));
+assert.ok(!requests.some(item=>(item.request.header||[]).some(h=>h.key==='X-Usuario-Token')));
+for(const item of [buy,requests.find(x=>x.name.startsWith('17 '))]){
+ const semSegundoToken=context(item,{...sample,usuarioToken:''});
+ vm.runInNewContext(source(item,'prerequest'),semSegundoToken.ctx);assert.deepEqual(semSegundoToken.failures,[]);
+}
 // Falhas de configuracao continuam bloqueadas, com motivo no console e no teste.
-for(const [item,vars] of [[viacoes,{...sample,baseUrl:''}],[buy,{...sample,appToken:''}],[buy,{...sample,codgVinculoOrigem:''}]]){
+for(const [item,vars] of [[viacoes,{...sample,baseUrl:''}],[buy,{...sample,appToken:''}],[buy,{...sample,codgCidadeOrigem:''}],[buy,{...sample,codgUsuarioCriacao:''}]]){
  const blocked=context(item,vars);let skipped=false;
  try{vm.runInNewContext(source(item,'prerequest'),blocked.ctx);}catch(e){if(e===SKIP)skipped=true;else throw e;}
  assert.ok(skipped);assert.equal(blocked.failures.length,1);
@@ -144,11 +153,20 @@ for(const flags of [{permitirOperacoesComEfeito:'false',acaoPermitida:''},{permi
  assert.equal(recover.dadosManager.chaveIdempotencia,sample.chaveCompra);assert.deepEqual(recover.emissao.pagamento,{});
  assert.equal(run.values.codgReservaRodoviario,undefined);manualCases++;
 }
-for(const key of ['appToken','usuarioToken','codgVinculoOrigem']){
+for(const key of ['appToken','codgCidadeOrigem','codgUsuarioCriacao']){
  const blocked=context(manual,{...sample,[key]:''});let skipped=false;
  try{vm.runInNewContext(manualPre,blocked.ctx);}catch(e){if(e===SKIP)skipped=true;else throw e;}
  assert.ok(skipped);assert.ok(blocked.logs.some(x=>x.includes(key)));manualCases++;
 }
+const manualSemUsuario=context(manual,{...sample,usuarioToken:''});
+vm.runInNewContext(manualPre,manualSemUsuario.ctx);assert.deepEqual(manualSemUsuario.failures,[]);manualCases++;
+const recuperar=requests.find(x=>x.name.startsWith('17 '));
+const snapshotSemAutor=JSON.parse(sample.payloadRecuperacao);delete snapshotSemAutor.dadosManager.reserva.codgUsuarioCriacao;
+const recuperarSemAutor=context(recuperar,{...sample,payloadRecuperacao:JSON.stringify(snapshotSemAutor)});
+vm.runInNewContext(source(recuperar,'prerequest'),recuperarSemAutor.ctx);assert.deepEqual(recuperarSemAutor.failures,[]);
+const recuperadoComAutor=JSON.parse(recuperarSemAutor.values.payloadRecuperacao);
+assert.equal(recuperadoComAutor.dadosManager.reserva.codgUsuarioCriacao,7);
+assert.equal(recuperadoComAutor.dadosManager.chaveIdempotencia,sample.chaveCompra);
 const manualCard=structuredClone(manual);manualCard.request.body.raw=JSON.stringify(withCard);
 const manualRun=context(manualCard,sample);vm.runInNewContext(source(manualCard,'prerequest'),manualRun.ctx);
 assert.ok(!manualRun.values.payloadRecuperacao.includes('CARD_SECRET_FIXTURE'));

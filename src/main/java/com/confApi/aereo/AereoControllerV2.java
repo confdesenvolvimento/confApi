@@ -19,6 +19,7 @@ public class AereoControllerV2 {
     private final AereoRegrasReservaService regrasReservaService;
     @Autowired
     private AereoClient aereoClient;
+    @Autowired private AereoConsultaService consultaService;
 
     public AereoControllerV2(AereoService service, AereoRegrasReservaService regrasReservaService) {
         this.service = service;
@@ -45,7 +46,7 @@ public class AereoControllerV2 {
 
     @PostMapping("/carregarReserva")
     public ConsultarLocalizadorResponse carregaReserva(@RequestBody ConsultarLocalizadorRequest req) {
-        ConsultarLocalizadorResponse result = aereoClient.carregarReserva(req);
+        ConsultarLocalizadorResponse result = consultaService.carregarReserva(req);
         return regrasReservaService.enriquecer(result);
     }
 

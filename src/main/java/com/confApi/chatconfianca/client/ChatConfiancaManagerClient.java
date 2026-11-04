@@ -145,6 +145,17 @@ public class ChatConfiancaManagerClient {
     }
 
 
+    public void put(String path, Object body) {
+        try {
+            ResponseEntity<Void> response = exchange(path, HttpMethod.PUT, body, Void.class);
+            if (!response.getStatusCode().is2xxSuccessful()) throw new ServiceIndisponivelException("Atualizacao no manager nao confirmada.");
+        } catch (HttpStatusCodeException ex) {
+            throw mapStatusException("atualizar no manager", ex);
+        } catch (RestClientException ex) {
+            throw new ServiceIndisponivelException("Nao foi possivel atualizar no manager.");
+        }
+    }
+
     public void delete(String path) {
         try {
             exchange(path, HttpMethod.DELETE, null, Void.class);
