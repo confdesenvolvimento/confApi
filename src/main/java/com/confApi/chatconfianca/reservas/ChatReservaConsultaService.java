@@ -61,7 +61,11 @@ public class ChatReservaConsultaService {
             if(pagina.getReservas().size()==1&&(pagina.getTotalReservas()==1||ultimaSingular))
                 estado.setSelecionadaId(pagina.getReservas().get(0).getReservaId());
             String resposta=prefixo+ChatReservaConsultaTexto.renderizar(pagina,pedido.foco());
-            List<ChatActionDTO> actions=acoes==null?List.of():acoes.acoesParaConsulta(pagina.getReservas());
+            // Acoes globais de varias reservas geravam botoes identicos sem referencia visual.
+            // A escolha por opcao/localizador reconsulta o registro antes de oferecer suas acoes.
+            boolean reservaUnica=pagina.getReservas().size()==1 && !"CONTAGEM".equals(pedido.foco());
+            if (!reservaUnica) pagina.getReservas().forEach(r -> r.setActions(List.of()));
+            List<ChatActionDTO> actions=acoes==null||!reservaUnica?List.of():acoes.acoesParaConsulta(pagina.getReservas());
             return responder(resposta,pagina.getTotalReservas()==0?"SEM_RESULTADO":"DADOS_CONSULTADOS",estado,actions,
                     pagina,ampliada,pedido.filtros());
         } catch(Exception ex) {

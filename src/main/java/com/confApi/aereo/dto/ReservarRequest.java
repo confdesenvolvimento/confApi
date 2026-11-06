@@ -8,6 +8,14 @@ import lombok.Data;
 import java.util.List;
 @Data
 public class ReservarRequest {
+    private String tipoTarifa = "CONS";
+    private com.fasterxml.jackson.databind.JsonNode criteriosOperadora;
+    private String chaveSelecao;
+    /** ID interno da agência proprietária; não é ERP nem credencial do fornecedor. */
+    private Integer codgAgencia;
+    private Integer codgPacote;
+    private Long codgReservaHotel;
+    private java.math.BigDecimal precoEsperadoOperadora;
     private IdentificacaoAgenciaModel identificacaoAgenciaModel;
     private Agencia agencia;
     private List<ClasseSelecionada> classesSelecionadas;

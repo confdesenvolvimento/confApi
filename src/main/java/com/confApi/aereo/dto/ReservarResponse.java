@@ -6,6 +6,7 @@ import lombok.Data;
 import java.util.List;
 @Data
 public class ReservarResponse {
+    private String tipoTarifa;
     @JsonDeserialize(using = ExceptionDetailDeserializer.class)
     private ExceptionDetail exception;
     private List<Reserva> reservas;

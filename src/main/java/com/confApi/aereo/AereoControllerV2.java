@@ -32,22 +32,27 @@ public class AereoControllerV2 {
     }
 
     @PostMapping("/tarifar")
-    public TarifarResponse tarifar(@RequestBody TarifarRequest req) {
-        TarifarResponse result = aereoClient.tarifar(req);
-        return result;
+    public TarifarResponse tarifar(@RequestBody TarifarRequest req,
+            @org.springframework.web.bind.annotation.RequestHeader(value="X-Usuario-Token", required=false) String usuario) {
+        return "OPER".equals(req.getTipoTarifa()) ? aereoClient.tarifar(req, usuario) : aereoClient.tarifar(req);
     }
+    public TarifarResponse tarifar(TarifarRequest req) { return aereoClient.tarifar(req); }
 
     @PostMapping("/reservar")
-    public ReservarResponse tarifar(@RequestBody ReservarRequest req) {
-        ReservarResponse result = aereoClient.reserva(req);
-        return result;
+    public ReservarResponse tarifar(@RequestBody ReservarRequest req,
+            @org.springframework.web.bind.annotation.RequestHeader(value="X-Usuario-Token", required=false) String usuario) {
+        return "OPER".equals(req.getTipoTarifa()) ? aereoClient.reserva(req, usuario) : aereoClient.reserva(req);
     }
+    public ReservarResponse tarifar(ReservarRequest req) { return aereoClient.reserva(req); }
 
     @PostMapping("/carregarReserva")
-    public ConsultarLocalizadorResponse carregaReserva(@RequestBody ConsultarLocalizadorRequest req) {
-        ConsultarLocalizadorResponse result = aereoClient.carregarReserva(req);
+    public ConsultarLocalizadorResponse carregaReserva(@RequestBody ConsultarLocalizadorRequest req,
+            @org.springframework.web.bind.annotation.RequestHeader(value="X-Usuario-Token", required=false) String usuario) {
+        ConsultarLocalizadorResponse result = "OPER".equals(req.getTipoTarifa())
+                ? aereoClient.carregarReserva(req, usuario) : aereoClient.carregarReserva(req);
         return regrasReservaService.enriquecer(result);
     }
+    public ConsultarLocalizadorResponse carregaReserva(ConsultarLocalizadorRequest req) { return carregaReserva(req, null); }
 
     @PostMapping("/obterInformacoesDaFamilia")
     public RegrasAereasReservaResponse obterInformacoesDaFamilia(@RequestBody AereoRegrasFamiliaRequest req) {
@@ -71,15 +76,19 @@ public class AereoControllerV2 {
     public EmitirResponse emitir(EmitirRequest req) { return aereoClient.emitir(req); }
 
     @PostMapping("/cancelarReserva")
-    public CancelarReservaResponse cancelarReserva(@RequestBody CancelarReservaRequest req) {
-        CancelarReservaResponse result = aereoClient.cancelarReserva(req);
-        return result;
+    public CancelarReservaResponse cancelarReserva(@RequestBody CancelarReservaRequest req,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
+        return req != null && "OPER".equals(req.getTipoTarifa()) ? aereoClient.cancelarReserva(req, usuario) : aereoClient.cancelarReserva(req);
     }
+
+    public CancelarReservaResponse cancelarReserva(CancelarReservaRequest req) { return cancelarReserva(req, null); }
     @PostMapping("/cancelarBilhete")
-    public ConsultarEticketResponse cancelarBilhete(@RequestBody CancelarBilheteRequest req) {
-        ConsultarEticketResponse result = aereoClient.cancelarBilhete(req);
-        return result;
+    public ConsultarEticketResponse cancelarBilhete(@RequestBody CancelarBilheteRequest req,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
+        return req != null && "OPER".equals(req.getTipoTarifa()) ? aereoClient.cancelarBilhete(req, usuario) : aereoClient.cancelarBilhete(req);
     }
+
+    public ConsultarEticketResponse cancelarBilhete(CancelarBilheteRequest req) { return cancelarBilhete(req, null); }
 
     @PostMapping("/obterParcelas")
     public BuscarFormasFinanciamentoResponse obterParcelas(@RequestBody BuscarFormasFinanciamentoRequest req) {

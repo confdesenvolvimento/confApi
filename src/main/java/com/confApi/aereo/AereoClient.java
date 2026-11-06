@@ -34,8 +34,15 @@ public class AereoClient {
     @Autowired
     private ConfAppService confAppService;
 
-    public AereoClient(@Qualifier("hubRestTemplate") RestTemplate hubRestTemplate) {
+    private final RestTemplate operadoraRestTemplate;
+
+    public AereoClient(RestTemplate hubRestTemplate) { this(hubRestTemplate, hubRestTemplate); }
+
+    @Autowired
+    public AereoClient(@Qualifier("hubRestTemplate") RestTemplate hubRestTemplate,
+            @Qualifier("hubOperadoraRestTemplate") RestTemplate operadoraRestTemplate) {
         this.restTemplate = hubRestTemplate;
+        this.operadoraRestTemplate = operadoraRestTemplate;
     }
 
     public BuscarFormasFinanciamentoResponse recuperarFormasFinanciamentoToken(BuscarFormasFinanciamentoRequest request) {
@@ -98,7 +105,13 @@ public class AereoClient {
         );
     }
 
-    public ConsultarEticketResponse cancelarBilhete(CancelarBilheteRequest request) {
+    public ConsultarEticketResponse cancelarBilhete(CancelarBilheteRequest request) { return cancelarBilhete(request, null); }
+
+    public ConsultarEticketResponse cancelarBilhete(CancelarBilheteRequest request, String usuario) {
+        if (modalidadeOperadora(request == null ? null : request.getTipoTarifa())) {
+            validarRegistroOperadora(request.getCodgReservaAereo(), request.getLocalizador());
+            return operadora("/cancelarbilhete", request, usuario, ConsultarEticketResponse.class);
+        }
         return post(
                 "Aéreo - Cancelar Bilhete",
                 API_AEREO + "/cancelarbilhete",
@@ -108,7 +121,13 @@ public class AereoClient {
         );
     }
 
-    public CancelarReservaResponse cancelarReserva(CancelarReservaRequest request) {
+    public CancelarReservaResponse cancelarReserva(CancelarReservaRequest request) { return cancelarReserva(request, null); }
+
+    public CancelarReservaResponse cancelarReserva(CancelarReservaRequest request, String usuario) {
+        if (modalidadeOperadora(request == null ? null : request.getTipoTarifa())) {
+            validarRegistroOperadora(request.getCodgReservaAereo(), request.getLocalizador());
+            return operadora("/cancelar", request, usuario, CancelarReservaResponse.class);
+        }
         return post(
                 "Aéreo - Cancelar Reserva",
                 API_AEREO + "/cancelar",
@@ -140,7 +159,15 @@ public class AereoClient {
         throw new IllegalStateException("Não foi possível confirmar o resultado da emissão. Consulte a reserva antes de tentar novamente.");
     }
 
-    public ConsultarLocalizadorResponse carregarReserva(ConsultarLocalizadorRequest consultarRequest) {
+    public ConsultarLocalizadorResponse carregarReserva(ConsultarLocalizadorRequest request) { return carregarReserva(request, null); }
+
+    public ConsultarLocalizadorResponse carregarReserva(ConsultarLocalizadorRequest consultarRequest, String usuario) {
+        if (modalidadeOperadora(consultarRequest == null ? null : consultarRequest.getTipoTarifa())) {
+            if (consultarRequest.getCodgReservaAereo() == null || consultarRequest.getCodgReservaAereo() <= 0
+                    || consultarRequest.getLocalizador() == null || !consultarRequest.getLocalizador().matches("[A-Za-z0-9._-]{3,45}"))
+                throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe o registro da reserva OPER para consultar.");
+            return operadora("/consultar", consultarRequest, usuario, ConsultarLocalizadorResponse.class);
+        }
         return post(
                 "Aéreo - Consultar Localizador",
                 API_AEREO + "/consultar",
@@ -152,6 +179,7 @@ public class AereoClient {
 
     /** Read-only lookup that never reports an integration failure as an empty reservation list. */
     public ConsultarLocalizadorResponse carregarReservaEstrita(ConsultarLocalizadorRequest consultarRequest) {
+        if (modalidadeOperadora(consultarRequest == null ? null : consultarRequest.getTipoTarifa())) return carregarReserva(consultarRequest, null);
         return post(
                 "Aéreo - Validar Localizador",
                 API_AEREO + "/consultar",
@@ -163,6 +191,8 @@ public class AereoClient {
 
     /** Retorna as formas de pagamento permitidas pelo HUB para o localizador. */
     public Map<String, Object> iniciarEmissao(ConsultarLocalizadorRequest consultarRequest) {
+        if (modalidadeOperadora(consultarRequest == null ? null : consultarRequest.getTipoTarifa()))
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT, "O pagamento e a emissão OPER devem seguir pelo pacote.");
         return post(
                 "Aéreo - Iniciar Emissão",
                 API_AEREO + "/iniciaremissao",
@@ -172,7 +202,13 @@ public class AereoClient {
         );
     }
 
-    public ReservarResponse reserva(ReservarRequest reservarRequest) {
+    public ReservarResponse reserva(ReservarRequest reservarRequest) { return reserva(reservarRequest, null); }
+
+    public ReservarResponse reserva(ReservarRequest reservarRequest, String usuario) {
+        if (modalidadeOperadora(reservarRequest == null ? null : reservarRequest.getTipoTarifa())) {
+            validarSelecaoOperadora(reservarRequest.getCriteriosOperadora(), reservarRequest.getChaveSelecao());
+            return operadora("/reservar", reservarRequest, usuario, ReservarResponse.class);
+        }
         return post(
                 "Aéreo - Reservar",
                 API_AEREO + "/reservar",
@@ -182,7 +218,13 @@ public class AereoClient {
         );
     }
 
-    public TarifarResponse tarifar(TarifarRequest tarifarRequest) {
+    public TarifarResponse tarifar(TarifarRequest tarifarRequest) { return tarifar(tarifarRequest, null); }
+
+    public TarifarResponse tarifar(TarifarRequest tarifarRequest, String usuario) {
+        if (modalidadeOperadora(tarifarRequest == null ? null : tarifarRequest.getTipoTarifa())) {
+            validarSelecaoOperadora(tarifarRequest.getCriteriosOperadora(), tarifarRequest.getChaveSelecao());
+            return operadora("/tarifar", tarifarRequest, usuario, TarifarResponse.class);
+        }
         return post(
                 "Aéreo - Tarifar",
                 API_AEREO + "/tarifar",
@@ -190,6 +232,49 @@ public class AereoClient {
                 TarifarResponse.class,
                 new TarifarResponse()
         );
+    }
+
+    private static boolean modalidadeOperadora(String tipo) {
+        if (tipo == null || tipo.isBlank() || "CONS".equals(tipo)) return false;
+        if ("OPER".equals(tipo)) return true;
+        throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "Tipo de tarifa inválido.");
+    }
+    private static void validarRegistroOperadora(Integer id, String localizador) {
+        if (id == null || id <= 0 || localizador == null || !localizador.matches("[A-Za-z0-9._-]{3,45}"))
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe o registro da reserva OPER para cancelar.");
+    }
+    private static void validarSelecaoOperadora(com.fasterxml.jackson.databind.JsonNode criterios, String chave) {
+        if (criterios == null || !criterios.isObject() || chave == null || !chave.matches("[a-f0-9]{64}"))
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecione novamente a família da tarifa OPER.");
+    }
+    private <T> T operadora(String rota, Object request, String usuario, Class<T> tipo) {
+        if (usuario == null || usuario.isBlank() || usuario.length() > 16000 || usuario.chars().anyMatch(Character::isISOControl))
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Renove sua sessão para continuar a tarifa OPER.");
+        try {
+            var token = confAppService.token();
+            if (token == null || token.getToken() == null || token.getToken().isBlank()) throw new IllegalStateException();
+            var headers = defaultHeaders(token.getToken());
+            headers.set("X-Usuario-Token", usuario);
+            var response = operadoraRestTemplate.exchange(montarUrl(API_AEREO + rota), HttpMethod.POST,
+                    new HttpEntity<>(new CorpoOperadora(request), headers), tipo);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) throw new IllegalStateException();
+            return response.getBody();
+        } catch (RestClientResponseException ex) {
+            HttpStatus status = HttpStatus.resolve(ex.getRawStatusCode());
+            if (status == null || !status.is4xxClientError()) status = HttpStatus.BAD_GATEWAY;
+            throw new org.springframework.web.server.ResponseStatusException(status,
+                    "A condição OPER não foi confirmada. Confira a tarifa e o andamento da reserva antes de continuar.");
+        } catch (Exception ex) {
+            LOG.log(Level.WARNING, "AEREO_OPER_FALHA operacao={0} tipo={1}", new Object[]{rota, ex.getClass().getSimpleName()});
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Não foi possível confirmar o retorno OPER. Consulte o andamento antes de tentar reservar novamente.");
+        }
+    }
+    private static final class CorpoOperadora {
+        private final Object dados;
+        CorpoOperadora(Object dados) { this.dados = dados; }
+        @com.fasterxml.jackson.annotation.JsonValue public Object dados() { return dados; }
+        @Override public String toString() { return "AereoOPER[dados protegidos]"; }
     }
 
     /** Read-only repricing for chat: never converts integration errors into an empty DTO. */
@@ -293,6 +378,7 @@ public class AereoClient {
             RES retornoPadrao,
             boolean resultadoEstrito
     ) {
+        validarPesquisaTradicional(request);
         String url = montarUrl(endpoint);
         long inicio = System.currentTimeMillis();
 
@@ -356,6 +442,7 @@ public class AereoClient {
             RES retornoPadrao,
             boolean resultadoEstrito
     ) {
+        validarPesquisaTradicional(request);
         String url = montarUrl(endpoint);
         long inicio = System.currentTimeMillis();
 
@@ -402,6 +489,12 @@ public class AereoClient {
             throw new ConsultaDisponibilidadeException("RESPOSTA_INVALIDA");
         }
         return retornoPadrao;
+    }
+
+    private void validarPesquisaTradicional(Object request) {
+        if (request instanceof PesquisaModalidadeRequest pesquisa) {
+            pesquisa.exigirPesquisaTradicional();
+        }
     }
 
     private String montarUrl(String endpoint) {

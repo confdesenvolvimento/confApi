@@ -22,4 +22,16 @@ public class HubRestTemplateConfig {
                 .setReadTimeout(Duration.ofMillis(readTimeout))
                 .build();
     }
+
+    /** O RT OPER pode revalidar a seleção antes de reservar; não altera o timeout de CONS. */
+    @Bean
+    public RestTemplate hubOperadoraRestTemplate(RestTemplateBuilder builder) {
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory() {
+            @Override protected void prepareConnection(java.net.HttpURLConnection c, String method) throws java.io.IOException {
+                super.prepareConnection(c, method); c.setInstanceFollowRedirects(false);
+            }
+        };
+        factory.setConnectTimeout(8000); factory.setReadTimeout(300000);
+        return builder.requestFactory(() -> factory).build();
+    }
 }

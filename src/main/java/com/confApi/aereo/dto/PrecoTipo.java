@@ -8,6 +8,8 @@ import lombok.Setter;
 
 @Data
 public class PrecoTipo {
+    private java.math.BigDecimal valorComissao;
+
 
     private Integer eqValorTarifa;
     private Integer eqValorTaxaServico;

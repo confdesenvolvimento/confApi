@@ -6,6 +6,8 @@ import java.util.Date;
 import java.util.List;
 @Data
 public class TarifarResponse {
+    private String tipoTarifa;
+
     private Date data;
     private String dataVersao;
     private Boolean sessaoExpirada;

@@ -22,6 +22,7 @@ public final class ChatReservaConsultaTexto {
     public static String renderizar(ReservaConsultaPagina p, String foco) {
         if (p == null || !ReservaConsultaPagina.SCHEMA.equals(p.getSchema()) || p.getFiltrosAplicados() == null
                 || p.getReservas() == null || p.getSize() < 1 || p.getTotalReservas() < 0
+                || p.getReservas().size() > p.getSize() || p.getReservas().size() > 50
                 || !("OK".equals(p.getStatus()) || "SEM_RESULTADO".equals(p.getStatus()))) {
             throw new IllegalArgumentException("Página de reservas inválida para apresentação.");
         }
@@ -32,6 +33,7 @@ public final class ChatReservaConsultaTexto {
             text.append("Não encontrei reservas com esses filtros na sua agência.\n");
             return text.append(escopo(p.getFiltrosAplicados())).toString();
         }
+        if ("LISTA".equals(tipo) && p.getReservas().size() > 1) return listaCompacta(p);
         text.append("Encontrei ").append(p.getTotalReservas()).append(" reserva(s) e ")
                 .append(p.getTotalLocalizadores()).append(" localizador(es) distinto(s) na sua agência.\n")
                 .append(escopo(p.getFiltrosAplicados()));
@@ -79,6 +81,48 @@ public final class ChatReservaConsultaTexto {
         if (p.isHasNext()) text.append("\n\nHá mais resultados. Peça a próxima página.");
         if (!unica && !ultimaSolicitada) text.append("\nVocê pode pedir os detalhes da primeira ou segunda opção, informar o nome do passageiro ou o destino, ou usar o localizador. Se houver mais de uma reserva para o passageiro, vou apresentar as opções.");
         return text.toString();
+    }
+
+    private static String listaCompacta(ReservaConsultaPagina pagina) {
+        StringBuilder text = new StringBuilder("**Mostrando ").append(pagina.getReservas().size())
+                .append(" reservas da sua agência**\n\n")
+                .append("Página ").append(pagina.getPage() + 1).append(". Mais recentes pela data de ")
+                .append("EMISSAO".equals(pagina.getFiltrosAplicados().getTipoData()) ? "emissão" : "criação")
+                .append(".\n").append(escopo(pagina.getFiltrosAplicados())).append("\n\n");
+        int opcao = 0;
+        for (var reserva : pagina.getReservas()) {
+            List<String> passageiros = reserva.getPassageiros() == null ? List.of() : reserva.getPassageiros().stream()
+                    .filter(n -> n != null && !n.isBlank()).distinct().collect(Collectors.toList());
+            String nomes = nomes(passageiros.stream().limit(2).collect(Collectors.toList()));
+            if (passageiros.size() > 2) nomes += " (+" + (passageiros.size() - 2) + "; veja os detalhes)";
+            text.append(++opcao).append(". **").append(cabecalho(reserva)).append("**\n")
+                    .append("   Passageiro(s): ").append(nomes).append('\n')
+                    .append("   Trecho(s): ").append(rotasCompactas(reserva.getVoos()))
+                    .append(" | Cia(s): ").append(companhiasCompactas(reserva)).append('\n');
+        }
+        if (pagina.isHasNext()) text.append("\nHá mais resultados. Peça a próxima página.\n");
+        return text.append("\nPara ver dados completos e ações, peça os detalhes de uma opção (ex.: detalhes da opção 1) ou informe o localizador.").toString();
+    }
+
+    private static String rotasCompactas(List<ReservaAereaRecenteItem.Voo> voos) {
+        if (voos == null || voos.isEmpty()) return "não informado(s) no cadastro";
+        List<ReservaAereaRecenteItem.Voo> validos = voos.stream().filter(java.util.Objects::nonNull).collect(Collectors.toList());
+        if (validos.isEmpty()) return "não informado(s) no cadastro";
+        String rotas = validos.stream().limit(3).map(v ->
+                (v.getOrigem() == null ? "origem não informada" : seguro(v.getOrigem())) + " → "
+                + (v.getDestino() == null ? "destino não informado" : seguro(v.getDestino())))
+                .collect(Collectors.joining("; "));
+        return rotas + (validos.size() > 3 ? " (+" + (validos.size() - 3) + " voo(s); veja os detalhes)" : "");
+    }
+
+    private static String companhiasCompactas(ReservaAereaRecenteItem reserva) {
+        Set<String> codigos = new LinkedHashSet<>();
+        if (reserva.getVoos() != null) for (var voo : reserva.getVoos())
+            if (voo != null && voo.getCompanhiaIata() != null && !voo.getCompanhiaIata().isBlank()) codigos.add(seguro(voo.getCompanhiaIata()));
+        if (codigos.isEmpty() && reserva.getCompanhiaIata() != null && !reserva.getCompanhiaIata().isBlank())
+            codigos.add(seguro(reserva.getCompanhiaIata()));
+        if (codigos.isEmpty()) return companhias(reserva);
+        return codigos.stream().limit(3).collect(Collectors.joining(", ")) + (codigos.size() > 3 ? " (outras nos detalhes)" : "");
     }
 
     private static String escopo(ReservaConsultaFiltros f) {

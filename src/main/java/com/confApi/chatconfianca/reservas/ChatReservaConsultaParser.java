@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 public final class ChatReservaConsultaParser {
     public record Pedido(ReservaConsultaFiltros filtros, String foco, String pergunta, boolean ampliarSeVazio) { }
     private static final String FLAGS = "(?iu)";
+    private static final Pattern QUANTIDADE = Pattern.compile("\\b(?:(?:ultim[ao]s?|recentes)\\s+(\\d{1,6})\\s+|(\\d{1,6})\\s+(?:(?:ultim[ao]s?|recentes)\\s+)?)(?:vendas?|reservas?|localizadores?|bilhetes?)\\b");
     private static final Pattern PNR = Pattern.compile(FLAGS + "\\b(?:localizador|pnr)\\s*(?:n[ºo.]?\\s*)?[:#]?\\s*([a-z0-9]{5,20})\\b");
     private static final Pattern NOME = Pattern.compile(FLAGS + "\\b(?:nome\\s+(?:d[ao]\\s+)?(?:cliente|passageir[ao])?\\s*(?:[ée]\\s+|de\\s+)?|(?:passageir[ao]|cliente)\\s+(?:chamad[ao]\\s+|de\\s+nome\\s+|[ée]\\s+)?)((?:[\\p{L}][\\p{L}'’-]*)(?:\\s+[\\p{L}][\\p{L}'’-]*){0,7})");
     private ChatReservaConsultaParser() { }
@@ -84,6 +85,9 @@ public final class ChatReservaConsultaParser {
             f.setPage(Math.max(0, Objects.requireNonNullElse(anterior.getFiltros().getPage(), 0) + (paginaSeguinte ? 1 : -1)));
             f.setSize(Objects.requireNonNullElse(anterior.getFiltros().getSize(), 10));
         }
+        Matcher quantidade = QUANTIDADE.matcher(t);
+        if (quantidade.find()) f.setSize(Math.min(50, Math.max(1,
+                Integer.parseInt(quantidade.group(1) == null ? quantidade.group(2) : quantidade.group(1)))));
         String foco = contar ? "CONTAGEM" : companhia ? "CIA" : passageiros && nome == null ? "PASSAGEIROS" : bilhetes && !novoConjunto ? "BILHETES" : trecho && (pronome || selecionada != null || nome != null) ? "TRECHOS" : novoConjunto && f.getSize() == 1 ? "DETALHES" : "LISTA";
         String pergunta = null;
         if (vendas || palavra(t, "emitid[ao]s?")) {
@@ -91,8 +95,6 @@ public final class ChatReservaConsultaParser {
         } else if (novoConjunto && reservas) {
             f.setSituacao("TODAS"); f.setTipoData("CRIACAO");
         }
-        Matcher quantidade = Pattern.compile("\\bultim[ao]s?\\s+(\\d{1,3})\\s+(?:vendas?|reservas?|localizadores?|bilhetes?)\\b").matcher(t);
-        if (quantidade.find()) f.setSize(Math.min(50, Math.max(1, Integer.parseInt(quantidade.group(1)))));
         if (destino != null) f.setDestino(destino);
         if (origem != null) f.setOrigem(origem);
         if (cia != null) f.setCompanhia(cia);
@@ -220,7 +222,7 @@ public final class ChatReservaConsultaParser {
     }
 
     private static boolean comando(String valor) {
-        return normalizar(valor).matches("(?:nome|cliente|passageiro|passageira|reserva|reservas|localizador|localizadores|venda|vendas|dados|detalhes|ultima|ultimo|ultimas|ultimos|criado|criada|recente|recentes|qual|companhia|cia|trecho|destino|origem|sim|nao|dela|dele|voo|aerea|aereo|para|buscar|carregar|minha|meu|isso|esta|esse|essa|dos|das|de|do|da|e|os|as)");
+        return normalizar(valor).matches("(?:nome|cliente|passageiro|passageira|reserva|reservas|localizador|localizadores|venda|vendas|dados|detalhes|opcao|item|numero|ultima|ultimo|ultimas|ultimos|criado|criada|recente|recentes|qual|companhia|cia|trecho|destino|origem|sim|nao|dela|dele|voo|aerea|aereo|para|buscar|carregar|minha|meu|isso|esta|esse|essa|dos|das|de|do|da|e|os|as)");
     }
     private static boolean palavra(String texto, String regex) { return Pattern.compile("\\b(?:" + regex + ")\\b").matcher(texto).find(); }
     private static boolean temPeriodo(String t) { return palavra(t, "hoje|ontem|mes(?:es)?|anos?|dias?|semanas?|semestres?|trimestres?|bimestres?|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro") || t.matches(".*(?:\\d{1,2}/\\d{1,2}|\\d{4}-\\d{2}-\\d{2}|\\b20\\d{2}\\b).*"); }

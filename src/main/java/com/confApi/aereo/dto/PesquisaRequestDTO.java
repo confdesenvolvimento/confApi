@@ -2,6 +2,10 @@ package com.confApi.aereo.dto;
 
 import com.confApi.aereo.eNums.TipoConsulta;
 import com.confApi.aereo.eNums.TipoPesquisa;
+import com.confApi.aereo.eNums.ModalidadeTarifa;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import com.confApi.hub.aereo.dto.Aeroporto;
 import com.confApi.hub.aereo.dto.Companhia;
 import com.confApi.model.IdentificacaoAgenciaModel;
@@ -11,7 +15,10 @@ import java.util.Date;
 import java.util.List;
 
 @Data
-public class PesquisaRequestDTO {
+public class PesquisaRequestDTO implements PesquisaModalidadeRequest {
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @JsonSetter(nulls = Nulls.SKIP)
+    private ModalidadeTarifa modalidadeTarifa = ModalidadeTarifa.CONS;
     private String agencia;
     private String unidade;
     private TipoPesquisa tipoPesquisa;

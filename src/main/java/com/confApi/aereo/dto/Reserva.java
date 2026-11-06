@@ -10,6 +10,8 @@ import java.util.Date;
 import java.util.List;
 @Data
 public class Reserva {
+    private String tipoTarifa;
+
     private Object alerta;
     //private List<Bilhete> bilhetes;
     private List<Contato> contatos;

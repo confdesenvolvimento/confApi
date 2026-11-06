@@ -4,6 +4,10 @@ import lombok.Data;
 
 @Data
 public class ValorPassageiro {
+    private Double valorTarifaNet;
+    private Double valorTaxaCombustivel;
+    private java.math.BigDecimal valorComissao;
+
     private String nomePassageiro;
     private String cpf;
     private Double tarifa;

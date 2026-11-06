@@ -5,6 +5,8 @@ import lombok.Data;
 
 @Data
 public class ConsultarLocalizadorRequest {
+    private String tipoTarifa = "CONS";
+    private Integer codgReservaAereo;
     private IdentificacaoAgenciaModel identificacaoAgenciaModel;
     private String sistema;
     private Agencia agencia =null;

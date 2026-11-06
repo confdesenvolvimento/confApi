@@ -5,6 +5,7 @@ import com.confApi.chatconfianca.dto.reserva.ReservaAereaRecenteItem;
 import com.confApi.chatconfianca.dto.reserva.ReservasAereasRecentesResponse;
 import com.confApi.chatgpt.dto.ChatActionDTO;
 import com.confApi.exception.RegraDeNegocioException;
+import com.confApi.exception.ServiceIndisponivelException;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +37,10 @@ public class ChatConfiancaReservaAereaService {
                 CONSULTA_RECENTES + "?codgAgencia=" + codgAgencia + "&limit=" + limite,
                 new ParameterizedTypeReference<List<ReservaAereaRecenteItem>>() {
                 });
+
+        if (itens != null && itens.size() > limite) {
+            throw new ServiceIndisponivelException("A origem retornou mais reservas que o limite solicitado. Tente novamente.");
+        }
 
         List<ReservaAereaRecenteItem> reservas = itens == null
                 ? new ArrayList<>()
