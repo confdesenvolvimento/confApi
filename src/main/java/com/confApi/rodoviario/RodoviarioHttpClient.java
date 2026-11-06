@@ -132,8 +132,8 @@ public class RodoviarioHttpClient {
         if (servico == Servico.HUB && (status == 401 || status == 403))
             return falha(502, servico, "AUTENTICACAO_HUB_REJEITADA", false);
         if (servico == Servico.MANAGER && status == 401)
-            return RodoviarioIntegracaoException.falha(401, servico.name(), "TOKEN_INDIVIDUAL_INVALIDO",
-                    "Token individual do Manager ausente, invalido ou expirado. Faca login novamente.", false);
+            return RodoviarioIntegracaoException.falha(401, servico.name(), "AUTENTICACAO_MANAGER_REJEITADA",
+                    "Autenticacao da aplicacao recusada pelo Manager. Confira o token e o ambiente da integracao.", false);
         try {
             JsonNode body = mapper.readTree(ex.getResponseBodyAsByteArray());
             if (body != null && body.isObject()) {

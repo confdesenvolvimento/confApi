@@ -3,6 +3,7 @@ package com.confApi.rodoviario;
 import com.confApi.db.confManager.rodoviario.RodoviarioManagerClient;
 import com.confApi.db.confManager.rodoviario.dto.ReservaRodoviarioDetalheDTO;
 import com.confApi.db.confManager.rodoviario.dto.RodoviarioBilheteDTO;
+import com.confApi.db.confManager.rodoviario.dto.RodoviarioDestinoDTO;
 import com.confApi.db.confManager.rodoviario.dto.SalvarReservaRodoviarioRequest;
 import com.confApi.db.confManager.rodoviario.dto.StatusRodoviarioRequest;
 import com.confApi.hub.rodoviario.RodoviarioHubClient;
@@ -66,7 +67,6 @@ public class RodoviarioReservaService {
     }
 
     private void validar(RodoviarioCompraModel req, String usuario, boolean reservar) {
-        exigir(usuario != null && !usuario.isBlank(), 401, "Token individual do Manager obrigatorio.");
         exigir(req != null && req.getEmissao() != null && req.getEmissao().isObject(), 400, "Informe emissao conforme o checkout rodoviario do Hub.");
         exigir(!req.getEmissao().path("email").asText().isBlank() && req.getEmissao().path("pagamento").isObject(), 400, "Informe email e pagamento da emissao.");
         exigir(!reservar || (req.getReservaRodoviario() != null && req.getReservaRodoviario().isObject()), 400, "Informe reservaRodoviario conforme o booking do Hub.");
@@ -120,8 +120,8 @@ public class RodoviarioReservaService {
             acessandoManager = true;
             var existente = porLocalizador(codigo, req.getDadosManager().getReserva().getCodgSistema(), usuario);
             if (existente == null) {
-                var destinos = destinos(req.getDadosManager().getReserva().getCodgSistema(), ids(req.getDadosManager()), usuario);
-                var payload = mapper.mapear(req.getDadosManager(), dados, destinos);
+                var destinos = destinosPorCidade(req.getDadosManager().getReserva().getCodgSistema(), ids(req.getDadosManager()), usuario);
+                var payload = mapper.mapearCidades(req.getDadosManager(), dados, destinos);
                 // Nao repetir checkout se a gravacao falhar. A consulta por referencia recupera a compra.
                 efeito = true;
                 var salvo = manager.salvarCompleta(payload, usuario);
@@ -156,8 +156,8 @@ public class RodoviarioReservaService {
             }
             if (!efeito && resposta.getFornecedor() == null) throw ex;
             registrarErro(resposta, ex);
-            if (acessandoManager && "TOKEN_INDIVIDUAL_INVALIDO".equals(resposta.getCodigo()))
-                return parcial(resposta, "Compra retornada pelo Hub, mas o Manager recusou o token individual. Faca login novamente e recupere a compra sem repetir reserva ou emissao.");
+            if (acessandoManager && "AUTENTICACAO_MANAGER_REJEITADA".equals(resposta.getCodigo()))
+                return parcial(resposta, "Compra retornada pelo Hub, mas o Manager recusou a autenticacao da aplicacao. Confira a integracao e recupere a compra sem repetir reserva ou emissao.");
             if (ex instanceof RodoviarioIntegracaoException && ("CONFERENCIA_NECESSARIA".equals(resposta.getCodigo())
                     || "VINCULOS_DESTINO_INVALIDOS".equals(resposta.getCodigo()))) {
                 String motivo = ((RodoviarioIntegracaoException) ex).getDiagnosticoLocal();
@@ -330,6 +330,35 @@ public class RodoviarioReservaService {
         }
     }
 
+    private List<RodoviarioDestinoDTO> destinosPorCidade(Integer sistema, Set<Integer> cidades, String usuario) {
+        var destinos = new ArrayList<RodoviarioDestinoDTO>();
+        for (Integer cidade : new TreeSet<>(cidades)) {
+            int inicio = destinos.size();
+            boolean concluido = false;
+            for (int pagina = 0; pagina < 1000; pagina++) {
+                var filtros = new LinkedMultiValueMap<String, String>();
+                filtros.add("codgSistema", sistema.toString()); filtros.add("codgCidade", cidade.toString());
+                filtros.add("page", String.valueOf(pagina)); filtros.add("size", "100");
+                JsonNode result = manager.trocar("rodoviario/destinos", HttpMethod.GET, null, filtros, usuario, JsonNode.class, false);
+                exigir(result.path("content").isArray(), 502, "Catalogo de destinos do Manager invalido.");
+                for (var d : result.get("content")) {
+                    var id = d.path("codgVinculoCidadeSistema");
+                    if (d.path("codgCidade").isIntegralNumber() && d.path("codgCidade").asInt(-1) == cidade
+                            && id.isIntegralNumber() && id.canConvertToInt() && id.asInt() > 0
+                            && d.path("codgDestinoSistema").asText().matches("(?:CIT|ROD)_[1-9][0-9]{0,18}"))
+                        destinos.add(new RodoviarioDestinoDTO(id.asInt(), cidade, d.get("codgDestinoSistema").asText()));
+                }
+                if (result.path("last").asBoolean() || result.path("content").size() < 100) { concluido = true; break; }
+            }
+            exigir(concluido, 502, "Catalogo de destinos do Manager excedeu o limite de paginas.");
+            if (destinos.size() == inicio)
+                throw RodoviarioIntegracaoException.falha(400, "CONFAPI", "VINCULOS_DESTINO_INVALIDOS",
+                        "Nenhum destino ativo para codgCidade " + cidade + " no sistema " + sistema
+                                + ". Informe o ID da tabela cidade, o mesmo usado na pesquisa.", true);
+        }
+        return destinos;
+    }
+
     private Map<Integer, String> destinos(Integer sistema, Set<Integer> ids, String usuario) {
         var encontrados = new HashMap<Integer, String>();
         for (int pagina = 0; pagina < 1000; pagina++) {
@@ -351,9 +380,7 @@ public class RodoviarioReservaService {
         ausentes.removeAll(encontrados.keySet());
         throw RodoviarioIntegracaoException.falha(400, "CONFAPI", "VINCULOS_DESTINO_INVALIDOS",
                 "Vinculos nao encontrados entre os destinos ativos do sistema " + sistema + ": " + ausentes
-                        + ". Na reserva, dadosManager.trechos[].trecho.codgCidadeOrigem/codgCidadeDestino recebem "
-                        + "codgVinculoCidadeSistema, e nao codgCidade usado na pesquisa. Use os vinculos correspondentes "
-                        + "aos codigos de origem/destino da compra retornada pelo Hub.", true);
+                        + ". Confira os vinculos da reserva ja salva e o cadastro dos terminais no Manager.", true);
     }
 
     private Set<Integer> ids(SalvarReservaRodoviarioRequest req) {

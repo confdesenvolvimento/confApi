@@ -10,4 +10,6 @@ public class ConsultarLocalizadorResponse {
     private String tipoTarifa;
     private Object exception;
     private List<Reserva> reservas = new ArrayList<>();
+    private Boolean valoresAtualizados;
+    private Boolean valoresSincronizados;
 }

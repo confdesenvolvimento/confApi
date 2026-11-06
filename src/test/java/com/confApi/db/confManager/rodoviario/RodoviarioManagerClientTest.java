@@ -41,9 +41,13 @@ class RodoviarioManagerClientTest {
         var r = new SalvarReservaRodoviarioRequest(); r.setChaveIdempotencia("chave-teste-001");
         assertEquals(10, client.salvarCompleta(r, "USUARIO_TEST").getReserva().getCodgReservaRodoviario()); server.verify();
     }
-    @Test void naoUsaTokenDeAplicacaoComoIdentidade() {
-        assertEquals(401, assertThrows(ResponseStatusException.class, () -> client.detalhe(10, null)).getRawStatusCode());
-        verifyNoInteractions(auth); server.verify();
+    @Test void consultaComBearerDaAplicacaoNaoExigeTokenIndividual() {
+        server.expect(requestTo(UrlConfig.URL_CONFIANCA_MANAGER + "reservaRodoviario/detalhe/10"))
+                .andExpect(header("Authorization", "Bearer APP_TEST"))
+                .andExpect(headerDoesNotExist("X-Usuario-Token"))
+                .andRespond(withSuccess("{\"reserva\":{\"codgReservaRodoviario\":10}}", MediaType.APPLICATION_JSON));
+        assertEquals(10, client.detalhe(10, null).getReserva().getCodgReservaRodoviario());
+        verify(auth).token(); server.verify();
     }
     @Test void encaminhaIdentificadorDaRequisicaoParaCorrelacionarLogDoManager() {
         org.slf4j.MDC.put(RodoviarioRequestLoggingFilter.REQUEST_ID, "request-manager-123");
@@ -71,8 +75,8 @@ class RodoviarioManagerClientTest {
         var ex = assertThrows(RodoviarioIntegracaoException.class, () -> client.detalhe(10, "USUARIO_EXPIRADO"));
         assertEquals(401, ex.getStatus());
         assertEquals("MANAGER", ex.getResposta().path("servico").asText());
-        assertEquals("TOKEN_INDIVIDUAL_INVALIDO", ex.getResposta().path("codigo").asText());
-        assertTrue(ex.getResposta().path("mensagens").get(0).asText().contains("Faca login novamente"));
+        assertEquals("AUTENTICACAO_MANAGER_REJEITADA", ex.getResposta().path("codigo").asText());
+        assertTrue(ex.getResposta().path("mensagens").get(0).asText().contains("Autenticacao da aplicacao"));
         assertFalse(ex.getResposta().toString().contains("SEGREDO_TOKEN")); server.verify();
     }
     @Test void codificaFiltrosUmaUnicaVez() {

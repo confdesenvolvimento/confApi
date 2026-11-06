@@ -14,7 +14,10 @@ class RodoviarioReservaMapperTest {
     private final ObjectMapper json = Jackson2ObjectMapperBuilder.json().build();
     private final RodoviarioReservaMapper mapper = new RodoviarioReservaMapper(json);
     private SalvarReservaRodoviarioRequest template() throws Exception {
-        return json.readValue(RodoviarioReservaServiceTest.REQUEST, RodoviarioCompraModel.class).getDadosManager();
+        var dados = json.readValue(RodoviarioReservaServiceTest.REQUEST, RodoviarioCompraModel.class).getDadosManager();
+        dados.getTrechos().get(0).getTrecho().setCodgCidadeOrigem(11);
+        dados.getTrechos().get(0).getTrecho().setCodgCidadeDestino(22);
+        return dados;
     }
     @Test void associaNomesComAcentosEEspacosSemModificarMetadadosLocais() throws Exception {
         var compra = json.readTree(RodoviarioReservaServiceTest.COMPRA.replace("Maria Silva", "MAR\u00cdA   S\u00cdLVA"));

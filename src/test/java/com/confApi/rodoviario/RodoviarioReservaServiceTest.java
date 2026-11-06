@@ -39,9 +39,9 @@ class RodoviarioReservaServiceTest {
     static final String REQUEST = """
         {"reservaRodoviario":{"viagens":[{"codigoViagem":"travel-1","passageiros":[{"nome":"Maria Silva","documento":"12345678909","tipoDocumento":"CPF","poltrona":"01"}]}]},
          "emissao":{"email":"teste@example.com","pagamento":{"metodo":"preApproved","parcelas":1}},
-         "dadosManager":{"chaveIdempotencia":"pedido-rodoviario-001","reserva":{"codgAgencia":7,"codgSistema":9},
+         "dadosManager":{"chaveIdempotencia":"pedido-rodoviario-001","reserva":{"codgAgencia":7,"codgSistema":9,"codgUsuarioCriacao":7},
           "valores":{"valorTotalMkp":22.40},
-          "trechos":[{"trecho":{"codgCidadeOrigem":11,"codgCidadeDestino":22},
+          "trechos":[{"trecho":{"codgCidadeOrigem":101,"codgCidadeDestino":202},
            "passageiros":[{"passageiro":{"nomePassageiro":"Maria","sobrenomePassageiro":"Silva","sexo":1,"cpf":"12345678909"}}]}]}}
         """;
     ObjectMapper json;
@@ -72,8 +72,38 @@ class RodoviarioReservaServiceTest {
                 .andExpect(header("Authorization", "Bearer APP_TEST")).andExpect(headerDoesNotExist("X-Usuario-Token"));
     }
     void destinos() {
+        destinosCidade(101, "{\"codgVinculoCidadeSistema\":11,\"codgCidade\":101,\"codgDestinoSistema\":\"ROD_1\"}");
+        destinosCidade(202, "{\"codgVinculoCidadeSistema\":22,\"codgCidade\":202,\"codgDestinoSistema\":\"CIT_15\"}");
+    }
+    void destinosCidade(int cidade, String registros) {
+        expectManager("rodoviario/destinos?codgSistema=9&codgCidade=" + cidade + "&page=0&size=100", HttpMethod.GET)
+                .andRespond(withSuccess("{\"content\":[" + registros + "],\"last\":true}", MediaType.APPLICATION_JSON));
+    }
+    void destinosSalvos() {
         expectManager("rodoviario/destinos?codgSistema=9&page=0&size=100", HttpMethod.GET)
                 .andRespond(withSuccess("{\"content\":[{\"codgVinculoCidadeSistema\":11,\"codgDestinoSistema\":\"ROD_1\"},{\"codgVinculoCidadeSistema\":22,\"codgDestinoSistema\":\"CIT_15\"}],\"last\":true}", MediaType.APPLICATION_JSON));
+    }
+    @Test void reservaCompletaUsaSomenteBearerDaAplicacaoNoManager() throws Exception {
+        novoCheckout(COMPRA);
+        server.expect(requestTo(MANAGER + "reservaRodoviario/findByLocalizador/123456?codgSistema=9"))
+                .andExpect(header("Authorization", "Bearer APP_TEST")).andExpect(headerDoesNotExist("X-Usuario-Token"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+        server.expect(requestTo(MANAGER + "rodoviario/destinos?codgSistema=9&codgCidade=101&page=0&size=100"))
+                .andExpect(header("Authorization", "Bearer APP_TEST")).andExpect(headerDoesNotExist("X-Usuario-Token"))
+                .andRespond(withSuccess("{\"content\":[{\"codgVinculoCidadeSistema\":11,\"codgCidade\":101,\"codgDestinoSistema\":\"ROD_1\"}],\"last\":true}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(MANAGER + "rodoviario/destinos?codgSistema=9&codgCidade=202&page=0&size=100"))
+                .andExpect(header("Authorization", "Bearer APP_TEST")).andExpect(headerDoesNotExist("X-Usuario-Token"))
+                .andRespond(withSuccess("{\"content\":[{\"codgVinculoCidadeSistema\":22,\"codgCidade\":202,\"codgDestinoSistema\":\"CIT_15\"}],\"last\":true}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(MANAGER + "reservaRodoviario/salvarCompleta"))
+                .andExpect(method(HttpMethod.POST)).andExpect(header("Authorization", "Bearer APP_TEST"))
+                .andExpect(headerDoesNotExist("X-Usuario-Token"))
+                .andRespond(withSuccess(DETALHE, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(MANAGER + "reservaRodoviario/detalhe/10"))
+                .andExpect(header("Authorization", "Bearer APP_TEST")).andExpect(headerDoesNotExist("X-Usuario-Token"))
+                .andRespond(withSuccess(DETALHE, MediaType.APPLICATION_JSON));
+        var result=service.reservar(request(), null);
+        assertTrue(result.isSuccess());assertFalse(result.isRequerConferencia());
+        assertEquals(10,result.getReserva().getReserva().getCodgReservaRodoviario());server.verify();
     }
     void novoCheckout(String compra) {
         expectHub("consultar").andExpect(jsonPath("$.referenciaExterna").value(org.hamcrest.Matchers.startsWith("ROD-")))
@@ -94,9 +124,12 @@ class RodoviarioReservaServiceTest {
         novoCheckout(COMPRA); semReserva();
         expectManager("reservaRodoviario/salvarCompleta", HttpMethod.POST)
                 .andExpect(jsonPath("$.reserva.localizador").value("123456"))
+                .andExpect(jsonPath("$.reserva.codgUsuarioCriacao").value(7))
                 .andExpect(jsonPath("$.reserva.status").value(1))
                 .andExpect(jsonPath("$.valores.valorTotalNet").value(22.40))
                 .andExpect(jsonPath("$.trechos[0].trecho.dataPartida").value("2030-01-15"))
+                .andExpect(jsonPath("$.trechos[0].trecho.codgCidadeOrigem").value(11))
+                .andExpect(jsonPath("$.trechos[0].trecho.codgCidadeDestino").value(22))
                 .andExpect(jsonPath("$.trechos[0].passageiros[0].bilhetes[0].numerBilhete").value("ABC123"))
                 .andRespond(withSuccess(DETALHE, MediaType.APPLICATION_JSON));
         expectManager("reservaRodoviario/detalhe/10", HttpMethod.GET).andRespond(withSuccess(DETALHE, MediaType.APPLICATION_JSON));
@@ -113,6 +146,12 @@ class RodoviarioReservaServiceTest {
         expectManager("reservaRodoviario/detalhe/10", HttpMethod.GET).andRespond(withSuccess(rascunho, MediaType.APPLICATION_JSON));
         var result = service.reservar(request(), "USUARIO_TEST");
         assertTrue(result.isSuccess()); assertEquals(0, result.getReserva().getReserva().getStatus()); assertFalse(result.isStatusAtualizado()); server.verify();
+    }
+    @Test void reservaSemUsuarioCriadorERecusadaAntesDeQualquerChamadaExterna() throws Exception {
+        var req=request();req.getDadosManager().getReserva().setCodgUsuarioCriacao(null);
+        var erro=assertThrows(RodoviarioIntegracaoException.class,()->service.reservar(req,null));
+        assertEquals(400,erro.getStatus());assertTrue(erro.getDiagnosticoLocal().contains("codgUsuarioCriacao"));
+        server.verify();
     }
     @Test void falhaNoManagerAposEmissaoExigeConferenciaSemCancelarOuEmitirNovamente() throws Exception {
         novoCheckout(COMPRA); semReserva();
@@ -147,14 +186,14 @@ class RodoviarioReservaServiceTest {
         assertTrue(result.isSuccess()); assertFalse(result.isRequerConferencia());
         assertEquals(10, result.getReserva().getReserva().getCodgReservaRodoviario()); server.verify();
     }
-    @Test void tokenRecusadoAposCompraPedeNovoLoginEPreservaCompraParaRecuperacao() throws Exception {
+    @Test void autenticacaoDaAplicacaoRecusadaPreservaCompraParaRecuperacao() throws Exception {
         novoCheckout(COMPRA);
         expectManager("reservaRodoviario/findByLocalizador/123456?codgSistema=9", HttpMethod.GET)
                 .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
         var result = service.reservar(request(), "USUARIO_TEST");
         assertFalse(result.isSuccess()); assertTrue(result.isRequerConferencia());
-        assertEquals("TOKEN_INDIVIDUAL_INVALIDO", result.getCodigo());
-        assertTrue(result.getMensagem().contains("Faca login novamente"));
+        assertEquals("AUTENTICACAO_MANAGER_REJEITADA", result.getCodigo());
+        assertTrue(result.getMensagem().contains("autenticacao da aplicacao"));
         assertTrue(result.getMensagem().contains("sem repetir reserva ou emissao"));
         assertEquals("booking-1", result.getCodigoReservaTemporaria());
         assertEquals(123456, result.getFornecedor().path("dados").path("codigoFornecedor").asInt());
@@ -187,14 +226,14 @@ class RodoviarioReservaServiceTest {
             var req = request();
             var volta = json.convertValue(req.getDadosManager().getTrechos().get(0),
                     com.confApi.db.confManager.rodoviario.dto.SalvarReservaRodoviarioRequest.TrechoCompleto.class);
-            volta.getTrecho().setCodgCidadeOrigem(22); volta.getTrecho().setCodgCidadeDestino(11);
+            volta.getTrecho().setCodgCidadeOrigem(202); volta.getTrecho().setCodgCidadeDestino(101);
             req.getDadosManager().getTrechos().add(volta);
             expectHub("consultar").andRespond(withStatus(HttpStatus.NOT_FOUND));
             assertThrows(RodoviarioIntegracaoException.class, () -> service.reconciliar(req, "USUARIO_TEST"));
             var mensagens = logs.list.stream().map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
                     .collect(java.util.stream.Collectors.joining("\n"));
-            assertTrue(mensagens.contains("requestId=request-vinculos codgSistema=9 trecho=1 codgCidadeOrigem=11 codgCidadeDestino=22"));
-            assertTrue(mensagens.contains("requestId=request-vinculos codgSistema=9 trecho=2 codgCidadeOrigem=22 codgCidadeDestino=11"));
+            assertTrue(mensagens.contains("requestId=request-vinculos codgSistema=9 trecho=1 codgCidadeOrigem=101 codgCidadeDestino=202"));
+            assertTrue(mensagens.contains("requestId=request-vinculos codgSistema=9 trecho=2 codgCidadeOrigem=202 codgCidadeDestino=101"));
             for (String segredo : new String[]{"USUARIO_TEST", "APP_TEST", "Maria", "12345678909", "teste@example.com"})
                 assertFalse(mensagens.contains(segredo));
             server.verify();
@@ -226,25 +265,24 @@ class RodoviarioReservaServiceTest {
         assertFalse(result.isSuccess()); assertTrue(result.isRequerConferencia());
         assertEquals("CONFERENCIA_NECESSARIA", result.getCodigo());
         assertTrue(result.getMensagem().contains("Origem/destino do fornecedor divergem"));
-        assertTrue(result.getMensagem().contains("origem 11 corresponde a ROD_1"));
-        assertTrue(result.getMensagem().contains("ROD_2340 -> ROD_1"));
+        assertTrue(result.getMensagem().contains("Cidade de origem 101"));
+        assertTrue(result.getMensagem().contains("cidade de destino 202"));
         assertTrue(result.getMensagem().contains("payload de recuperacao"));
         assertNull(result.getReserva()); server.verify();
     }
-    @Test void recuperacaoComIdsDeCidadeExplicaVinculosAusentesSemGravarOuEmitirNovamente() throws Exception {
+    @Test void recuperacaoComCidadeSemDestinoAtivoExplicaCadastroSemGravarOuEmitirNovamente() throws Exception {
         var req = request();
         req.getDadosManager().getTrechos().get(0).getTrecho().setCodgCidadeOrigem(319);
         req.getDadosManager().getTrechos().get(0).getTrecho().setCodgCidadeDestino(9331);
         expectHub("consultar").andRespond(withSuccess(envelope(COMPRA), MediaType.APPLICATION_JSON));
         expectManager("reservaRodoviario/findByLocalizador/123456?codgSistema=9", HttpMethod.GET)
                 .andRespond(withStatus(HttpStatus.NOT_FOUND));
-        destinos();
+        destinosCidade(319, "");
         var result = service.reconciliar(req, "USUARIO_TEST");
         assertFalse(result.isSuccess()); assertTrue(result.isRequerConferencia());
         assertEquals("VINCULOS_DESTINO_INVALIDOS", result.getCodigo());
-        assertTrue(result.getMensagem().contains("sistema 9: [319, 9331]"));
-        assertTrue(result.getMensagem().contains("codgVinculoCidadeSistema"));
-        assertTrue(result.getMensagem().contains("codgCidade usado na pesquisa"));
+        assertTrue(result.getMensagem().contains("codgCidade 319 no sistema 9"));
+        assertTrue(result.getMensagem().contains("ID da tabela cidade"));
         assertTrue(result.getMensagem().contains("payload de recuperacao"));
         assertEquals(123456, result.getFornecedor().path("dados").path("codigoFornecedor").asInt());
         assertNull(result.getReserva());
@@ -317,7 +355,7 @@ class RodoviarioReservaServiceTest {
     @Test void consultaConfirmaBilhetesPendentesAntesDeConfirmarReserva() throws Exception {
         String rascunho = DETALHE.replace("\"status\":1", "\"status\":0");
         expectManager("reservaRodoviario/detalhe/10", HttpMethod.GET).andRespond(withSuccess(rascunho, MediaType.APPLICATION_JSON));
-        expectHub("consultar").andRespond(withSuccess(envelope(COMPRA), MediaType.APPLICATION_JSON)); destinos();
+        expectHub("consultar").andRespond(withSuccess(envelope(COMPRA), MediaType.APPLICATION_JSON)); destinosSalvos();
         expectManager("rodoviarioBilhete/400", HttpMethod.PUT).andExpect(jsonPath("$.status").value(1)).andExpect(jsonPath("$.numerBilhete").value("ABC123"))
                 .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
         expectManager("reservaRodoviario/10/statusFornecedor", HttpMethod.PUT).andExpect(jsonPath("$.status").value(1)).andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
