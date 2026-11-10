@@ -15,6 +15,11 @@ import java.io.Serializable;
 
 public class GeradorPDFApi extends AbstractTransactionServiceApi implements Serializable {
 
+    private final RestTemplate aereoHttp;
+    private final ConfAppService aereoAuth;
+    public GeradorPDFApi() { this(new RestTemplate(), new ConfAppService()); }
+    GeradorPDFApi(RestTemplate http, ConfAppService auth) { this.aereoHttp=http; this.aereoAuth=auth; }
+
     private final String urlAPI = "mail";
 
     public byte[] gerarAereoPDF(EnvioReservaAereoPDF envioReservaPDF) {
@@ -46,24 +51,29 @@ public class GeradorPDFApi extends AbstractTransactionServiceApi implements Seri
     public void envioAereoPDF(EnvioReservaAereoPDF envioReservaPDF) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Bearer " + new ConfAppService().token());
+        headers.setBearerAuth(aereoAuth.token().getToken());
 
         HttpEntity<EnvioReservaAereoPDF> requestEntity = new HttpEntity<>(envioReservaPDF, headers);
 
-        ResponseEntity<String> responseEntity = null;
-        try {
-            responseEntity = new RestTemplate().exchange(
+        ResponseEntity<String> responseEntity = aereoHttp.exchange(
                     UrlConfig.URL_CONFIANCA_EMAIL + urlAPI + "/sendEmailPdf",
                     HttpMethod.POST,
                     requestEntity,
                     String.class
             );
-        } catch (HttpClientErrorException ex) {
-            //  Util.mensageAlert(EnumIconesMensagem.Erro.getValor(), "Ops: " + ex.getMessage());
-        }
-
-        if (responseEntity != null && responseEntity.getStatusCode().is2xxSuccessful()) {
-            // Util.mensageSucessPDF("PDF enviado com sucesso!");
+        try {
+            var result = new com.fasterxml.jackson.databind.ObjectMapper().readTree(responseEntity.getBody());
+            if (!responseEntity.getStatusCode().is2xxSuccessful() || result == null || !result.isArray() || result.isEmpty()) {
+                throw new IllegalStateException("O serviço não confirmou o envio do e-mail da reserva.");
+            }
+            for (var recipient : result) {
+                String status = recipient.path("statusEnvio").asText();
+                if (!"Email enviado".equalsIgnoreCase(status) && !"Email enviado com sucesso".equalsIgnoreCase(status)) {
+                    throw new IllegalStateException("O serviço informou falha no envio do e-mail da reserva.");
+                }
+            }
+        } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            throw new IllegalStateException("Resposta inválida do serviço de e-mail.", invalid);
         }
     }
 

@@ -1,0 +1,19 @@
+{
+  "enabled": false,
+  "development": false,
+  "technicalLogin": "",
+  "technicalPassword": "",
+  "cserviceLogin": "",
+  "cservicePassword": "",
+  "cserviceTokenResponseKey": "",
+  "emailSendUrl": "",
+  "services": {
+    "hub": "",
+    "manager": "",
+    "confapi": "",
+    "cache": "",
+    "cservice": "",
+    "email": ""
+  },
+  "allowedProductionHosts": []
+}

@@ -15,5 +15,11 @@ public class PassaporteModel extends Passaporte {
     public PassaporteModel(PassaporteResponse passaporteResponse) {
         super(passaporteResponse);
     }
+
+    public PassaporteModel(Passaporte passaporte){
+        super(passaporte);
+    }
+
+
 }
 

@@ -13,9 +13,19 @@ public class Passaporte {
     private String sobrenomePax;
     private String validade;
 
-    public Date converterData(String data){
+    public Passaporte(Passaporte passaporte) {
+        this.nacionalidade = passaporte.getNacionalidade();
+        this.nomeDoMeioPax = passaporte.getNomeDoMeioPax();
+        this.nomePax = passaporte.getNomePax();
+        this.numero = passaporte.getNumero();
+        this.paisEmissor = passaporte.getPaisEmissor();
+        this.sobrenomePax = passaporte.getSobrenomePax();
+        this.validade = passaporte.getValidade();
+    }
+
+    public Date converterData(String data) {
         String timestampString = data.substring(data.indexOf("(") + 1, data.indexOf("-"));
-        if(!timestampString.equalsIgnoreCase("")) {
+        if (!timestampString.equalsIgnoreCase("")) {
             String offsetString = data.substring(data.indexOf("-") + 1, data.indexOf(")"));
             long timestamp = Long.parseLong(timestampString);
             int offsetHours = Integer.parseInt(offsetString.substring(0, 3));
@@ -29,7 +39,7 @@ public class Passaporte {
 
             // Imprimir a data convertida
             return date;
-        } else{
+        } else {
             return null;
         }
     }
@@ -50,10 +60,6 @@ public class Passaporte {
 
     public Passaporte() {
     }
-
-
-
-
 
     public Passaporte(String nacionalidade, String nomeDoMeioPax, String nomePax,
                       String numero, String paisEmissor, String sobrenomePax, String validade) {

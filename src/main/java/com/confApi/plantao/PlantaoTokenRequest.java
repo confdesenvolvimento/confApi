@@ -1,4 +1,1 @@
-package com.confApi.plantao;
-
-public record PlantaoTokenRequest(String login, String canal, String celular) {
-}
+package com.confApi.plantao; public record PlantaoTokenRequest(String login,String canal,String celular,String reference) {}

@@ -217,14 +217,11 @@ public class ChatService {
                     .retryOnConnectionFailure(false).build() : client;
             try (Response r = clienteTurno.newCall(request).execute()) {
                 if (somenteTextoTi && !r.isSuccessful()) throw new IOException("TI_GERACAO_INDISPONIVEL");
-                if (responses != null && (!r.isSuccessful() || r.body() == null))
-                    throw new IOException("OPENAI_RESPONSES_HTTP_" + r.code());
-                String json = Objects.requireNonNull(r.body()).string();
-                JsonNode root = om.readTree(json);
+                JsonNode root = OpenAiCompletionResponse.read(r, om);
                 if (responses != null) root = responses.completion(root);
                 completionId = root.path("id").asText();
 
-                JsonNode choice = root.path("choices").get(0);
+                JsonNode choice = OpenAiCompletionResponse.firstChoice(root);
                 if (somenteTextoTi && (choice == null || !"stop".equals(choice.path("finish_reason").asText())))
                     throw new IOException("TI_RESPOSTA_INCOMPLETA");
                 JsonNode msgNode = choice.path("message");

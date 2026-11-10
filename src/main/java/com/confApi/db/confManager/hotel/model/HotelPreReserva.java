@@ -1,5 +1,7 @@
 package com.confApi.db.confManager.hotel.model;
 
+import com.confApi.db.confManager.usuario.dto.UsuarioDto;
+
 import java.io.Serializable;
 import java.util.List;
 import java.util.Objects;
@@ -13,6 +15,8 @@ public class HotelPreReserva implements Serializable {
     private Boolean isPossuiTarifaPrePagamento = false;
     private Boolean isCientePoliticaNaoReembolsavel = false;
     private Integer codgPacote = null;
+    private String searchToken = null;
+    private UsuarioDto usuario;
 
     public Boolean getIsCientePoliticaNaoReembolsavel() {
         return isCientePoliticaNaoReembolsavel;
@@ -70,7 +74,45 @@ public class HotelPreReserva implements Serializable {
         this.codgPacote = codgPacote;
     }
 
+    public Boolean getPossuiTarifaNaoReembolsavel() {
+        return isPossuiTarifaNaoReembolsavel;
+    }
 
+    public void setPossuiTarifaNaoReembolsavel(Boolean possuiTarifaNaoReembolsavel) {
+        isPossuiTarifaNaoReembolsavel = possuiTarifaNaoReembolsavel;
+    }
+
+    public Boolean getPossuiTarifaPrePagamento() {
+        return isPossuiTarifaPrePagamento;
+    }
+
+    public void setPossuiTarifaPrePagamento(Boolean possuiTarifaPrePagamento) {
+        isPossuiTarifaPrePagamento = possuiTarifaPrePagamento;
+    }
+
+    public Boolean getCientePoliticaNaoReembolsavel() {
+        return isCientePoliticaNaoReembolsavel;
+    }
+
+    public void setCientePoliticaNaoReembolsavel(Boolean cientePoliticaNaoReembolsavel) {
+        isCientePoliticaNaoReembolsavel = cientePoliticaNaoReembolsavel;
+    }
+
+    public String getSearchToken() {
+        return searchToken;
+    }
+
+    public void setSearchToken(String searchToken) {
+        this.searchToken = searchToken;
+    }
+
+    public UsuarioDto getUsuario() {
+        return usuario;
+    }
+
+    public void setUsuario(UsuarioDto usuario) {
+        this.usuario = usuario;
+    }
 
     @Override
     public int hashCode() {
@@ -102,7 +144,6 @@ public class HotelPreReserva implements Serializable {
     public String toString() {
         return "HotelPreReserva{" + "hotel=" + hotel + ", acomodacao=" + acomodacao + ", totalGeral=" + totalGeral + ", isPossuiTarifaNaoReembolsavel=" + isPossuiTarifaNaoReembolsavel + ", isPossuiTarifaPrePagamento=" + isPossuiTarifaPrePagamento + ", isCientePoliticaNaoReembolsavel=" + isCientePoliticaNaoReembolsavel + ", codgPacote=" + codgPacote + '}';
     }
-
 
 
 }

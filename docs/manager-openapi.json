@@ -1,0 +1,5106 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Confiança Manager - Autenticação, dispositivo e persistência",
+    "version": "2.0.0-draft.9",
+    "description": "Manager é a autoridade transacional de dispositivo e autenticação mobile. Usa apenas seu banco. O cService independente fornece somente tokens."
+  },
+  "servers": [
+    {
+      "url": "https://manager.example.test"
+    }
+  ],
+  "security": [
+    {
+      "ServiceIdentity": []
+    }
+  ],
+  "paths": {
+    "/internal/v2/autenticacao/primaria": {
+      "post": {
+        "summary": "Valida senha e devolve identidade restrita; sem acesso de negócio.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Primary"
+              }
+            }
+          }
+        },
+        "parameters": [],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/autenticacao/primaria/introspectar": {
+      "post": {
+        "summary": "Valida referência curta vinculada a cliente e sessão; nunca confia em userId fornecido pelo portal.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Introspect"
+              }
+            }
+          }
+        },
+        "parameters": [],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/dispositivos/solicitacoes": {
+      "post": {
+        "summary": "Cria pendência sem sobrescrever aparelho; grava outbox para ti@confiancaturismo.com.br na mesma transação.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrollment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Enroll"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/dispositivos/solicitacoes/{id}": {
+      "get": {
+        "summary": "Consulta consistente da decisão imutável por usuário/chave/versão.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrollment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/dispositivos/solicitacoes/{id}/ativar": {
+      "post": {
+        "summary": "CAS transacional: aprovação, versão esperada, incremento de um, um aparelho ativo. Mesma idempotência devolve mesma decisão.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Authorization"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Activate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/dispositivos/usuarios/{id}/autorizacao": {
+      "get": {
+        "summary": "Leitura consistente, sem cache eventual. Sem aparelho: enabled=false; versão/histórico preservados.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Authorization"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/dispositivos/solicitacoes/{id}/contato": {
+      "get": {
+        "summary": "Resolve referência versionada de contato previamente verificado; nunca usa contato livre do candidato.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/dispositivos/solicitacoes/{id}/confirmacao": {
+      "post": {
+        "summary": "Registra verificação idempotente de contato; não equivale a aprovação de troca.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirm"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/dispositivos/solicitacoes/{id}/entregas": {
+      "post": {
+        "summary": "Entrega autenticada e deduplicada; validar referência/versionamento do contato. Retornar JSON inclusive em reentrega.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Deliver"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/dispositivos/usuarios/{id}/push": {
+      "put": {
+        "summary": "CAS do dispositivo/versão antes de atualizar somente push.",
+        "responses": {
+          "204": {
+            "description": "Sucesso"
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushUpdate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": " Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR."
+      }
+    },
+    "/internal/v2/autenticacao/primaria/portal": {
+      "post": {
+        "description": "Senha validada sem emitir JWT individual. Referência vinculada ao sub autenticado e à sessão. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "portal:primary",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "primaryReference",
+                    "userId",
+                    "provider",
+                    "profile",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "primaryReference": {
+                      "type": "string"
+                    },
+                    "userId": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "LEGACY",
+                        "MANAGER_V2"
+                      ]
+                    },
+                    "profile": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "login",
+                  "password",
+                  "sessionRef"
+                ],
+                "properties": {
+                  "login": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true
+                  },
+                  "sessionRef": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{32,128}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v2/autenticacao/portal/concluir": {
+      "post": {
+        "description": "Confirma resultado no CService, compara versão sob bloqueio e consome referência uma vez. Perfil recebe chaveToken individual pós-MFA e authV2OperatorToken somente para operador permitido. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "portal:complete",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "primaryReference",
+                  "sessionRef",
+                  "challengeId"
+                ],
+                "properties": {
+                  "primaryReference": {
+                    "type": "string"
+                  },
+                  "sessionRef": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{32,128}$"
+                  },
+                  "challengeId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v2/dispositivos/politica/login": {
+      "post": {
+        "description": "Consulta consistente da política; erro não autoriza legado. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "device:read",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "minimumVersion"
+                  ],
+                  "properties": {
+                    "minimumVersion": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "login"
+                ],
+                "properties": {
+                  "login": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v2/autenticacao/usuario/autorizar": {
+      "post": {
+        "description": "Valida JWT individual legado/ponte, MFA e versão vigente de contas migradas. A consulta permanece disponível com AUTH_V2_ENABLED=false, mantendo autenticação de serviço e escopos. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "auth:individual",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "active",
+                    "userId"
+                  ],
+                  "properties": {
+                    "active": {
+                      "const": true
+                    },
+                    "userId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "writeOnly": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/suporte/dispositivos/solicitacoes": {
+      "get": {
+        "description": "Até 100 pendências. Exige OPERATOR com amr=mfa e auth_time recente. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "support:read",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/suporte/dispositivos/solicitacoes/{id}": {
+      "get": {
+        "description": "Decisão e candidato específicos. Exige OPERATOR com MFA recente. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "support:read",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrollment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v2/suporte/dispositivos/solicitacoes/{id}/historico": {
+      "get": {
+        "description": "Histórico da conta vinculada à solicitação; até 100 eventos mais recentes. Exige OPERATOR com MFA recente. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "support:read",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "enrollment_id",
+                      "event",
+                      "actor",
+                      "reason",
+                      "created_at"
+                    ],
+                    "properties": {
+                      "enrollment_id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "event": {
+                        "type": "string"
+                      },
+                      "actor": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v2/suporte/dispositivos/solicitacoes/{id}/aprovar": {
+      "post": {
+        "description": "Exige OPERATOR e MFA recente; proíbe autoaprovação. Aprovar não ativa o dispositivo. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "support:approve",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrollment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "evidence"
+                ],
+                "properties": {
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v2/suporte/dispositivos/solicitacoes/{id}/rejeitar": {
+      "post": {
+        "description": "Exige OPERATOR e MFA recente; proíbe autoaprovação. Aprovar não ativa o dispositivo. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "support:approve",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrollment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "evidence"
+                ],
+                "properties": {
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v2/suporte/dispositivos/usuarios/{id}/contato": {
+      "post": {
+        "description": "Exige OPERATOR e MFA recente; registra contato por procedimento independente, nova referência e auditoria. Resposta de sucesso sem corpo. Requer também v2:access. Endpoints internos aceitam somente token_use=SERVICE; suporte aceita somente OPERATOR.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "x-required-scope": "support:contact",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "address",
+                  "evidence"
+                ],
+                "properties": {
+                  "address": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 320
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/internal/v2/usuarios/{id}/perfil-mobile": {
+      "get": {
+        "summary": "Perfil mobile sem senha, chave, QR ou tokens legados.",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "login",
+                    "nome"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "login": {
+                      "type": "string"
+                    },
+                    "nome": {
+                      "type": "string"
+                    },
+                    "codigo": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "agencia": {
+                      "type": "object",
+                      "nullable": true
+                    },
+                    "unidade": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "SERVICE com v2:access e profile:read; conta ativa. Consumido somente pelo CService após MFA e verificação de aparelho."
+      }
+    },
+    "/api/v2/autenticador-mobile/sessoes": {
+      "post": {
+        "operationId": "iniciarSessao",
+        "summary": "Senha validada pelo Manager. Retorna somente contexto provisório vinculado à chave.",
+        "description": "Contexto exigido: anonymous",
+        "security": [
+          {
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tokens"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/sessoes/confirmar": {
+      "post": {
+        "operationId": "confirmarSessao",
+        "summary": "Exige credencial local ATIVA e dispositivo/versão atuais no Manager.",
+        "description": "Contexto exigido: provisional",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tokens"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/sessoes/renovar": {
+      "post": {
+        "operationId": "renovarSessao",
+        "summary": "Authorization contém refresh. Rotaciona tokens; reuso revoga a família.",
+        "description": "Contexto exigido: refresh",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tokens"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/sessoes/encerrar": {
+      "post": {
+        "operationId": "encerrarSessao",
+        "summary": "Encerra esta família e desafios pendentes do aparelho. Sessões Payara abertas dependem de integração própria.",
+        "description": "Contexto exigido: authenticated",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/cadastros": {
+      "post": {
+        "operationId": "iniciarCadastro",
+        "summary": "Chave imutável herdada da sessão. Idempotência preserva usuário/candidato. Manager decide pendência.",
+        "description": "Contexto exigido: provisional Metadados ficam na solicitação até a ativação aprovada; não substituem a prova da chave da sessão.",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Solicitação registrada; decisão/entrega pendente",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{16,128}$"
+            }
+          },
+          {
+            "name": "X-Auth-Client-IP",
+            "in": "header",
+            "required": true,
+            "description": "Literal IPv4/IPv6 observado pelo confApi. Aceito somente após autenticar o gateway; nunca repassar o valor enviado pelo App.",
+            "schema": {
+              "type": "string",
+              "maxLength": 45
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "Metadados declarados, sem autoridade de autenticacao; usuario e chave derivados da sessao.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceMetadata"
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/cadastros/{id}": {
+      "get": {
+        "operationId": "consultarCadastro",
+        "summary": "Consulta restrita ao usuário e à chave. Prazo não é prorrogado.",
+        "description": "Contexto exigido: provisional",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/cadastros/{id}/confirmacao/enviar": {
+      "post": {
+        "operationId": "enviarConfirmacao",
+        "summary": "Enfileira entrega cifrada para contato verificado resolvido pelo Manager. Não aceita destinatário nem retorna código.",
+        "description": "Contexto exigido: provisional",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Solicitação registrada; decisão/entrega pendente",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Delivery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/cadastros/{id}/confirmacao/validar": {
+      "post": {
+        "operationId": "validarConfirmacao",
+        "summary": "Consumo transacional; cinco tentativas acumuladas entre reenvios. Não aprova aparelho.",
+        "description": "Contexto exigido: provisional",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeInput"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/cadastros/{id}/ativar": {
+      "post": {
+        "operationId": "ativarCadastro",
+        "summary": "Aprovação + prova fresca + CAS remoto. enrollmentId é a idempotência interna. Repetição recupera troca remota dentro da validade.",
+        "description": "Contexto exigido: provisional",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/dispositivo/push": {
+      "put": {
+        "operationId": "atualizarPush",
+        "summary": "Atualiza somente token push do dispositivo vigente.",
+        "description": "Contexto exigido: authenticated",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Push"
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/desafios-portal": {
+      "get": {
+        "operationId": "listarDesafios",
+        "summary": "Até 50 tentativas pendentes próprias do dispositivo/versão atuais.",
+        "description": "Contexto exigido: authenticated",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Challenge"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/desafios-portal/{id}/codigo": {
+      "post": {
+        "operationId": "emitirCodigo",
+        "summary": "Uma emissão por tentativa. Resposta perdida exige nova tentativa no portal.",
+        "description": "Contexto exigido: authenticated",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalCode"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/internal/v2/login/desafios": {
+      "post": {
+        "operationId": "criarDesafioPortal",
+        "summary": "Escopo obrigatório: portal:create",
+        "security": [
+          {
+            "ServiceJwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalStart"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sucesso. Consumo positivo não é repetível; resposta perdida exige nova tentativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/internal/v2/login/desafios/{id}/validar": {
+      "post": {
+        "operationId": "consumirCodigoPortal",
+        "summary": "Escopo obrigatório: portal:validate",
+        "security": [
+          {
+            "ServiceJwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalValidate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sucesso. Consumo positivo não é repetível; resposta perdida exige nova tentativa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/internal/v2/login/desafios/{id}/resultado": {
+      "post": {
+        "description": "Somente sub=AUTH_MANAGER_CLIENT_ID (manager por padrão). Retorna consumo confirmado para cliente/sessão e dispositivo/versão vigentes. Não consome novamente.",
+        "security": [
+          {
+            "ServiceJwt": []
+          }
+        ],
+        "x-required-scope": "portal:result",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "authenticated",
+                    "userId",
+                    "challengeId",
+                    "deviceId",
+                    "deviceVersion"
+                  ],
+                  "properties": {
+                    "authenticated": {
+                      "const": true
+                    },
+                    "userId": {
+                      "type": "string"
+                    },
+                    "challengeId": {
+                      "type": "string"
+                    },
+                    "deviceId": {
+                      "type": "string"
+                    },
+                    "deviceVersion": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "clientId",
+                  "sessionRef"
+                ],
+                "properties": {
+                  "clientId": {
+                    "type": "string"
+                  },
+                  "sessionRef": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{32,128}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/internal/v2/sessoes/introspectar": {
+      "post": {
+        "description": "Serviço identificado em AUTH_RESOURCE_ORIGINS_JSON. Consome prova DPoP fresca para URI/método da API de negócio; contexto provisório recusado.",
+        "security": [
+          {
+            "ServiceJwt": []
+          }
+        ],
+        "x-required-scope": "session:introspect",
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "active",
+                    "mfa",
+                    "userId",
+                    "companyId",
+                    "deviceId",
+                    "version"
+                  ],
+                  "properties": {
+                    "active": {
+                      "const": true
+                    },
+                    "mfa": {
+                      "const": true
+                    },
+                    "userId": {
+                      "type": "string"
+                    },
+                    "companyId": {
+                      "type": "string"
+                    },
+                    "deviceId": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token",
+                  "proof",
+                  "method",
+                  "uri"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "writeOnly": true
+                  },
+                  "proof": {
+                    "type": "string",
+                    "writeOnly": true
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE",
+                      "HEAD"
+                    ]
+                  },
+                  "uri": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/api/v2/autenticador-mobile/perfil": {
+      "get": {
+        "operationId": "consultarProprioPerfil",
+        "summary": "Perfil de apresentação do usuário autenticado, sem credenciais legadas.",
+        "description": "Exige sessão AUTENTICADA, DPoP fresco e dispositivo/versão vigentes. Usuário deriva da sessão; nenhum ID de terceiro é aceito.",
+        "security": [
+          {
+            "MobileToken": [],
+            "DeviceProof": [],
+            "ConfapiGateway": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "login",
+                    "nome"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "login": {
+                      "type": "string"
+                    },
+                    "nome": {
+                      "type": "string"
+                    },
+                    "codigo": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "agencia": {
+                      "type": "object",
+                      "nullable": true
+                    },
+                    "unidade": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida/HTTPS obrigatório",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticação ou prova inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operação não autorizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estado/versão/emissão incompatível ou conflito concorrente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite acumulado; aplicar backoff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependência indisponível/piloto desabilitado; sem fallback v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "https://manager.example.test",
+          "description": "Acesso interno ao Manager. Mobile exige gateway confApi e DPoP vinculado à URL pública do confApi."
+        }
+      ]
+    },
+    "/internal/v2/operacoes/desafios": {
+      "post": {
+        "summary": "Criar confirmacao de negocio vinculada ao aparelho autorizado",
+        "description": "Escopo obrigatorio: v2:access operation:create. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "login": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "PLANTAO",
+                      "ANTIFRAUDE"
+                    ]
+                  },
+                  "reference": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{32,128}$"
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "APP",
+                      "EMAIL"
+                    ]
+                  }
+                },
+                "required": [
+                  "login",
+                  "purpose",
+                  "reference",
+                  "channel"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/internal/v2/operacoes/desafios/{id}/validar": {
+      "post": {
+        "summary": "Validar somente o proposito e referencia da operacao",
+        "description": "Escopo obrigatorio: v2:access operation:validate. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "PLANTAO",
+                      "ANTIFRAUDE"
+                    ]
+                  },
+                  "reference": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{32,128}$"
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}$"
+                  }
+                },
+                "required": [
+                  "purpose",
+                  "reference",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ServiceIdentity": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Identidade de servico autorizada, com escopos de autenticação/dispositivo/confirmação/entrega; mTLS recomendado."
+      },
+      "MobileToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "DPoP <accessToken opaco>; em renovar usar DPoP <refreshToken>. JWT técnico, tracking e Bearer não são aceitos."
+      },
+      "DeviceProof": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "DPoP",
+        "description": "Prova JWT ES256 dpop+jwt: jwk público, jti único, iat [-60s,+5s], nonce da sessão, htm, htu absoluto da origem configurada + caminho e ath=base64url(SHA-256(token apresentado)). Cada chamada exige prova nova. Ver INTEGRACAO.md."
+      },
+      "ServiceJwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT RS256",
+        "description": "typ=at+jwt; token_use=SERVICE; aud=manager-v2; iss configurado; TTL <=300s; sub identifica cliente; scope por operação."
+      },
+      "ConfapiGateway": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Auth-Gateway",
+        "description": "Bearer JWT SERVICE, sub=confapi, aud=manager-v2, scopes v2:access mobile:relay. Exclusivo do servidor confApi."
+      }
+    },
+    "schemas": {
+      "Identity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "userId",
+          "companyId",
+          "expiresAt"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Authorization": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "userId",
+          "deviceId",
+          "version",
+          "thumbprint",
+          "minimumVersion",
+          "enabled"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "deviceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "thumbprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minimumVersion": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Enrollment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "userId",
+          "thumbprint",
+          "expectedVersion",
+          "state",
+          "expiresAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "thumbprint": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "PENDENCIA_APROVACAO",
+              "APROVADA_AGUARDANDO_ATIVACAO",
+              "ATIVADA",
+              "REJEITADA",
+              "CANCELADA",
+              "EXPIRADA"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Contact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reference",
+          "maskedDestination",
+          "verified"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string"
+          },
+          "maskedDestination": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Primary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "login",
+          "password",
+          "clientId"
+        ],
+        "properties": {
+          "login": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "clientId": {
+            "const": "cservice3-mobile"
+          }
+        }
+      },
+      "Introspect": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reference",
+          "clientId",
+          "sessionRef"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "sessionRef": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{32,128}$"
+          }
+        }
+      },
+      "Enroll": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "userId",
+          "candidateId",
+          "thumbprint"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string",
+            "maxLength": 36,
+            "pattern": "^[A-Za-z0-9_-]{1,36}$"
+          },
+          "thumbprint": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "brand": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "manufacturer": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "modelId": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "osName": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "osVersion": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "appBuild": {
+            "type": "string",
+            "maxLength": 40
+          }
+        }
+      },
+      "Activate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "thumbprint",
+          "expectedVersion"
+        ],
+        "properties": {
+          "thumbprint": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Confirm": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "verified"
+        ],
+        "properties": {
+          "verified": {
+            "const": true
+          }
+        }
+      },
+      "Deliver": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contactReference",
+          "code"
+        ],
+        "properties": {
+          "contactReference": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$",
+            "writeOnly": true
+          }
+        }
+      },
+      "PushUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "deviceId",
+          "version",
+          "pushToken"
+        ],
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pushToken": {
+            "type": "string",
+            "writeOnly": true
+          }
+        }
+      },
+      "Ack": {
+        "type": "object"
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "Login": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "login",
+          "password",
+          "publicJwk"
+        ],
+        "properties": {
+          "login": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "writeOnly": true
+          },
+          "publicJwk": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "JWK público EC P-256 serializado em string JSON. Campo privado d proibido."
+          }
+        }
+      },
+      "Tokens": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "accessToken",
+          "refreshToken",
+          "tokenType",
+          "nonce",
+          "expiresAt",
+          "refreshExpiresAt",
+          "nextAction"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "PROVISORIA",
+              "AUTENTICADA"
+            ]
+          },
+          "accessToken": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tokenType": {
+            "const": "DPoP"
+          },
+          "nonce": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "refreshExpiresAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nextAction": {
+            "type": "string"
+          }
+        }
+      },
+      "EnrollmentView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enrollmentId",
+          "state",
+          "expiresAt",
+          "nextAction",
+          "correlationId"
+        ],
+        "properties": {
+          "enrollmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "PENDENCIA_APROVACAO",
+              "APROVADA_AGUARDANDO_ATIVACAO",
+              "ATIVADA",
+              "REJEITADA",
+              "CANCELADA",
+              "EXPIRADA"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nextAction": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "enrollmentId": "8611b1f0-5e5a-4ff7-8ca8-9ff09f65ce37",
+          "state": "PENDENCIA_APROVACAO",
+          "expiresAt": "2026-11-06T13:00:00Z",
+          "nextAction": "AGUARDAR_SUPORTE",
+          "correlationId": "767ad8a4-e4ec-4022-bb2a-41acb818487e"
+        }
+      },
+      "CodeInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$",
+            "writeOnly": true
+          }
+        }
+      },
+      "Delivery": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "maskedDestination",
+          "expiresAt",
+          "resendAfterSeconds"
+        ],
+        "properties": {
+          "maskedDestination": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resendAfterSeconds": {
+            "type": "integer",
+            "const": 60
+          }
+        }
+      },
+      "Push": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "pushToken"
+        ],
+        "properties": {
+          "pushToken": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "writeOnly": true
+          }
+        }
+      },
+      "PortalStart": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "primaryReference",
+          "sessionRef"
+        ],
+        "properties": {
+          "primaryReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "writeOnly": true
+          },
+          "sessionRef": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{32,128}$"
+          }
+        }
+      },
+      "PortalValidate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "sessionRef"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$",
+            "writeOnly": true
+          },
+          "sessionRef": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{32,128}$"
+          }
+        }
+      },
+      "Challenge": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "challengeId",
+          "clientId",
+          "state",
+          "expiresAt"
+        ],
+        "properties": {
+          "challengeId": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "PENDENTE",
+              "CONSUMIDO",
+              "REVOGADO"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "PORTAL_LOGIN",
+              "PLANTAO",
+              "ANTIFRAUDE"
+            ]
+          },
+          "reference": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalCode": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "challengeId",
+          "code",
+          "expiresAt"
+        ],
+        "properties": {
+          "challengeId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Decision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "authenticated",
+          "userId",
+          "challengeId"
+        ],
+        "properties": {
+          "authenticated": {
+            "const": true
+          },
+          "userId": {
+            "type": "string"
+          },
+          "challengeId": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "brand": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "manufacturer": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "modelId": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "osName": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "osVersion": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "appBuild": {
+            "type": "string",
+            "maxLength": 40
+          }
+        },
+        "description": "Dados descritivos opcionais do aparelho. Data, IP observado e impressão digital da chave são determinados pelos servidores. Valores indisponíveis podem ser omitidos."
+      },
+      "MobileError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "correlationId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      }
+    }
+  }
+}

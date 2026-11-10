@@ -13,6 +13,9 @@ import java.util.Date;
 @AllArgsConstructor
 @NoArgsConstructor
 public class RecebimentoResponse {
+    /** Nome corrigido usado pelos conversores V2, mantendo o JSON legado. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public Integer getCodgRecebimento() { return getCodgCodgRecebimento(); }
     private Integer codgFormaPagamento;
     private String nomeFormaPagamento;
     private Double valorEntrada = 0.0;

@@ -126,5 +126,20 @@ public class Bilhete {
     public void setVoos(List<Voo> voos) {
         this.voos = voos;
     }
+
+    @Override
+    public String toString() {
+        return "Bilhete{" +
+                "bilheteDoInfantil=" + bilheteDoInfantil +
+                ", dataDeEmissao=" + dataDeEmissao +
+                ", numero='" + numero + '\'' +
+                ", pagamentos=" + pagamentos +
+                ", passageiro='" + passageiro + '\'' +
+                ", passageirosAdicionais=" + passageirosAdicionais +
+                ", paxRef='" + paxRef + '\'' +
+                ", status='" + status + '\'' +
+                ", voos=" + voos +
+                '}';
+    }
 }
 

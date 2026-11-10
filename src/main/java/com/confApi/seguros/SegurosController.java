@@ -11,10 +11,13 @@ import com.confApi.model.RecebimentoModel;
 import com.confApi.recebimento.RecebimentoService;
 import com.confApi.seguros.dto.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/v1/seguro")
@@ -47,13 +50,14 @@ public class  SegurosController {
 
     @PostMapping("/comprar")
     public SeguroReserva comprar(@RequestBody SeguroCompraModel req) {
+        validarIdentificacao(req);
         Recebimento recebimento = recebimentoService.criarRecebimento(req);
-        if(recebimento.getCodgRecebimento() == null || recebimento.getStatus() != 1){
+        if(recebimento == null || recebimento.getCodgRecebimento() == null || !Integer.valueOf(1).equals(recebimento.getStatus())){
             return new SeguroReserva("ERRO: Não foi possivel efetuar o pagamento, tente novamente mais tarde.");
         }
         req.setRecebimento(new RecebimentoModel(recebimento.getCodgRecebimento()));
         SeguroReserva seguroReserva = service.comprar(req);
-        if(seguroReserva.getCodgReservaSeguro() == null){
+        if(seguroReserva == null || seguroReserva.getCodgReservaSeguro() == null){
             Recebimento recebimentoErro = recebimentoService.cancelarRecebimento(recebimento);
             return new SeguroReserva("ERRO: Não foi possivel gravar o seguro no banco de dados, tente novamente mais tarde.");
         }
@@ -96,6 +100,28 @@ public class  SegurosController {
         return seguroReserva;
 //        return null;
     }
+    private void validarIdentificacao(SeguroCompraModel req) {
+        if (req == null || req.getIdentificacaoAgenciaModel() == null
+                || req.getIdentificacaoAgenciaModel().getCodgAgencia() == null
+                || req.getIdentificacaoAgenciaModel().getCodgAgencia() <= 0) {
+            throw new IdentificacaoSeguroInvalida("Informe uma agência válida antes de comprar o seguro.");
+        }
+        if (req.getIdentificacaoAgenciaModel().getCodgUsuario() == null
+                || req.getIdentificacaoAgenciaModel().getCodgUsuario() <= 0) {
+            throw new IdentificacaoSeguroInvalida("Informe um usuário válido antes de comprar o seguro.");
+        }
+    }
+
+    @ExceptionHandler(IdentificacaoSeguroInvalida.class)
+    public ResponseEntity<Map<String, String>> identificacaoInvalida(IdentificacaoSeguroInvalida error) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(Map.of("codigo", "IDENTIFICACAO_SEGURO_INVALIDA", "mensagem", error.getMessage()));
+    }
+
+    private static class IdentificacaoSeguroInvalida extends RuntimeException {
+        IdentificacaoSeguroInvalida(String mensagem) { super(mensagem); }
+    }
+
     @PostMapping("/carregarReserva")
     public SeguroReservaDTO carregarReserva(@RequestBody SeguroCarregarReservaDTO req) {
         if(req.getOperacao() == null){

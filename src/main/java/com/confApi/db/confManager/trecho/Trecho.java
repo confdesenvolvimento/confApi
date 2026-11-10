@@ -3,10 +3,12 @@ package com.confApi.db.confManager.trecho;
 import com.confApi.db.confManager.aeroporto.Aeroporto;
 import com.confApi.db.confManager.companhiaAerea.CompanhiaAerea;
 import com.confApi.db.confManager.voo.Voo;
+import com.confApi.hub.aereo.dto.TrechoReserva;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -22,6 +24,39 @@ public class Trecho implements Serializable {
     private Aeroporto codgAeroportoOrigem;
     private Aeroporto codgAeroportoDestino;
     private List<Voo> voos;
+
+    public Trecho() {
+    }
+
+    public Trecho(int codgTrecho, int codgReservaAereo, CompanhiaAerea codgCompanhiaAerea,
+                  Date dataPartida, Date dataChegada, Aeroporto codgAeroportoOrigem,
+                  Aeroporto codgAeroportoDestino, List<Voo> voos) {
+        this.codgTrecho = codgTrecho;
+        this.codgReservaAereo = codgReservaAereo;
+        this.codgCompanhiaAerea = codgCompanhiaAerea;
+        this.dataPartida = dataPartida;
+        this.dataChegada = dataChegada;
+        this.codgAeroportoOrigem = codgAeroportoOrigem;
+        this.codgAeroportoDestino = codgAeroportoDestino;
+        this.voos = voos;
+    }
+
+    public Trecho(TrechoReserva trechoReserva) {
+        this.codgCompanhiaAerea = new CompanhiaAerea(trechoReserva.getCompanhia());
+        this.dataPartida = null;
+        this.dataChegada = null;
+        this.codgAeroportoOrigem = new Aeroporto(trechoReserva.getOrigem());
+        this.codgAeroportoDestino = new Aeroporto(trechoReserva.getDestino());
+        if(trechoReserva.getVoos() != null && !trechoReserva.getVoos().isEmpty()){
+            this.voos = new ArrayList<>();
+            for(com.confApi.hub.aereo.dto.Voo voo : trechoReserva.getVoos()){
+                Voo voo1 = new Voo(voo, trechoReserva);
+                this.voos.add(voo1);
+            }
+        } else {
+            this.voos = null;
+        }
+    }
 
     public int getCodgTrecho() {
         return codgTrecho;
@@ -46,8 +81,6 @@ public class Trecho implements Serializable {
     public void setCodgCompanhiaAerea(CompanhiaAerea codgCompanhiaAerea) {
         this.codgCompanhiaAerea = codgCompanhiaAerea;
     }
-
-
 
     public Date getDataPartida() {
         return dataPartida;

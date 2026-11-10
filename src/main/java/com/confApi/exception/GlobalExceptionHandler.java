@@ -14,6 +14,13 @@ public class GlobalExceptionHandler {
 
     private static final Logger LOG = Logger.getLogger(GlobalExceptionHandler.class.getName());
 
+    @ExceptionHandler(com.confApi.chatgpt.service.OpenAiUnavailableException.class)
+    public ResponseEntity<ErroResponse> handleOpenAiUnavailable(com.confApi.chatgpt.service.OpenAiUnavailableException ex) {
+        LOG.warning("ConfIA indisponivel: " + ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErroResponse(503, "A ConfIA esta temporariamente indisponivel. Tente novamente em instantes."));
+    }
+
     @ExceptionHandler(ServiceIndisponivelException.class)
     public ResponseEntity<ErroResponse> handleServiceIndisponivel(ServiceIndisponivelException ex) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)

@@ -43,12 +43,23 @@ public class JwtService {
     public boolean tokenValido( String token ){
         try{
             Claims claims = obterClaims(token);
+            if ("USUARIO_MANAGER".equals(claims.get("tipoToken"))) {
+                if (!validarIdentidadeIndividual(token, claims.get("codigoUsuario"))) return false;
+            }
             Date dataExpiracao = claims.getExpiration();
             LocalDateTime data = dataExpiracao.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
             return !LocalDateTime.now().isAfter(data);
         }catch (Exception e){
             return false;
         }
+    }
+
+    protected boolean validarIdentidadeIndividual(String token,Object userId) {
+        if (userId == null) return false;
+        var verified=com.confApi.authv2.V2.request(com.confApi.authv2.V2.setting("AUTH_V2_MANAGER_URL"),
+                "/internal/v2/autenticacao/usuario/autorizar","POST",java.util.Map.of("token",token),
+                com.confApi.authv2.V2.token("AUTH_V2_MANAGER_TOKEN_FILE"),null);
+        return verified.path("active").asBoolean() && userId.toString().equals(verified.path("userId").asText());
     }
 
     public String obterLoginUsuario(String token) throws ExpiredJwtException{

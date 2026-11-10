@@ -11,5 +11,9 @@ public class ContatoModel extends Contato {
         super(contato);
     }
 
+    public ContatoModel(Contato contato) {
+        super(contato);
+    }
+
 }
 

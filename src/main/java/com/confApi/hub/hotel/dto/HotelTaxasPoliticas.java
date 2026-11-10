@@ -14,6 +14,11 @@ public class HotelTaxasPoliticas {
     private String descricao;
     private Double valor=0.0;
 
-
+    public HotelTaxasPoliticas(com.confApi.db.confManager.hotel.model.HotelTaxasPoliticas hotelTaxasPoliticas) {
+        this.codgReferencia = hotelTaxasPoliticas.getCodgReferencia();
+        this.nome = hotelTaxasPoliticas.getNome();
+        this.descricao = hotelTaxasPoliticas.getDescricao();
+        this.valor = hotelTaxasPoliticas.getValor();
+    }
 }
 
