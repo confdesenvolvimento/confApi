@@ -16,6 +16,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @EnableWebSecurity
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Autowired private com.confApi.authv2.MobileSessionFilter mobileSessionFilter;
+    @Autowired private com.confApi.mobile.MobileChatDelegations mobileChatDelegations;
 
     @Autowired
     private UsuarioServiceImpl usuarioService;
@@ -37,6 +39,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {
+        http.addFilterBefore(mobileSessionFilter, UsernamePasswordAuthenticationFilter.class);
         http.csrf().disable()
                 .authorizeRequests()
 
@@ -55,6 +58,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .addFilterBefore(jwtFilter(), UsernamePasswordAuthenticationFilter.class);
+        http.addFilterBefore(new com.confApi.mobile.MobileChatIdentityFilter(mobileChatDelegations), JwtAuthFilter.class);
     }
 
 }

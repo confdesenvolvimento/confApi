@@ -2746,4 +2746,186 @@ class ChatConfiancaRemarcacaoServiceTest {
         passageiro.setBilhetes(List.of(bilhete));
         return passageiro;
     }
+
+    private Trecho prepararDiagnosticoTarifacao() throws Exception {
+        prepararSimulacaoConjunta();
+        simulacao.setTrechosIndicesJson("[0]");
+        simulacao.setCompanhiaIata("AD");
+        Trecho opcao = opcaoPesquisa("VIAGEM-ORIGINAL", "CGB", "BSB", "4257", "AZU", "Azul");
+        opcao.setCompanhia(new com.confApi.hub.aereo.dto.Companhia(1, "AD", "AZUL"));
+        opcao.getVoos().get(0).setCiaMandatoria(opcao.getCompanhia());
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcao)));
+        return opcao;
+    }
+
+    @Test
+    void diagnosticoConexaoDevePreservarClasseEBaseDeCadaVoo() throws Exception {
+        Trecho opcao = prepararDiagnosticoTarifacao();
+        Voo primeiro = voo("CGB", "VCP", "4257");
+        Voo segundo = voo("VCP", "BSB", "2780");
+        primeiro.setIdentificacaoDoVoo("ID-4257");
+        segundo.setIdentificacaoDoVoo("ID-2780");
+        opcao.setVoos(List.of(primeiro, segundo));
+        var detalhe1 = new com.confApi.aereo.dto.FamiliaPrecoInter();
+        detalhe1.setNumeroVoo("4257");
+        detalhe1.setClasse("Y");
+        detalhe1.setBaseTarifaria("YBR");
+        detalhe1.setFamilia(new com.confApi.aereo.dto.Familia("Azul", "AZU"));
+        var detalhe2 = new com.confApi.aereo.dto.FamiliaPrecoInter();
+        detalhe2.setNumeroVoo("2780");
+        detalhe2.setClasse("B");
+        detalhe2.setBaseTarifaria("BBR");
+        detalhe2.setFamilia(new com.confApi.aereo.dto.Familia("Azul", "AZU"));
+        opcao.getFamilias().get(0).setFamiliaPrecoInterList(List.of(detalhe1, detalhe2));
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcao)));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        ArgumentCaptor<TarifarRequest> captor = ArgumentCaptor.forClass(TarifarRequest.class);
+        verify(aereoClient).tarifarEstrita(captor.capture());
+        var classes = captor.getValue().getClasses();
+        assertEquals(List.of("4257", "2780"), classes.stream().map(c -> c.getNumero()).toList());
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertEquals(List.of("Y", "B"), classes.stream().map(c -> c.getClasse()).toList()),
+            () -> assertEquals(List.of("YBR", "BBR"), classes.stream().map(c -> c.getBaseTarifaria()).toList())
+        );
+    }
+
+    @Test
+    void diagnosticoFamiliaDeveUsarIdentificadorDaOfertaSelecionada() throws Exception {
+        Trecho opcao = prepararDiagnosticoTarifacao();
+        opcao.getFamilias().get(0).setIdentificacaoDaViagem("VIAGEM-FAMILIA-SELECIONADA");
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcao)));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        ArgumentCaptor<TarifarRequest> captor = ArgumentCaptor.forClass(TarifarRequest.class);
+        verify(aereoClient).tarifarEstrita(captor.capture());
+        assertEquals("VIAGEM-FAMILIA-SELECIONADA", captor.getValue().getIdentificacaoViagem());
+    }
+
+    @Test
+    void diagnosticoPrecoConfirmadoDeveGerarPrevia() throws Exception {
+        prepararDiagnosticoTarifacao();
+        prepararTarifacaoPermitida();
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertNotNull(response.getPrevia());
+    }
+
+    @Test
+    void diagnosticoRespostaNulaReproduzAvisoDoPrint() throws Exception {
+        prepararDiagnosticoTarifacao();
+        when(aereoClient.tarifarEstrita(any())).thenReturn(null);
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals("Nao foi possivel confirmar essa tarifa", response.getTitulo());
+        assertNull(response.getPrevia());
+        verify(aereoClient, never()).pesquisarDisponibilidadeEstrita(any());
+    }
+
+    @Test
+    void diagnosticoRespostaSemPrecoReproduzAvisoDoPrint() throws Exception {
+        prepararDiagnosticoTarifacao();
+        when(aereoClient.tarifarEstrita(any())).thenReturn(new TarifarResponse());
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals("Nao foi possivel confirmar essa tarifa", response.getTitulo());
+        assertNull(response.getPrevia());
+    }
+
+    @Test
+    void diagnosticoErroDoFornecedorEhOcultadoPeloAvisoGenerico() throws Exception {
+        prepararDiagnosticoTarifacao();
+        var tarifa = new TarifarResponse();
+        var erro = new com.confApi.aereo.dto.ExceptionDetail();
+        erro.setMessage("Sessao de pesquisa expirada - diagnostico sintetico");
+        tarifa.setException(erro);
+        when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals("A disponibilidade pode ter mudado. Escolha outra opcao ou refaca a pesquisa.", response.getMensagem());
+        assertFalse(response.getMensagem().contains("Sessao"));
+    }
+
+    @Test
+    void diagnosticoNovaTentativaRepeteViagemSemAtualizarDisponibilidade() throws Exception {
+        prepararDiagnosticoTarifacao();
+        when(aereoClient.tarifarEstrita(any())).thenReturn(new TarifarResponse());
+        var primeira = service.simular(SIMULACAO_ID, simular(0, 0));
+        var segunda = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_OPCAO", primeira.getStatus());
+        assertEquals("AGUARDANDO_OPCAO", segunda.getStatus());
+        ArgumentCaptor<TarifarRequest> captor = ArgumentCaptor.forClass(TarifarRequest.class);
+        verify(aereoClient, org.mockito.Mockito.times(2)).tarifarEstrita(captor.capture());
+        assertEquals(captor.getAllValues().get(0), captor.getAllValues().get(1));
+        verify(aereoClient, never()).pesquisarDisponibilidadeEstrita(any());
+    }
+
+    @Test
+    void falhaDeIntegracaoNaoDeveSerInformadaComoTarifaIndisponivel() throws Exception {
+        prepararDiagnosticoTarifacao();
+        when(aereoClient.tarifarEstrita(any())).thenThrow(new AereoClient.TarifacaoException("TIMEOUT"));
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertEquals("FALHA_INTEGRACAO_TARIFACAO", response.getMotivoBloqueio());
+        assertTrue(response.getMensagem().contains("servico de tarifacao"));
+        assertFalse(response.getMensagem().contains("disponibilidade pode ter mudado"));
+        assertEquals("AGUARDANDO_OPCAO", simulacao.getStatus());
+        assertNull(response.getPrevia());
+    }
+
+    @Test
+    void conexaoComDetalheDuplicadoDevePedirNovaPesquisaSemTarifar() throws Exception {
+        var opcao = prepararDiagnosticoTarifacao();
+        var detalhe = new com.confApi.aereo.dto.FamiliaPrecoInter();
+        detalhe.setNumeroVoo("4257");
+        opcao.getFamilias().get(0).setFamiliaPrecoInterList(List.of(detalhe, detalhe));
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcao)));
+        assertThrows(RegraDeNegocioException.class, () -> service.simular(SIMULACAO_ID, simular(0, 0)));
+        verify(aereoClient, never()).tarifarEstrita(any());
+        assertEquals("AGUARDANDO_OPCAO", simulacao.getStatus());
+    }
+
+    @Test
+    void conexaoSemDetalheDoVooDevePedirNovaPesquisaSemTarifar() throws Exception {
+        var opcao = prepararDiagnosticoTarifacao();
+        var detalhe = new com.confApi.aereo.dto.FamiliaPrecoInter();
+        detalhe.setNumeroVoo("9999");
+        opcao.getFamilias().get(0).setFamiliaPrecoInterList(List.of(detalhe));
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcao)));
+        assertThrows(RegraDeNegocioException.class, () -> service.simular(SIMULACAO_ID, simular(0, 0)));
+        verify(aereoClient, never()).tarifarEstrita(any());
+    }
+
+    @Test
+    void detalheParcialDevePreservarFallbackDaFamilia() throws Exception {
+        var opcao = prepararDiagnosticoTarifacao();
+        var detalhe = new com.confApi.aereo.dto.FamiliaPrecoInter();
+        detalhe.setNumeroVoo("4257");
+        detalhe.setClasse("B");
+        opcao.getFamilias().get(0).setFamiliaPrecoInterList(List.of(detalhe));
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcao)));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        ArgumentCaptor<TarifarRequest> captor = ArgumentCaptor.forClass(TarifarRequest.class);
+        verify(aereoClient).tarifarEstrita(captor.capture());
+        assertEquals("B", captor.getValue().getClasses().get(0).getClasse());
+        assertEquals("YBR", captor.getValue().getClasses().get(0).getBaseTarifaria());
+        assertEquals("AZU", captor.getValue().getClasses().get(0).getFamilia());
+        assertEquals("VIAGEM-ORIGINAL", captor.getValue().getIdentificacaoViagem());
+    }
+
+    @Test
+    void idaEVoltaDevemUsarIdentificadoresDasFamiliasSelecionadas() throws Exception {
+        prepararSimulacaoConjunta();
+        var ida = opcaoPesquisa("IDA-ORIGINAL", "CGB", "BSB", "1234");
+        ida.getFamilias().get(0).setIdentificacaoDaViagem("IDA-FAMILIA");
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(ida)));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        var volta = opcaoPesquisa("VOLTA-ORIGINAL", "BSB", "CGB", "5678");
+        volta.getFamilias().get(0).setIdentificacaoDaViagem("VOLTA-FAMILIA");
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(volta)));
+        prepararTarifacaoPermitida();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        ArgumentCaptor<TarifarRequest> captor = ArgumentCaptor.forClass(TarifarRequest.class);
+        verify(aereoClient).tarifarEstrita(captor.capture());
+        assertEquals("IDA-FAMILIA", captor.getValue().getIdentificacaoViagem());
+        assertEquals("VOLTA-FAMILIA", captor.getValue().getIdentificacaoDaViagemVolta());
+    }
 }

@@ -7,6 +7,7 @@ import com.confApi.hub.carro.HubCarroClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
 @RestController
@@ -38,7 +39,13 @@ public class CarrosController {
     }
 
     @PostMapping("/reservar")
-    public CarroReservaOperacaoResponseDTO efetuarReserva(@RequestBody CarroCompraModel req) {
+    public CarroReservaOperacaoResponseDTO efetuarReserva(@RequestBody CarroCompraModel req,
+                                                        HttpServletRequest request) {
+        if (req != null && req.getReservaCarro() != null
+                && (req.getReservaCarro().getIpEmissao() == null
+                || req.getReservaCarro().getIpEmissao().trim().isEmpty())) {
+            req.getReservaCarro().setIpEmissao(request.getRemoteAddr());
+        }
         return carroReservaService.reservar(req);
     }
 
@@ -48,7 +55,13 @@ public class CarrosController {
     }
 
     @PostMapping("/cancelarReserva")
-    public List<CancelarReservaCarroResponseDTO> cancelarReserva(@RequestBody CancelarCarroModel req) {
+    public List<CancelarReservaCarroResponseDTO> cancelarReserva(@RequestBody CancelarCarroModel req,
+                                                               HttpServletRequest request) {
+        if (req != null && req.getCancelarReservaCarroRequestDTO() != null
+                && (req.getCancelarReservaCarroRequestDTO().getIp() == null
+                || req.getCancelarReservaCarroRequestDTO().getIp().trim().isEmpty())) {
+            req.getCancelarReservaCarroRequestDTO().setIp(request.getRemoteAddr());
+        }
         return carroReservaService.cancelarReserva(req);
     }
 

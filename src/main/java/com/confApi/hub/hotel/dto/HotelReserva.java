@@ -26,15 +26,13 @@ public class HotelReserva implements Serializable {
     private Date dataEntrada;
     private Date dataSaida;
 
-
-
-
     public HotelReserva(String codgReferencia, String nome, String descricao, String codgHotel) {
         this.codgReferencia = codgReferencia;
         this.nome = nome;
         this.descricao = descricao;
         this.codgHotel = codgHotel;
     }
+
     public HotelReserva(String codgReferencia, String nome, String descricao, String codgHotel,Date dataEntrada,Date dataSaida) {
         this.codgReferencia = codgReferencia;
         this.nome = nome;

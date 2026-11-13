@@ -18,6 +18,11 @@ public class FamiliaPreco implements Serializable {
     private String cabine;
     private String classe;
     private String tipo;
+    /**
+     * Compatibilidade com o payload do aplicativo. A descricao oficial continua
+     * sendo preferencialmente lida de familia.descricaoFamilia.
+     */
+    private String nomeFamilia;
     private Familia familia;
     private Preco preco;
     private String identificacaoDeVoo;

@@ -16,15 +16,24 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 import java.net.URI;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.io.EOFException;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class ChatConfiancaManagerClient {
+    private static final Logger LOG = LoggerFactory.getLogger(ChatConfiancaManagerClient.class);
+    private static final long MAX_READ_RECOVERY_NANOS = TimeUnit.SECONDS.toNanos(2);
     private final RestTemplate restTemplate;
     private final ChatConfiancaTokenProvider tokenProvider;
     private final MeterRegistry meterRegistry;
@@ -47,7 +56,7 @@ public class ChatConfiancaManagerClient {
         } catch (HttpStatusCodeException ex) {
             throw mapStatusException("consultar o manager", ex);
         } catch (RestClientException ex) {
-            throw new ServiceIndisponivelException("Nao foi possivel consultar o manager.");
+            throw readFailure(ex);
         }
     }
 
@@ -60,7 +69,7 @@ public class ChatConfiancaManagerClient {
         } catch (HttpStatusCodeException ex) {
             throw mapStatusException("consultar o manager", ex);
         } catch (RestClientException ex) {
-            throw new ServiceIndisponivelException("Nao foi possivel consultar o manager.");
+            throw readFailure(ex);
         }
     }
 
@@ -84,15 +93,15 @@ public class ChatConfiancaManagerClient {
         } catch (HttpStatusCodeException ex) {
             throw mapStatusException("consultar o manager", ex);
         } catch (RestClientException ex) {
-            throw new ServiceIndisponivelException("Nao foi possivel consultar o manager.");
+            throw readFailure(ex);
         }
     }
 
     private <T> AuthenticatedResponse<T> encodedGetAttempt(URI uri, Class<T> responseType) {
         String token = tokenProvider.bearerToken();
         try {
-            ResponseEntity<T> response = measure(HttpMethod.GET,
-                    () -> restTemplate.exchange(uri, HttpMethod.GET, entity(null, token), responseType));
+            ResponseEntity<T> response = recoverRead(HttpMethod.GET, () -> measure(HttpMethod.GET,
+                    () -> restTemplate.exchange(uri, HttpMethod.GET, entity(null, token), responseType)));
             return new AuthenticatedResponse<>(response, token);
         } catch (HttpClientErrorException.Unauthorized ex) {
             throw new ManagerUnauthorizedException(token);
@@ -243,12 +252,12 @@ public class ChatConfiancaManagerClient {
             Class<T> responseType) {
         String token = tokenProvider.bearerToken();
         try {
-            ResponseEntity<T> response = measure(method, () -> restTemplate.exchange(
+            ResponseEntity<T> response = recoverRead(method, () -> measure(method, () -> restTemplate.exchange(
                     url(path),
                     method,
                     entity(body, token),
                     responseType
-            ));
+            )));
             return new AuthenticatedResponse<>(response, token);
         } catch (HttpClientErrorException.Unauthorized ex) {
             throw new ManagerUnauthorizedException(token);
@@ -262,16 +271,51 @@ public class ChatConfiancaManagerClient {
             ParameterizedTypeReference<T> responseType) {
         String token = tokenProvider.bearerToken();
         try {
-            ResponseEntity<T> response = measure(method, () -> restTemplate.exchange(
+            ResponseEntity<T> response = recoverRead(method, () -> measure(method, () -> restTemplate.exchange(
                     url(path),
                     method,
                     entity(body, token),
                     responseType
-            ));
+            )));
             return new AuthenticatedResponse<>(response, token);
         } catch (HttpClientErrorException.Unauthorized ex) {
             throw new ManagerUnauthorizedException(token);
         }
+    }
+
+    /** Recupera uma conexão interrompida sem repetir gravações nem prolongar timeouts. */
+    private <T> ResponseEntity<T> recoverRead(HttpMethod method, Supplier<ResponseEntity<T>> request) {
+        long started = System.nanoTime();
+        try {
+            return request.get();
+        } catch (ResourceAccessException ex) {
+            Throwable cause = rootCause(ex);
+            if (method != HttpMethod.GET || Thread.currentThread().isInterrupted()
+                    || System.nanoTime() - started >= MAX_READ_RECOVERY_NANOS
+                    || cause instanceof SocketTimeoutException
+                    || !(cause instanceof SocketException || cause instanceof EOFException)) throw ex;
+            LOG.info("Repetindo uma consulta ao Manager apos falha rapida de conexao: tipo={}",
+                    cause.getClass().getSimpleName());
+            return request.get();
+        }
+    }
+
+    private ServiceIndisponivelException readFailure(RestClientException ex) {
+        Throwable cause = rootCause(ex);
+        // Nao registrar URL, corpo, credenciais ou dados de passageiros.
+        LOG.warn("Consulta ao Manager indisponivel: tipo={}, causa={}",
+                ex.getClass().getSimpleName(), cause.getClass().getSimpleName());
+        return new ServiceIndisponivelException(ex instanceof ResourceAccessException
+                ? "A consulta ao Manager esta temporariamente indisponivel. Tente novamente."
+                : "Nao foi possivel consultar o manager.");
+    }
+
+    private Throwable rootCause(Throwable ex) {
+        Throwable cause = ex;
+        for (int depth = 0; depth < 16 && cause.getCause() != null && cause.getCause() != cause; depth++) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 
     private <T> ResponseEntity<T> measure(

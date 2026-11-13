@@ -8,6 +8,8 @@ import com.confApi.rodoviario.dto.RodoviarioReservaOperacaoResponse;
 import com.confApi.rodoviario.dto.PesquisaRodoviarioRequestDTO;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpMethod;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +18,7 @@ import javax.validation.Valid;
 import static com.confApi.hub.rodoviario.RodoviarioHubClient.Operacao.*;
 
 @RestController
+@Slf4j
 @RequiredArgsConstructor
 @RequestMapping({"/v1/rodoviario", "/rodoviario"})
 public class RodoviarioHubController {
@@ -50,6 +53,10 @@ public class RodoviarioHubController {
 
     @PostMapping({"/pesquisar", "/pesquisa"})
     public JsonNode pesquisar(@Valid @RequestBody PesquisaRodoviarioRequestDTO request) {
+        log.info("RodoviarioHubController.pesquisar request recebido requestId={} sistema={} origem={} destino={} dataViagem={}",
+                MDC.get(RodoviarioRequestLoggingFilter.REQUEST_ID),
+                RodoviarioRequestLoggingFilter.safe(request.getSistema()), request.getOrigem(),
+                request.getDestino(), request.getDataViagem());
         return hub.pesquisar(request);
     }
 

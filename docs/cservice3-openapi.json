@@ -1,0 +1,2431 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "cService3 - Servico independente de tokens",
+    "version": "3.1.2",
+    "description": "REST/JSON/HTTPS. Geracao sem banco ou ciclo persistido opcional em TOKEN_EMISSAO. Sem SOAP ou autenticacao de aparelhos."
+  },
+  "servers": [
+    {
+      "url": "https://tokens.example.test"
+    }
+  ],
+  "paths": {
+    "/api/v2/tokens": {
+      "post": {
+        "operationId": "gerarToken",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "purpose",
+                  "reference"
+                ],
+                "properties": {
+                  "purpose": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+                  },
+                  "reference": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{16,128}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token gerado; o consumidor controla prazo e consumo.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "issuanceId",
+                    "token",
+                    "clientId",
+                    "purpose",
+                    "reference",
+                    "issuedAt"
+                  ],
+                  "properties": {
+                    "issuanceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "token": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}$"
+                    },
+                    "clientId": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string"
+                    },
+                    "reference": {
+                      "type": "string"
+                    },
+                    "issuedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida ou HTTPS ausente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "correlationId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "correlationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Identidade inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "correlationId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "correlationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Consumidor ou escopo não autorizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "correlationId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "correlationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corpo excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "correlationId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "correlationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Geração desabilitada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "correlationId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "correlationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/emissoes": {
+      "post": {
+        "summary": "Emitir token com ciclo persistido",
+        "description": "Escopo obrigatorio: token:issue. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{16,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "subject": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+                  },
+                  "reference": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{16,128}$"
+                  }
+                },
+                "required": [
+                  "subject",
+                  "purpose",
+                  "reference"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "issuanceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "token": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "position": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+                    },
+                    "reference": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+                    }
+                  },
+                  "required": [
+                    "issuanceId",
+                    "token",
+                    "position",
+                    "state",
+                    "expiresAt",
+                    "purpose",
+                    "reference"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/matrizes/desafios": {
+      "post": {
+        "summary": "Criar desafio de matriz sem divulgar valor",
+        "description": "Escopo obrigatorio: matrix:challenge. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{16,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "subject": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+                  },
+                  "reference": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{16,128}$"
+                  },
+                  "key": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "subject",
+                  "purpose",
+                  "reference",
+                  "key"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "issuanceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "token": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "position": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+                    },
+                    "reference": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+                    }
+                  },
+                  "required": [
+                    "issuanceId",
+                    "token",
+                    "position",
+                    "state",
+                    "expiresAt",
+                    "purpose",
+                    "reference"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/emissoes/{id}": {
+      "get": {
+        "summary": "Consultar estado da emissao",
+        "description": "Escopo obrigatorio: token:status. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "issuanceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "issuedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "consumedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "attempts": {
+                      "type": "integer"
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+                    },
+                    "reference": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+                    },
+                    "position": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "issuanceId",
+                    "state",
+                    "issuedAt",
+                    "expiresAt",
+                    "consumedAt",
+                    "attempts",
+                    "purpose",
+                    "reference",
+                    "position"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/emissoes/{id}/validar": {
+      "post": {
+        "summary": "Consumir uma unica vez no mesmo contexto",
+        "description": "Escopo obrigatorio: token:validate. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "subject": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+                  },
+                  "reference": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{16,128}$"
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}$"
+                  }
+                },
+                "required": [
+                  "subject",
+                  "purpose",
+                  "reference",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "issuanceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "valid",
+                    "issuanceId",
+                    "state"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/emissoes/{id}/revogar": {
+      "post": {
+        "summary": "Revogar uma emissao",
+        "description": "Escopo obrigatorio: token:revoke. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "issuanceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "issuedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "consumedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "attempts": {
+                      "type": "integer"
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+                    },
+                    "reference": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+                    },
+                    "position": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "issuanceId",
+                    "state",
+                    "issuedAt",
+                    "expiresAt",
+                    "consumedAt",
+                    "attempts",
+                    "purpose",
+                    "reference",
+                    "position"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/empresas": {
+      "get": {
+        "summary": "Listar empresas (ate 200, empresa autorizada)",
+        "description": "Escopo obrigatorio: catalog:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "post": {
+        "summary": "Criar empresas (usuario requer id; empresa requer catalog:provision)",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "address": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "city": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "state": {
+                    "type": "string",
+                    "maxLength": 2
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "contactName": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "contactEmail": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "contactPhone": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "contactMobile": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/empresas/{id}": {
+      "get": {
+        "summary": "Consultar empresas",
+        "description": "Escopo obrigatorio: catalog:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "put": {
+        "summary": "Atualizar/reativar empresas",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "address": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "city": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "state": {
+                    "type": "string",
+                    "maxLength": 2
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "contactName": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "contactEmail": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "contactPhone": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "contactMobile": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Inativar empresas (nao excluir historico)",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/usuarios": {
+      "get": {
+        "summary": "Listar usuarios (ate 200, empresa autorizada)",
+        "description": "Escopo obrigatorio: catalog:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "post": {
+        "summary": "Criar usuario tecnico da empresa autorizada",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query. Campos obrigatorios refletem as restricoes NOT NULL do banco existente.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "login": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "type": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "login",
+                  "name",
+                  "email",
+                  "phone",
+                  "type"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/usuarios/{id}": {
+      "get": {
+        "summary": "Consultar usuarios",
+        "description": "Escopo obrigatorio: catalog:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "put": {
+        "summary": "Atualizar/reativar usuarios",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "login": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "type": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "login",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Inativar usuarios (nao excluir historico)",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/tokens": {
+      "get": {
+        "summary": "Listar tokens (ate 200, empresa autorizada)",
+        "description": "Escopo obrigatorio: catalog:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "post": {
+        "summary": "Criar tokens (usuario requer id; empresa requer catalog:provision)",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "batch": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "key",
+                  "expiresAt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/tokens/{id}": {
+      "get": {
+        "summary": "Consultar tokens",
+        "description": "Escopo obrigatorio: catalog:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "put": {
+        "summary": "Atualizar/reativar tokens",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "batch": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "key",
+                  "expiresAt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Inativar tokens (nao excluir historico)",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/cartoes": {
+      "get": {
+        "summary": "Listar cartoes (ate 200, empresa autorizada)",
+        "description": "Escopo obrigatorio: catalog:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "post": {
+        "summary": "Criar cartoes (usuario requer id; empresa requer catalog:provision)",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "number": {
+                    "type": "string",
+                    "pattern": "^[0-9]{13,19}$"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 255
+                  }
+                },
+                "required": [
+                  "number"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/cartoes/{id}": {
+      "get": {
+        "summary": "Consultar cartoes",
+        "description": "Escopo obrigatorio: catalog:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "put": {
+        "summary": "Atualizar/reativar cartoes",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "number": {
+                    "type": "string",
+                    "pattern": "^[0-9]{13,19}$"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 255
+                  }
+                },
+                "required": [
+                  "number"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Inativar cartoes (nao excluir historico)",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/tokens/{id}/numeros": {
+      "get": {
+        "summary": "Ler valores da matriz (administracao restrita, ate 500)",
+        "description": "Escopo obrigatorio: catalog:read e matrix:read. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/tokens/{id}/numeros/{position}": {
+      "put": {
+        "summary": "Definir posicao de matriz inativa",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query. A posicao pertence a matriz identificada por id; a mesma posicao pode existir em outras matrizes.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "position",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}$"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remover posicao de matriz inativa",
+        "description": "Escopo obrigatorio: catalog:write. Sem parametros de query. A posicao pertence a matriz identificada por id; a mesma posicao pode existir em outras matrizes.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "position",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    },
+    "/api/v2/catalogo/cartoes/verificar": {
+      "post": {
+        "summary": "Verificar se cartao consta na lista de bloqueio",
+        "description": "Escopo obrigatorio: card:check. Sem parametros de query.",
+        "security": [
+          {
+            "ServiceIdentity": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "number": {
+                    "type": "string",
+                    "pattern": "^[0-9]{13,19}$"
+                  }
+                },
+                "required": [
+                  "number"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado sem cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "blocked": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "blocked"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida"
+          },
+          "401": {
+            "description": "Identidade invalida"
+          },
+          "403": {
+            "description": "Escopo ou contexto recusado"
+          },
+          "404": {
+            "description": "Registro nao encontrado"
+          },
+          "409": {
+            "description": "Conflito, expirado ou ja utilizado"
+          },
+          "429": {
+            "description": "Limite de tentativas/emissoes"
+          },
+          "503": {
+            "description": "Configuracao/persistencia indisponivel"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ServiceIdentity": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT RS256 SERVICE aud=cservice3-tokens scope=token:generate"
+      }
+    }
+  }
+}

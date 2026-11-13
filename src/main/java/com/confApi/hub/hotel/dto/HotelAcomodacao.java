@@ -8,7 +8,6 @@ import java.util.*;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
 @EqualsAndHashCode
 public class HotelAcomodacao {
     private String codgPlanoTarifa;
@@ -37,4 +36,37 @@ public class HotelAcomodacao {
     private List<HotelPoliticaCancelamento> politicaCancelamento = new ArrayList<>();
 
     private String sistema;
+    private String status;
+
+    @Override
+    public String toString() {
+        return "HotelAcomodacao{" +
+                "codgPlanoTarifa='" + codgPlanoTarifa + '\'' +
+                ", codgRoom='" + codgRoom + '\'' +
+                ", siglaTipoQuarto='" + siglaTipoQuarto + '\'' +
+                ", nomeQuarto='" + nomeQuarto + '\'' +
+                ", nomeQuartoExtenso='" + nomeQuartoExtenso + '\'' +
+                ", isSelecionado=" + isSelecionado +
+                ", nomeTipoQuarto='" + nomeTipoQuarto + '\'' +
+                ", descricaoTipoCama='" + descricaoTipoCama + '\'' +
+                ", regime='" + regime + '\'' +
+                ", descricaoOferta='" + descricaoOferta + '\'' +
+                ", descricaoTipoDeTarifa='" + descricaoTipoDeTarifa + '\'' +
+//                ", descricaoTipoAcomodacao='" + descricaoTipoAcomodacao + '\'' +
+                ", tarifaHotel=" + tarifaHotel +
+                ", vagasDisponiveis=" + vagasDisponiveis +
+                ", isPrePagamento=" + isPrePagamento +
+                ", isNaoReembolsavel=" + isNaoReembolsavel +
+                ", formaPagamento='" + formaPagamento + '\'' +
+                ", maximoHospedes=" + maximoHospedes +
+                ", minimoHospedes=" + minimoHospedes +
+                ", maximoCriancas=" + maximoCriancas +
+                ", minimoCriancas=" + minimoCriancas +
+                ", hospedes=" + hospedes +
+                ", taxasPoliticas=" + taxasPoliticas +
+                ", politicaCancelamento=" + politicaCancelamento +
+                ", sistema='" + sistema + '\'' +
+                ", status='" + status + '\'' +
+                '}';
+    }
 }

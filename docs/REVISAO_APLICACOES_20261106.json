@@ -1,0 +1,285 @@
+{
+  "reviewedAt": "2026-11-06T14:05:20.5481140-04:00",
+  "scope": "Local applications: compilation, isolated tests, token/device integration code and operational prerequisites",
+  "readyForProduction": false,
+  "applications": [
+    {
+      "Project": "admin",
+      "Tests": 51,
+      "Failures": 0,
+      "Errors": 0,
+      "Passed": true,
+      "BuildStatus": "SUCCESS"
+    },
+    {
+      "Project": "cservice",
+      "Tests": 33,
+      "Failures": 0,
+      "Errors": 0,
+      "Passed": true,
+      "BuildStatus": "SUCCESS"
+    },
+    {
+      "Project": "manager",
+      "Tests": 1794,
+      "Failures": 11,
+      "Errors": 58,
+      "Passed": false,
+      "BuildStatus": "TEST_FAILURE"
+    },
+    {
+      "Project": "hub",
+      "Tests": 1070,
+      "Failures": 9,
+      "Errors": 0,
+      "Passed": false,
+      "BuildStatus": "TEST_FAILURE"
+    },
+    {
+      "Project": "confapi",
+      "Tests": 1508,
+      "Failures": 19,
+      "Errors": 7,
+      "Passed": false,
+      "BuildStatus": "TEST_FAILURE"
+    },
+    {
+      "Project": "payara",
+      "Tests": 3428.0,
+      "Failures": 0.0,
+      "Errors": 0.0,
+      "Passed": true,
+      "BuildStatus": "SUCCESS"
+    },
+    {
+      "Project": "app",
+      "Tests": 361,
+      "Failures": 0,
+      "Errors": 0,
+      "Passed": true,
+      "Suites": 41,
+      "TypecheckPassed": true,
+      "NativeBuildValidated": false
+    }
+  ],
+  "authenticationTests": [
+    {
+      "Project": "hub",
+      "Tests": 55.0,
+      "Failures": 0.0,
+      "Errors": 0.0,
+      "Suites": [
+        {
+          "Name": "conf.api.antifraude.AntifraudeTokenProviderTest",
+          "Tests": 2,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "conf.api.cservices.rest.CServicesRestControllerJaxStartupTest",
+          "Tests": 3,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "conf.api.cservices.rest.SafeguardPublicConfigControllerTest",
+          "Tests": 4,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "conf.api.cservices.rest.SafeguardTokenControllerTest",
+          "Tests": 10,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "conf.api.cservices.service.CService3ClientTest",
+          "Tests": 2,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "conf.api.cservices.service.SafeguardTokenServiceTest",
+          "Tests": 23,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "conf.authv2.MobileRegistrationTest",
+          "Tests": 1,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "conf.authv2.MobileSessionFilterTest",
+          "Tests": 5,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "conf.authv2.V2IdentityTest",
+          "Tests": 5,
+          "Failures": 0,
+          "Errors": 0
+        }
+      ]
+    },
+    {
+      "Project": "confapi",
+      "Tests": 32.0,
+      "Failures": 0.0,
+      "Errors": 0.0,
+      "Suites": [
+        {
+          "Name": "com.confApi.authv2.DeviceManagerRelayTest",
+          "Tests": 3,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confApi.authv2.MobileAuthenticatorRelayTest",
+          "Tests": 7,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confApi.authv2.MobileRegistrationTest",
+          "Tests": 1,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confApi.authv2.MobileSessionFilterTest",
+          "Tests": 5,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confApi.authv2.V2IdentityTest",
+          "Tests": 5,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confApi.plantao.PlantaoTokenEncryptedResponseTest",
+          "Tests": 11,
+          "Failures": 0,
+          "Errors": 0
+        }
+      ]
+    },
+    {
+      "Project": "manager",
+      "Tests": 96.0,
+      "Failures": 0.0,
+      "Errors": 0.0,
+      "Suites": [
+        {
+          "Name": "com.confianca.authv2.MobileProfileTest",
+          "Tests": 2,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.authv2.V2DeviceApproverPermissionTest",
+          "Tests": 8,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.authv2.V2DispositivoPersistenceTest",
+          "Tests": 2,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.authv2.V2IdentityTest",
+          "Tests": 5,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.authv2.V2ManagerTest",
+          "Tests": 37,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.authv2.V2SecurityHttpTest",
+          "Tests": 2,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.confiancamanger.Usuario.impl.UsuarioAutenticacaoTokenTest",
+          "Tests": 5,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.mobileauth.MobileAuthenticationTest",
+          "Tests": 27,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.mobileauth.MobileLegacyDeviceWriteTest",
+          "Tests": 1,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.mobileauth.MobileLegacyRetirementTest",
+          "Tests": 2,
+          "Failures": 0,
+          "Errors": 0
+        },
+        {
+          "Name": "com.confianca.mobileauth.TokenGeneratorTest",
+          "Tests": 5,
+          "Failures": 0,
+          "Errors": 0
+        }
+      ]
+    }
+  ],
+  "testExclusions": [
+    "Manager: ConfiancamangerApplicationTests (real application/datasource)",
+    "Manager: CentralViagensPainelMysqlTest (external MySQL)",
+    "confApi: ConfApiApplicationTests (real application/datasource)"
+  ],
+  "fixes": [
+    "Payara: restored four-digit test inputs; clean install passed; WAR redeployed locally",
+    "confApi: replaced validation-api-only dependency with spring-boot-starter-validation; existing request constraints are now executed",
+    "Hub: completed isolated test contexts with the current mobile filter and mocked dependencies; no security rule relaxed",
+    "App: npm start/android/ios/web use the existing compatible-Node launcher; npm start -- --help confirmed Node 24.22.1",
+    "Configuration scripts: Manager owns mobile authentication; removed obsolete cService auth requirements and operator-ID list; added Admin checks; eight synthetic checker scenarios passed"
+  ],
+  "operationalBlockers": [
+    "Manager, confApi and Hub full isolated test suites still fail; see failed-tests.json",
+    "V2 HTTPS endpoints, service identities, signing/verification keys and delivery configuration are not configured in the inspected environment; JVM/IDE-specific settings must also be checked",
+    "The first approver device activation is not bootstrapped; no self-approval exception was added",
+    "App has no local .env with EXPO_PUBLIC_CONFAPI_AUTH_V2_URL; business-resource allowlists require review before activation",
+    "App business services still use HTTP localhost URLs; carro.service.ts and notificacao.service.ts call Manager directly. These routes still require migration through confApi and reviewed user/company authorization, pagination and upload contracts",
+    "Android SDK platform 36, Build Tools 36.0.0 and NDK 27.1.12297006 files were not found in the configured SDK installation; no native build validated",
+    "Database duplicates, orphan devices, indexes and constraints still require the manual review already requested; no automatic repair performed"
+  ],
+  "localPages": [
+    {
+      "Url": "http://localhost:8083/ConfTravelAdmin_war/login.xhtml",
+      "Status": 200,
+      "CompleteLogin": true
+    },
+    {
+      "Url": "http://localhost:8085/ConfiancaTravelPayara/",
+      "Status": 200,
+      "CompleteLogin": true
+    }
+  ],
+  "databaseScriptsExecuted": false,
+  "realLoginOrDeviceActivationTested": false,
+  "productionDeploymentPerformed": false,
+  "confapiDependencyFixDeployed": false,
+  "evidenceDirectory": "D:\\Projetos\\cServices3.0\\.local\\review-all-20261106"
+}

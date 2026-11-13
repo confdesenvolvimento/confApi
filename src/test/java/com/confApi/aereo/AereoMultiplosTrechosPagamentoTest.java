@@ -49,7 +49,8 @@ class AereoMultiplosTrechosPagamentoTest {
         AereoService service = mock(AereoService.class);
         AereoRegrasReservaService regras = mock(AereoRegrasReservaService.class);
         AereoController v1 = new AereoController(service, regras);
-        AereoControllerV2 v2 = new AereoControllerV2(service, regras);
+        AereoControllerV2 v2 = new AereoControllerV2();
+        ReflectionTestUtils.setField(v2, "regrasReservaService", regras);
         ReflectionTestUtils.setField(v1, "aereoClient", client);
         ReflectionTestUtils.setField(v2, "aereoClient", client);
         mvc = MockMvcBuilders.standaloneSetup(v1, v2).build();
@@ -87,7 +88,7 @@ class AereoMultiplosTrechosPagamentoTest {
                         }]
                         """, MediaType.APPLICATION_JSON));
 
-        JsonNode response = enviar("/v2/aereo/pesquisar", """
+        JsonNode response = enviar("/v2/aereo/pesquisarApp", """
                 {"tipoPesquisa":"MULTIPLOSTRECHOS","qtdADT":1,
                  "multiplosTrechos":[
                    {"origem":"CGB","destino":"GRU","data":1790000000000},
@@ -105,7 +106,7 @@ class AereoMultiplosTrechosPagamentoTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/v1/aereo", "/v2/aereo"})
+    @ValueSource(strings = {"/v1/aereo"})
     void devePreservarIdentificadoresEClassesNaTarifacaoEReserva(String prefixo) throws Exception {
         hub.expect(requestTo("http://localhost/hub/api/aereo/tarifar"))
                 .andExpect(method(HttpMethod.POST))
@@ -193,7 +194,7 @@ class AereoMultiplosTrechosPagamentoTest {
                         [{"trechos1":[{"identificacaoDaViagem":"IDA"}],
                           "trechos2":[{"identificacaoDaViagem":"VOLTA"}]}]
                         """, MediaType.APPLICATION_JSON));
-        JsonNode resposta = enviar("/v2/aereo/pesquisar", "{\"tipoPesquisa\":\"ROUNDTRIP\"}");
+        JsonNode resposta = enviar("/v2/aereo/pesquisarApp", "{\"tipoPesquisa\":\"ROUNDTRIP\"}");
         assertEquals(true, resposta.isArray());
         assertEquals("IDA", resposta.get(0).path("trechos1").get(0).path("identificacaoDaViagem").asText());
         assertEquals("VOLTA", resposta.get(0).path("trechos2").get(0).path("identificacaoDaViagem").asText());

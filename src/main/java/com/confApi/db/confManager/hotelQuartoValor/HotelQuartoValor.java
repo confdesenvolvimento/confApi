@@ -28,6 +28,12 @@ public class HotelQuartoValor implements Serializable {
     private Double percMkpAplicado=0.0;
     private Double valorMkpAplicado=0.0;
     private Double valorTaxasExtras=0.0;
+
+    private Double percTaxaExtra=0.0;
+    private Double valorTaxaExtra=0.0;
+    private String moeda ="BRL";
+    private Double vlrCambio=1.0;
+
     private List<HotelHospede> hotelHospedeList;
 
     private Integer qtdAdt=0;
@@ -193,6 +199,38 @@ public class HotelQuartoValor implements Serializable {
 
     public void setValorTaxasExtras(Double valorTaxasExtras) {
         this.valorTaxasExtras = valorTaxasExtras;
+    }
+
+    public Double getPercTaxaExtra() {
+        return percTaxaExtra;
+    }
+
+    public void setPercTaxaExtra(Double percTaxaExtra) {
+        this.percTaxaExtra = percTaxaExtra;
+    }
+
+    public Double getValorTaxaExtra() {
+        return valorTaxaExtra;
+    }
+
+    public void setValorTaxaExtra(Double valorTaxaExtra) {
+        this.valorTaxaExtra = valorTaxaExtra;
+    }
+
+    public String getMoeda() {
+        return moeda;
+    }
+
+    public void setMoeda(String moeda) {
+        this.moeda = moeda;
+    }
+
+    public Double getVlrCambio() {
+        return vlrCambio;
+    }
+
+    public void setVlrCambio(Double vlrCambio) {
+        this.vlrCambio = vlrCambio;
     }
 
     public List<HotelHospede> getHotelHospedeList() {

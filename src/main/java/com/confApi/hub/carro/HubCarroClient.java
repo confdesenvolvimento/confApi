@@ -4,7 +4,6 @@ import com.confApi.carros.dto.*;
 import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
-import com.confApi.hub.seguro.HubSeguroClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -21,7 +20,7 @@ import java.util.logging.Logger;
 public class HubCarroClient {
     private final RestTemplate restTemplate;
 
-    private static final Logger LOG = Logger.getLogger(HubSeguroClient.class.getName());
+    private static final Logger LOG = Logger.getLogger(HubCarroClient.class.getName());
 
     @Autowired
     private ConfAppService confAppService;
@@ -109,18 +108,45 @@ public class HubCarroClient {
             if (response.getStatusCode().is2xxSuccessful() && body != null) {
                 List<EmitirCarroResponseDTO> listResponse = new ArrayList<>();
                 for(ReservarCarroResponseDTO reserva : body) {
+                    if (reserva == null || Boolean.FALSE.equals(reserva.getSuccess())
+                            || (reserva.getError() != null && !reserva.getError().isEmpty())
+                            || reserva.getReservaCarro() == null
+                            || reserva.getReservaCarro().getBookingID() == null
+                            || reserva.getReservaCarro().getBookingID().trim().isEmpty()) {
+                        listResponse.add(erroReserva(reserva));
+                        continue;
+                    }
                     EmitirCarroRequestDTO emitirCarroRequestDTO = new EmitirCarroRequestDTO(reserva, reservarCarroRequestDTO);
-                    listResponse.addAll(emitir(emitirCarroRequestDTO));
+                    List<EmitirCarroResponseDTO> emissoes = emitir(emitirCarroRequestDTO);
+                    if (emissoes == null || emissoes.isEmpty()) {
+                        listResponse.add(erroReserva(null));
+                    } else {
+                        listResponse.addAll(emissoes);
+                    }
                 }
                 return listResponse;
             }
-            LOG.log(Level.WARNING,"pesquisarDisponibilidade retornou status {0} sem corpo válido", response.getStatusCode());
+            LOG.log(Level.WARNING,"reservar retornou status {0} sem corpo válido", response.getStatusCode());
             return null;
 
         } catch (Exception e) {
-            LOG.log(Level.SEVERE,"Erro ao pesquisar disponibilidade de carros no HUB", e);
+            LOG.log(Level.SEVERE,"Erro ao reservar carro no HUB", e);
             return null;
         }
+    }
+
+    private EmitirCarroResponseDTO erroReserva(ReservarCarroResponseDTO reserva) {
+        EmitirCarroResponseDTO erro = new EmitirCarroResponseDTO();
+        String mensagem = CarroErroMensagem.obter(
+                reserva != null ? reserva.getError() : null,
+                reserva != null ? reserva.getReturnMessage() : null,
+                reserva != null ? reserva.getMensagem() : null,
+                "Não foi possível concluir a reserva de carro no fornecedor.");
+        erro.setSuccess(false);
+        erro.setMensagem(mensagem);
+        erro.setReturnMessage(mensagem);
+        if (reserva != null) erro.setError(reserva.getError());
+        return erro;
     }
 
     public List<ReservarCarroResponseDTO> consultarReserva(ConsultarReservaCarroRequestDTO consultarReservaCarroRequestDTO) {

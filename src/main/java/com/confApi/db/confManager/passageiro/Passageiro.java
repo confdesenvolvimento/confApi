@@ -4,10 +4,14 @@ import com.confApi.db.confManager.assentoAereo.Assento;
 import com.confApi.db.confManager.bilhete.BilheteAereo;
 import com.confApi.db.confManager.reservaValor.ReservaValor;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
+import com.confApi.hub.aereo.BilheteModel;
+import com.confApi.hub.aereo.PassageiroModel;
+import com.confApi.hub.aereo.ReservaAereoModel;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -34,6 +38,73 @@ public class Passageiro implements Serializable {
     private List<ReservaValor> reservaValores;
     private List<BilheteAereo> bilhetes;
     private List<SeguroSegurado> segurados;
+
+    public Passageiro(int codgPassageiro, int codgReservaAereo, String nomePassageiro,
+                      String meioNomePassageiro, String sobrenomePassageiro, Integer sexo,
+                      int tipoPassageiro, String cpf, String telefone, String celular,
+                      String numrDocumento, String email, String idPassageiroCia,
+                      Date dataNascimento, List<ReservaValor> reservaValores,
+                      List<BilheteAereo> bilhetes, List<SeguroSegurado> segurados) {
+        this.codgPassageiro = codgPassageiro;
+        this.codgReservaAereo = codgReservaAereo;
+        this.nomePassageiro = nomePassageiro;
+        this.meioNomePassageiro = meioNomePassageiro;
+        this.sobrenomePassageiro = sobrenomePassageiro;
+        this.sexo = sexo;
+        this.tipoPassageiro = tipoPassageiro;
+        this.cpf = cpf;
+        this.telefone = telefone;
+        this.celular = celular;
+        this.numrDocumento = numrDocumento;
+        this.email = email;
+        this.idPassageiroCia = idPassageiroCia;
+        this.dataNascimento = dataNascimento;
+        this.reservaValores = reservaValores;
+        this.bilhetes = bilhetes;
+        this.segurados = segurados;
+    }
+
+    public Passageiro(PassageiroModel passageiroModel, ReservaAereoModel reservaAereoModel) {
+        this.codgPassageiro = passageiroModel.getCodgPassageiroDb();
+        this.codgReservaAereo = reservaAereoModel.getCodgReservaAereoDB().intValue();
+        this.nomePassageiro = passageiroModel.getNome();
+        this.meioNomePassageiro = passageiroModel.getNomeDoMeio();
+        this.sobrenomePassageiro = passageiroModel.getSobrenome();
+        this.sexo = passageiroModel.getSexo().equalsIgnoreCase("M") ? 1 : 0;
+        String faixaEtaria = passageiroModel.getFaixaEtaria();
+
+        if ("ADT".equalsIgnoreCase(faixaEtaria) || "Adult".equalsIgnoreCase(faixaEtaria)) {
+            this.tipoPassageiro = 1;
+        } else if ("CHD".equalsIgnoreCase(faixaEtaria) || "Child".equalsIgnoreCase(faixaEtaria)) {
+            this.tipoPassageiro = 2;
+        } else if ("INF".equalsIgnoreCase(faixaEtaria) || "Infant".equalsIgnoreCase(faixaEtaria)) {
+            this.tipoPassageiro = 3;
+        } else {
+            this.tipoPassageiro = 1;
+        }
+        this.cpf = passageiroModel.getCpf();
+        this.telefone = passageiroModel.getTelefone() != null ? passageiroModel.getTelefone().getNumeroTelefone() : "";
+        this.celular = passageiroModel.getTelefone() != null ? passageiroModel.getTelefone().getNumeroTelefone() : "";
+        this.numrDocumento = passageiroModel.getDocumento().getNumero();
+        this.email = passageiroModel.getEmail();
+        this.idPassageiroCia = passageiroModel.getIdPassageiro() != null ? passageiroModel.getIdPassageiro().toString() : "";
+        this.dataNascimento = Date.from(
+                Instant.parse(passageiroModel.getNascimento())
+        );
+
+        if(passageiroModel.getBilhetes() != null && !passageiroModel.getBilhetes().isEmpty()){
+            this.bilhetes = new ArrayList<>();
+            for(BilheteModel bilheteModel : passageiroModel.getBilhetes()){
+                BilheteAereo bilheteAereo = new BilheteAereo(bilheteModel);
+                this.bilhetes.add(bilheteAereo);
+            }
+        } else {
+            this.bilhetes = null;
+        }
+
+//        this.reservaValores = passageiroModel;
+//        this.segurados = passageiroModel;
+    }
 
     public Passageiro(com.confApi.hub.aereo.dto.Passageiro pass) {
         this.codgPassageiro = 0;

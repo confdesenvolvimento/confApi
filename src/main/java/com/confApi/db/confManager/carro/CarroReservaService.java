@@ -141,7 +141,7 @@ public class CarroReservaService {
                 recebimentoService.cancelarRecebimento(recebimento);
 
                 return CarroReservaOperacaoResponseDTO.erro(
-                        "ERRO: Pagamento cancelado. Não foi possível concluir a reserva de carro no fornecedor."
+                        mensagemErroEmissao(emissoes)
                 );
             }
 
@@ -261,8 +261,10 @@ public class CarroReservaService {
     }
 
     public List<CancelarReservaCarroResponseDTO> cancelarReserva(CancelarCarroModel req) {
+        boolean fornecedorConfirmou = false;
         try {
-            if (req == null || req.getCancelarReservaCarroRequestDTO() == null) {
+            if (req == null || req.getCancelarReservaCarroRequestDTO() == null
+                    || isBlank(req.getCancelarReservaCarroRequestDTO().getLocalizador())) {
                 return erroCancelamento("ERRO: Dados de cancelamento não informados.");
             }
 
@@ -275,11 +277,35 @@ public class CarroReservaService {
                 );
             }
 
+            boolean confirmado = true;
+            java.util.Set<String> mensagens = new java.util.LinkedHashSet<>();
+            for (CancelarReservaCarroResponseDTO resultado : resultadoHub) {
+                if (resultado == null || !Boolean.TRUE.equals(resultado.getSuccess())
+                        || (resultado.getError() != null && !resultado.getError().isEmpty())) {
+                    confirmado = false;
+                    if (resultado != null) {
+                        String mensagem = CarroErroMensagem.obter(resultado.getError(),
+                                resultado.getReturnMessage(), resultado.getMessage(), "");
+                        if (!mensagem.isEmpty()) mensagens.add(mensagem);
+                    }
+                }
+            }
+            if (!confirmado) {
+                return erroCancelamento(mensagens.isEmpty()
+                        ? "O fornecedor não confirmou o cancelamento da reserva."
+                        : String.join(" | ", mensagens));
+            }
+
+            fornecedorConfirmou = true;
             cancelarReservaNoManager(req);
 
             return resultadoHub;
 
         } catch (Exception e) {
+            if (fornecedorConfirmou) {
+                return erroCancelamento("O fornecedor confirmou o cancelamento, mas não foi possível atualizar "
+                        + "a reserva no sistema. Consulte a reserva para sincronizar o status.");
+            }
             return erroCancelamento(
                     "ERRO: Não foi possível cancelar a reserva de carro. "
                             + e.getMessage()
@@ -820,6 +846,23 @@ public class CarroReservaService {
         }
 
         carroReserva.getRecebimentos().add(recebimento);
+    }
+
+    private String mensagemErroEmissao(List<EmitirCarroResponseDTO> emissoes) {
+        java.util.Set<String> mensagens = new java.util.LinkedHashSet<>();
+        if (emissoes != null) {
+            for (EmitirCarroResponseDTO emissao : emissoes) {
+                if (emissao == null || (!Boolean.FALSE.equals(emissao.getSuccess())
+                        && (emissao.getError() == null || emissao.getError().isEmpty())
+                        && !isBlank(emissao.getLocalizador()))) continue;
+                String mensagem = CarroErroMensagem.obter(
+                        emissao.getError(), emissao.getReturnMessage(), emissao.getMensagem(), "");
+                if (!mensagem.isEmpty()) mensagens.add(mensagem);
+            }
+        }
+        return mensagens.isEmpty()
+                ? "Não foi possível concluir a reserva de carro no fornecedor."
+                : String.join(" | ", mensagens);
     }
 
     private boolean temErroEmissao(List<EmitirCarroResponseDTO> emissoes) {

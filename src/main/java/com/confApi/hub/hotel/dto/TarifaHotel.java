@@ -26,6 +26,20 @@ public class TarifaHotel {
     private String disponibilidade;
     private List<TarifaDiaria> tarifasDiaria = new ArrayList<>();
 
-
-
+    public TarifaHotel(com.confApi.db.confManager.hotel.model.TarifaHotel tarifaHotel) {
+        this.valorMarkupAplicado = tarifaHotel.getValorMarkupAplicado();
+        this.percentualMarkupAplicado = tarifaHotel.getPercentualMarkupAplicado();
+        this.valorTotalEstadiaComMarkup = tarifaHotel.getValorTotalEstadiaComMarkup();
+        this.valorTotalEstadiaComMarkupBrl = tarifaHotel.getValorTotalEstadiaComMarkupBrl();
+        this.valorTotalEstadiaNet = tarifaHotel.getValorTotalEstadiaNet();
+        this.mediaDiaria = tarifaHotel.getMediaDiaria();
+        this.percentualTaxaIss = tarifaHotel.getPercentualTaxaIss();
+        this.percentualTaxaServico = tarifaHotel.getPercentualTaxaServico();
+        this.percentualTaxaExtra = tarifaHotel.getPercentualTaxaExtra();
+        this.valorTaxaIss = tarifaHotel.getValorTaxaIss();
+        this.valorTaxaServico = tarifaHotel.getValorTaxaServico();
+        this.moeda = tarifaHotel.getMoeda();
+        this.disponibilidade = tarifaHotel.getDisponibilidade();
+        this.tarifasDiaria = tarifaHotel.getTarifasDiaria();
+    }
 }

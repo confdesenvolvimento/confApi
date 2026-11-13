@@ -5,6 +5,7 @@ import com.confApi.aereo.dto.ClasseSelecionada;
 import com.confApi.aereo.dto.ConsultarLocalizadorRequest;
 import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
 import com.confApi.aereo.dto.FamiliaPreco;
+import com.confApi.aereo.dto.FamiliaPrecoInter;
 import com.confApi.aereo.dto.ParametrosPesquisa;
 import com.confApi.aereo.dto.PassageiroTipoQtd;
 import com.confApi.aereo.dto.PesquisaRequestDTO;
@@ -636,12 +637,26 @@ public class ChatConfiancaRemarcacaoService {
             return response;
         }
 
+        TarifarRequest pedidoTarifacao = montarTarifacao(
+                ordenarSelecoes(indicesObrigatorios, selecao), passageirosSelecionados);
         simulacao.setStatus(CALCULANDO);
         simulacao = salvar(simulacao);
-
-        TarifarResponse tarifa = aereoClient.tarifar(
-                montarTarifacao(ordenarSelecoes(indicesObrigatorios, selecao),
-                        passageirosSelecionados));
+        TarifarResponse tarifa;
+        try {
+            tarifa = aereoClient.tarifarEstrita(pedidoTarifacao);
+        } catch (AereoClient.TarifacaoException ex) {
+            simulacao.setStatus(AGUARDANDO_OPCAO);
+            simulacao = salvar(simulacao);
+            RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
+                    "Nao foi possivel consultar a tarifa",
+                    "O servico de tarifacao esta indisponivel no momento. Tente novamente ou refaca a pesquisa.");
+            response.setMotivoBloqueio("FALHA_INTEGRACAO_TARIFACAO");
+            response.setOpcoes(montarOpcoes(opcoes));
+            registrarEvento(simulacao, "REMARCACAO_TARIFACAO_FALHA_INTEGRACAO",
+                    "Falha ao consultar o servico de tarifacao.", json(Map.of("codigo", ex.getCodigo())));
+            registrarCard(simulacao, response);
+            return response;
+        }
         if (tarifa == null || tarifa.getException() != null || tarifa.getPreco() == null) {
             simulacao.setStatus(AGUARDANDO_OPCAO);
             simulacao = salvar(simulacao);
@@ -2047,19 +2062,21 @@ public class ChatConfiancaRemarcacaoService {
                                 + "A equipe precisa concluir esta remarcacao manualmente.");
             }
             if (indiceSelecao == 0) {
-                request.setIdentificacaoViagem(trecho.getIdentificacaoDaViagem());
+                request.setIdentificacaoViagem(primeiro(familia.getIdentificacaoDaViagem(), trecho.getIdentificacaoDaViagem()));
             } else if (indiceSelecao == 1) {
-                request.setIdentificacaoDaViagemVolta(trecho.getIdentificacaoDaViagem());
+                request.setIdentificacaoDaViagemVolta(primeiro(familia.getIdentificacaoDaViagem(), trecho.getIdentificacaoDaViagem()));
             } else {
                 throw regra(409,
                         "A tarifacao automatica suporta no maximo dois trechos obrigatorios.");
             }
             for (Voo voo : trecho.getVoos()) {
+                FamiliaPrecoInter detalhe = detalheTarifarioVoo(familia, voo);
                 ClasseSelecionada classe = new ClasseSelecionada();
-                classe.setBaseTarifaria(familia.getBaseTarifaria());
-                classe.setClasse(familia.getClasse());
-                classe.setFamilia(familia.getFamilia() == null
-                        ? null : familia.getFamilia().getCodgFamilia());
+                classe.setBaseTarifaria(primeiro(detalhe == null ? null : detalhe.getBaseTarifaria(), familia.getBaseTarifaria()));
+                classe.setClasse(primeiro(detalhe == null ? null : detalhe.getClasse(), familia.getClasse()));
+                classe.setFamilia(primeiro(detalhe == null || detalhe.getFamilia() == null
+                                ? null : detalhe.getFamilia().getCodgFamilia(),
+                        familia.getFamilia() == null ? null : familia.getFamilia().getCodgFamilia()));
                 classe.setNumero(voo.getNumeroVoo());
                 classe.setIdentificacaoDeVoo(voo.getIdentificacaoDoVoo());
                 classe.setSistema(trecho.getSistema());
@@ -2077,6 +2094,18 @@ public class ChatConfiancaRemarcacaoService {
             }
         });
         return request;
+    }
+
+    private FamiliaPrecoInter detalheTarifarioVoo(FamiliaPreco familia, Voo voo) {
+        if (familia.getFamiliaPrecoInterList() == null || familia.getFamiliaPrecoInterList().isEmpty()) return null;
+        List<FamiliaPrecoInter> detalhes = familia.getFamiliaPrecoInterList().stream()
+                .filter(item -> item != null && !vazio(item.getNumeroVoo()) && !vazio(voo.getNumeroVoo())
+                        && item.getNumeroVoo().trim().equals(voo.getNumeroVoo().trim()))
+                .collect(Collectors.toList());
+        if (detalhes.size() != 1) {
+            throw regra(409, "Nao foi possivel identificar a tarifa de cada voo da conexao. Refaca a pesquisa.");
+        }
+        return detalhes.get(0);
     }
 
     private RegraAereaAlteracaoConsultaRequest montarRequestRegra(Reserva reserva,

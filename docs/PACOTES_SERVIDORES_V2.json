@@ -1,0 +1,334 @@
+{
+  "date": "2026-11-06",
+  "scope": "Aprovacao de cadastro/troca de aparelho exclusivamente no ConfiancaAdmin; garantia de um aparelho autorizado; cinco tabelas novas no Manager mantidas",
+  "deployed": true,
+  "oldServiceStopped": false,
+  "productionDatabaseAccessed": true,
+  "productionDatabaseChanged": false,
+  "cserviceNewTables": 0,
+  "cserviceExistingTables": [
+    "TOKEN_EMISSAO",
+    "EMPRESA",
+    "USUARIO",
+    "TOKEN",
+    "TOKEN_NUMBER",
+    "CARTAO"
+  ],
+  "cserviceSqlPrepared": "docs/sql/001_token_emissao_v3.sql",
+  "cserviceSqlApplied": false,
+  "managerSqlApplied": true,
+  "operationAdditionalTables": 0,
+  "tokenContract": "3.1.2",
+  "mobileContract": "2.0.0-draft.9",
+  "tests": {
+    "cservice": 33,
+    "manager": 96,
+    "confapi": 35,
+    "hub": 58,
+    "payara": 140,
+    "admin": 51
+  },
+  "totalBackendTests": 413,
+  "appTests": 47,
+  "appSuites": 4,
+  "typescriptPassed": true,
+  "totalAutomatedTests": 463,
+  "nativeBuild": false,
+  "nativeBlocker": "Missing Android platform 36, Build Tools 36.0.0 and NDK 27.1.12297006 source.properties; no APK/IPA generated",
+  "realHttpsIntegrationTested": false,
+  "realMailSent": false,
+  "unknownExternalConsumersMigrated": false,
+  "packages": [
+    {
+      "path": "D:\\Projetos\\cServices3.0\\target\\cService3.jar",
+      "project": "cservice",
+      "bytes": 33476801,
+      "sha256": "28721F60AD7E765917A0D1029B4314AE4EB2A30162E153A97081BFE2E016F50A",
+      "checkedEntries": [
+        "BOOT-INF/classes/br/com/confianca/cservice3/TokenApi.class",
+        "BOOT-INF/classes/br/com/confianca/cservice3/TokenLifecycle.class",
+        "BOOT-INF/classes/br/com/confianca/cservice3/TokenCatalog.class"
+      ],
+      "previousRecordedSha256": "3EE1B9C79C27A4D7623C4AAD1795850998B3514061878CFEAE197D4FD3A1048F",
+      "artifactCheckedAt": "2026-11-06T14:06:25.2156384-04:00",
+      "latestFullValidation": {
+        "Project": "cservice",
+        "Tests": 33,
+        "Failures": 0,
+        "Errors": 0,
+        "Passed": true,
+        "BuildStatus": "SUCCESS"
+      }
+    },
+    {
+      "project": "manager",
+      "path": "D:\\confiancaManager1\\target\\confiancamanger-0.0.1-SNAPSHOT.war",
+      "bytes": 117031532,
+      "checkedEntries": [
+        "WEB-INF/classes/com/confianca/authv2/V2Manager.class",
+        "WEB-INF/classes/com/confianca/authv2/DeviceApproverPermission.class",
+        "WEB-INF/classes/com/confianca/authv2/V2Api.class",
+        "WEB-INF/classes/com/confianca/authv2/V2.class",
+        "WEB-INF/classes/com/confianca/confiancamanger/Dispositivo/DispositivoService.class"
+      ],
+      "sha256": "5B3ACAB0E83B579122AFF5AF5B65EEB3E85C6FDDA019383A60A5AA73205DC054",
+      "localDeploymentVerifiedAt": "2026-11-06T13:36:50.438373-04:00",
+      "artifactCheckedAt": "2026-11-06T14:06:25.6912409-04:00",
+      "latestFullValidation": {
+        "Project": "manager",
+        "Tests": 1794,
+        "Failures": 11,
+        "Errors": 58,
+        "Passed": false,
+        "BuildStatus": "TEST_FAILURE"
+      }
+    },
+    {
+      "path": "D:\\ConfApi\\target\\confApi-0.0.1-SNAPSHOT.war",
+      "project": "confapi",
+      "bytes": 77696520,
+      "sha256": "70252049CBF58953E48446DE9CECCAFF03A30F3A57F5CF09310CE13854BEC1B2",
+      "checkedEntries": [
+        "WEB-INF/classes/com/confApi/plantao/PlantaoTokenService.class",
+        "WEB-INF/classes/com/confApi/authv2/MobileAuthenticatorRelay.class"
+      ],
+      "artifactCheckedAt": "2026-11-06T14:06:26.2057216-04:00",
+      "latestFullValidation": {
+        "Project": "confapi",
+        "Tests": 1508,
+        "Failures": 19,
+        "Errors": 7,
+        "Passed": false,
+        "BuildStatus": "TEST_FAILURE"
+      }
+    },
+    {
+      "path": "D:\\hubconfianca\\target\\Sandbox-0.0.1-SNAPSHOT.war",
+      "project": "hub",
+      "bytes": 68241305,
+      "sha256": "51A606EF17127004A050D0EA75F94FD0370A88CAA41C735A51D159290CE105A6",
+      "checkedEntries": [
+        "WEB-INF/classes/conf/api/cservices/service/CService3Client.class",
+        "WEB-INF/classes/conf/api/antifraude/AntifraudeTokenProvider.class"
+      ],
+      "artifactCheckedAt": "2026-11-06T14:06:26.6523505-04:00",
+      "latestFullValidation": {
+        "Project": "hub",
+        "Tests": 1070,
+        "Failures": 9,
+        "Errors": 0,
+        "Passed": false,
+        "BuildStatus": "TEST_FAILURE"
+      }
+    },
+    {
+      "project": "payara",
+      "path": "D:\\Projetos\\ConfiancaTravelPayara\\target\\ConfiancaTravelPayara-1.0.war",
+      "bytes": 111066289,
+      "checkedEntries": [
+        "suporte-dispositivos.xhtml",
+        "WEB-INF/classes/org/confianca/travel/security/v2/PortalV2Client.class"
+      ],
+      "sha256": "A7680BAEED02B684D56B7C4EBF5240642A5470F3E73650B4EBE31DFE93AE84C7",
+      "localDeploymentVerifiedAt": "2026-11-06T13:36:50.438373-04:00",
+      "previousRecordedSha256": "83FE951C277975CAAE4BCA48CD9376B043EB67CCDD2DD5D4E5E2BD2F3A7F188F",
+      "artifactCheckedAt": "2026-11-06T14:06:27.0978579-04:00",
+      "latestFullValidation": {
+        "Project": "payara",
+        "Tests": 3428.0,
+        "Failures": 0.0,
+        "Errors": 0.0,
+        "Passed": true,
+        "BuildStatus": "SUCCESS"
+      }
+    },
+    {
+      "project": "admin",
+      "path": "D:\\ConfTravelAdmin\\target\\ConfTravelAdmin-4.1.0.war",
+      "bytes": 72845137,
+      "checkedEntries": [
+        "WEB-INF/classes/org/confianca/travel/admin/security/v2/AdminSession.class",
+        "WEB-INF/classes/org/confianca/travel/admin/security/v2/PortalV2Client.class",
+        "WEB-INF/classes/org/confianca/travel/admin/bean/DispositivoAprovacaoBean.class",
+        "WEB-INF/classes/org/confianca/travel/admin/bean/LoginAdminBean.class",
+        "cadastro/aprovacaoDispositivos.xhtml",
+        "gerenciarUsuario/gerenciarUsuarioPermissao.xhtml",
+        "login.xhtml",
+        "WEB-INF/lib/nimbus-jose-jwt-10.10.jar"
+      ],
+      "sha256": "926426D1B9C6F0F747F9F130966E398EF72A685E485909CA095CA28CF420106B",
+      "localDeploymentVerifiedAt": "2026-11-06T13:36:50.438373-04:00",
+      "previousRecordedSha256": "92913BD7F234FFAC6C73494A49D3F7A3A68B5D74D3B1D99B157586D81DA3C637",
+      "artifactCheckedAt": "2026-11-06T14:06:27.3983486-04:00",
+      "latestFullValidation": {
+        "Project": "admin",
+        "Tests": 51,
+        "Failures": 0,
+        "Errors": 0,
+        "Passed": true,
+        "BuildStatus": "SUCCESS"
+      }
+    }
+  ],
+  "tokenDigits": 4,
+  "tokenGenerationRange": [
+    1000,
+    9999
+  ],
+  "safeguardUnchanged": true,
+  "validationLogs": "D:\\Projetos\\cServices3.0\\.local\\reduce-auth",
+  "previousFullAppValidation": {
+    "date": "2026-11-06",
+    "tests": 359,
+    "suites": 40,
+    "typescriptPassed": true,
+    "logs": "D:/Projetos/cServices3.0/.local/token-four-digits",
+    "appSourceUnchangedInThisReview": false,
+    "supersededByAppMetadataChange": true
+  },
+  "appTestScope": "shared/authv2",
+  "payaraJavaScriptTests": 3,
+  "review": "docs/APROVACAO_ADMIN_20261106.md",
+  "readyForProductionCutover": false,
+  "managerMetadataSqlPrepared": "docs/sql/revisao_20261106/011_manager_auth_reduzido.sql",
+  "managerMetadataSqlSha256": "C38713B8DCF5B63CFE89AD5E4F5996C7480FD3A8BA59E3A8CA5F5152BA4D6648",
+  "managerMetadataSqlApplied": true,
+  "deviceMetadataNewTables": 0,
+  "deviceMetadataNewColumns": 10,
+  "enrollmentMetadataNewColumns": 1,
+  "testTotalsMeaning": "Esta revisao executou 161 testes distintos: Manager 96, Admin 51, Payara 14. O teste Payara da pagina foi repetido apos ajuste do menu. Contagens dos outros projetos sao historicas; Payara 140 representa os 138 anteriores mais dois testes novos, nao uma execucao completa de 140 nesta revisao.",
+  "latestVerification": {
+    "scope": "admin-device-approval",
+    "managerTests": 96,
+    "adminTests": 51,
+    "payaraTargetedTests": 14,
+    "total": 161,
+    "productionDatabaseAccessed": false,
+    "productionDatabaseChanged": false,
+    "mysqlDdlExecuted": false,
+    "realHttpsIntegrationTested": false,
+    "logs": "D:/Projetos/cServices3.0/.local/admin-device-approval"
+  },
+  "deviceMetadataReview": "docs/DADOS_DISPOSITIVO_20261106.md",
+  "productionDatabaseAccessMode": "read-only schema metadata, migration history and aggregate counts; transaction_read_only=1",
+  "managerMetadataColumnsObserved": 10,
+  "managerAuthTablesObserved": 5,
+  "cserviceCs3ColumnsObserved": 0,
+  "databaseReview": "docs/REVISAO_BANCOS_20261106.md",
+  "manualSqlForObservedSchema": [
+    "docs/sql/revisao_20261106/011_manager_auth_reduzido.sql",
+    "docs/sql/revisao_20261106/020_cservices_tokens.sql"
+  ],
+  "managerNewTables": 5,
+  "managerNewTableNames": [
+    "dispositivo_solicitacao",
+    "dispositivo_historico",
+    "autenticacao_sessao",
+    "autenticacao_desafio",
+    "autenticacao_controle"
+  ],
+  "managerExistingTablesReused": [
+    "usuario",
+    "dispositivo"
+  ],
+  "managerNewUserColumns": 8,
+  "managerSchemaVersion": "005_autenticacao_reduzida",
+  "managerMetadataObservationMeaning": "Usuario informou execucao do script 011; cinco tabelas constam nas imagens; CSV enviado validou 135 colunas. Sem nova consulta ao banco. Indices, constraints e defaults ainda nao confirmados.",
+  "managerSqlPrepared": "docs/sql/revisao_20261106/011_manager_auth_reduzido.sql",
+  "managerSchemaReview": "docs/REDUCAO_TABELAS_MANAGER_20261106.md",
+  "managerSqlAppliedBy": "user-reported",
+  "managerPostSqlVerification": {
+    "source": "user-provided screenshots and dados.csv",
+    "columnsMatched": 135,
+    "issues": 0,
+    "indexesVerified": false,
+    "constraintsVerified": false,
+    "readOnlyScript": "docs/sql/revisao_20261106/012_conferir_pos_instalacao.sql"
+  },
+  "adminBootstrapResolved": false,
+  "adminApprovalMenu": "Outros / Aprovacao de aparelhos",
+  "adminConfiguration": "D:/ConfTravelAdmin/config/auth-v2.env.example",
+  "approverPermission": {
+    "table": "ConfiancaManger.gerenciar_usuario_permissao",
+    "column": "aprovador_dispositivo",
+    "newTables": 0,
+    "newColumns": 1,
+    "sql": "docs/sql/revisao_20261106/013_aprovador_dispositivo.sql",
+    "sqlApplied": true,
+    "default": false,
+    "sqlAppliedBy": "user",
+    "evidence": "User screenshot codex-clipboard-1c2ec793-c7cb-4951-8794-c3fe4496ca5f.png: tinyint(1), nullable NO, default 0"
+  },
+  "deploymentTarget": "local-only",
+  "productionDeployed": false,
+  "locallyUpdatedProjects": [
+    "manager",
+    "admin",
+    "payara"
+  ],
+  "localDeploymentVerification": {
+    "verifiedAt": "2026-11-06T13:36:50.438373-04:00",
+    "scope": "local applications only",
+    "packages": [
+      {
+        "project": "manager",
+        "sha256": "5B3ACAB0E83B579122AFF5AF5B65EEB3E85C6FDDA019383A60A5AA73205DC054",
+        "deployedFilesMatched": 3
+      },
+      {
+        "project": "admin",
+        "sha256": "92913BD7F234FFAC6C73494A49D3F7A3A68B5D74D3B1D99B157586D81DA3C637",
+        "deployedFilesMatched": 4
+      },
+      {
+        "project": "payara",
+        "sha256": "83FE951C277975CAAE4BCA48CD9376B043EB67CCDD2DD5D4E5E2BD2F3A7F188F",
+        "deployedFilesMatched": 2
+      }
+    ],
+    "pages": [
+      {
+        "url": "http://localhost:8083/ConfTravelAdmin_war/login.xhtml",
+        "status": 200,
+        "passwordInput": true,
+        "jsfViewState": true,
+        "completeHtml": true
+      },
+      {
+        "url": "http://localhost:8085/ConfiancaTravelPayara/",
+        "status": 200,
+        "passwordInput": true,
+        "jsfViewState": true,
+        "completeHtml": true
+      }
+    ],
+    "managerStartupConfirmed": true,
+    "ports": [
+      {
+        "LocalPort": 8181,
+        "OwningProcess": 10372
+      },
+      {
+        "LocalPort": 8085,
+        "OwningProcess": 10372
+      },
+      {
+        "LocalPort": 8083,
+        "OwningProcess": 18564
+      },
+      {
+        "LocalPort": 8082,
+        "OwningProcess": 6804
+      },
+      {
+        "LocalPort": 4848,
+        "OwningProcess": 10372
+      }
+    ],
+    "authenticatedFlowTested": false,
+    "databaseScriptsExecuted": false
+  },
+  "fullReview": "docs/REVISAO_APLICACOES_20261106.json",
+  "fullReviewReport": "docs/REVISAO_INTEGRACAO_20261106.md",
+  "artifactVersusDeploymentNote": "Hashes describe current files on disk. Earlier localDeploymentVerification hashes describe the prior publication. Payara was rebuilt and redeployed after the four-digit test fix; no deployment of the new confApi validation dependency was performed. Manager, confApi and Hub current full builds are blocked by tests; their WAR files are from earlier builds."
+}
