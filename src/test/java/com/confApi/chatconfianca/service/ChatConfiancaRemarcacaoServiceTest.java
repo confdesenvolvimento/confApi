@@ -621,7 +621,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         adulto.setValorTaxaEmbarque(60.0);
         preco.setPrecoAdulto(adulto);
         tarifa.setPreco(preco);
-        when(aereoClient.tarifar(any())).thenReturn(tarifa);
+        when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
         when(regraService.simular(any())).thenReturn(
                 regraPermitida(false, "IGUAL_OU_MAIOR"));
 
@@ -790,7 +790,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals("[0,1]", simulacao.getTrechosIndicesJson());
         assertEquals(0, simulacao.getTrechoIndice());
         assertTrue(response.getTrechosSelecionados().isEmpty());
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -838,7 +838,7 @@ class ChatConfiancaRemarcacaoServiceTest {
                 SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
         assertEquals("NAO_ELEGIVEL", response.getStatus());
         assertTrue(response.getMensagem().contains("regras diferentes"));
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -864,7 +864,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         pesquisa.setData(LocalDate.now().plusDays(10));
         assertThrows(RegraDeNegocioException.class,
                 () -> service.pesquisar(SIMULACAO_ID, pesquisa));
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
         when(regraService.simular(any())).thenReturn(regraPermitida(false));
         assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(
                 SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))).getStatus());
@@ -882,7 +882,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals("AGUARDANDO_TRECHO", response.getStatus());
         assertFalse(response.getMensagem().contains("regras diferentes"));
         assertNull(simulacao.getRegraSnapshotJson());
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -909,7 +909,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(SIMULACAO_ID, request).getStatus());
         assertTrue(simulacao.getTrechoOriginalJson().contains("1111"));
         assertTrue(simulacao.getTrechoOriginalJson().contains("2222"));
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -935,6 +935,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         reserva.setViagens(List.of(
                 trechoReserva("CGB", "BSB", "1234"),
                 trechoReserva("BSB", "CGB", "5678")));
+        definirTarifaOriginal(reserva, 0);
         ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
         hub.setReservas(List.of(reserva));
         when(aereoClient.carregarReserva(any())).thenReturn(hub);
@@ -971,7 +972,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(1, response.getTrechosSelecionados().size());
         assertEquals(0, response.getTrechosSelecionados().get(0).getTrechoIndice());
         assertEquals(LocalDate.now().plusDays(30), response.getCriterios().getDataMinima());
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -991,7 +992,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(1, response.getTrechosSelecionados().size());
         assertEquals("CGB", response.getTrechosSelecionados().get(0).getVoo().getOrigem());
         assertEquals(1, service.consultar(SIMULACAO_ID, USUARIO_ID).getTrechosSelecionados().size());
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -1017,7 +1018,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         String ofertaIda = simulacao.getOfertaSelecionadaJson();
         assertThrows(RegraDeNegocioException.class, () -> service.simular(SIMULACAO_ID, simular(0, 0)));
         assertEquals(ofertaIda, simulacao.getOfertaSelecionadaJson());
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
 
         definirHorario(voo, LocalDate.now().plusDays(30), "13:30", "15:30");
         simulacao.setResultadosJson(mapper.writeValueAsString(List.of(volta)));
@@ -1069,7 +1070,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
         assertEquals("NAO_ELEGIVEL", response.getStatus());
         assertTrue(response.getMensagem().contains("tarifa igual ou superior"));
-        verify(aereoClient).tarifar(any());
+        verify(aereoClient).tarifarEstrita(any());
     }
 
     @Test
@@ -1092,7 +1093,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(new BigDecimal("50.00"), response.getPrevia().getMulta());
         assertEquals(new BigDecimal("90.00"), response.getPrevia().getTotalEstimado());
         assertEquals(response.getPrevia().getTotalEstimado(), response.getPrevia().getTotalSelecionado());
-        verify(aereoClient).tarifar(any());
+        verify(aereoClient).tarifarEstrita(any());
         verify(regraService).simular(any());
     }
 
@@ -1113,7 +1114,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(List.of(0, 1), response.getTrechosSelecionados().stream()
                 .map(RemarcacaoSimulacaoResponse.TrechoSelecionado::getTrechoIndice).toList());
         ArgumentCaptor<TarifarRequest> tarifaRequest = ArgumentCaptor.forClass(TarifarRequest.class);
-        verify(aereoClient).tarifar(tarifaRequest.capture());
+        verify(aereoClient).tarifarEstrita(tarifaRequest.capture());
         assertEquals("IDA-ID", tarifaRequest.getValue().getIdentificacaoViagem());
         assertEquals("VOLTA-ID", tarifaRequest.getValue().getIdentificacaoDaViagemVolta());
         assertEquals(List.of(1, 2), tarifaRequest.getValue().getClasses().stream()
@@ -1412,7 +1413,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertNull(simulacao.getOfertaSelecionadaJson());
         assertCalculoEPagamentoLimpos(response);
         assertTrue(response.isPermiteVoltar());
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -1440,7 +1441,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals("TARDE", response.getCriterios().getPeriodo());
         assertTrue(response.getCriterios().isSomenteDireto());
         assertCalculoEPagamentoLimpos(response);
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -1465,7 +1466,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertTrue(response.isPreferenciasRestauradas());
         assertEquals(LocalDate.now().plusDays(30), response.getCriterios().getDataSugerida());
         assertCalculoEPagamentoLimpos(response);
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
 
         RemarcacaoSimulacaoResponse consulta = service.consultar(SIMULACAO_ID, USUARIO_ID);
         assertTrue(consulta.isPermiteVoltar());
@@ -1495,7 +1496,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertTrue(response.getTrechosSelecionados().isEmpty());
         assertNotNull(response.getCriterios());
         assertFalse(response.isPreferenciasRestauradas());
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -1523,7 +1524,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(0, response.getTrechosSelecionados().get(0).getTrechoIndice());
         assertCalculoEPagamentoLimpos(response);
         assertTrue(response.isPreferenciasRestauradas());
-        verify(aereoClient).tarifar(any());
+        verify(aereoClient).tarifarEstrita(any());
         assertThrows(RegraDeNegocioException.class,
                 () -> service.encaminhar(SIMULACAO_ID, encaminhar()));
     }
@@ -1554,7 +1555,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         RemarcacaoSimulacaoResponse recalculada = service.simular(SIMULACAO_ID, simular(0, 0));
         assertEquals("PREVIA_DISPONIVEL", recalculada.getStatus());
         assertEquals(2, recalculada.getPrevia().getTrechosSelecionados().size());
-        verify(aereoClient, org.mockito.Mockito.times(2)).tarifar(any());
+        verify(aereoClient, org.mockito.Mockito.times(2)).tarifarEstrita(any());
     }
 
     @Test
@@ -1571,7 +1572,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         assertEquals(0, simulacao.getTrechoIndice());
         assertNotNull(response.getCriterios());
         assertCalculoEPagamentoLimpos(response);
-        verify(aereoClient, never()).tarifar(any());
+        verify(aereoClient, never()).tarifarEstrita(any());
     }
 
     @Test
@@ -1927,6 +1928,442 @@ class ChatConfiancaRemarcacaoServiceTest {
         return mapper.readTree(evento.getDadosJson());
     }
 
+    @Test
+    void tarifacaoTimeoutNaoConfirmaOfertaERegistraSomenteDiagnosticoSeguro() throws Exception {
+        prepararTarifacaoIndividual(1, 600, 350, 350);
+        when(aereoClient.tarifarEstrita(any())).thenThrow(new AereoClient.TarifacaoException("TIMEOUT"));
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertTrue(response.getMensagem().contains("demorou alem do limite"));
+        assertFalse(response.getMensagem().contains("disponibilidade pode ter mudado"));
+        var dados = diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL");
+        assertEquals("TIMEOUT", dados.path("codigo").asText());
+        assertEquals(1, dados.path("tentativasSemProgresso").asInt());
+        assertTrue(dados.path("correlacao").asText().matches("[a-f0-9-]{36}"));
+        assertFalse(dados.toString().contains("Maria"));
+        assertFalse(dados.toString().contains("ABC123"));
+        verifyNoInteractions(regraService);
+    }
+
+    @Test
+    void tresFalhasSemProgressoExigemNovaPesquisaPreservandoSelecao() throws Exception {
+        prepararTarifacaoIndividual(1, 600, 350, 350);
+        String passageiros = simulacao.getPassageirosJson();
+        when(aereoClient.tarifarEstrita(any())).thenReturn(null);
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.getMensagem().contains("atendente"));
+        assertNull(simulacao.getResultadosJson());
+        assertEquals(passageiros, simulacao.getPassageirosJson());
+        assertEquals(LocalDate.now().plusDays(30), response.getCriterios().getDataSugerida());
+        assertEquals(1, response.getTrechosSelecionados().size());
+        assertThrows(RegraDeNegocioException.class, () -> service.simular(SIMULACAO_ID, simular(0, 0)));
+        verify(aereoClient, org.mockito.Mockito.times(3)).tarifarEstrita(any());
+        assertEquals(3, diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("tentativasSemProgresso").asInt());
+    }
+
+    @Test
+    void sessaoExpiradaRequerPesquisaSemDizerErroTecnicoOuFaltaDeVoos() throws Exception {
+        prepararTarifacaoIndividual(1, 600, 350, 350);
+        TarifarResponse resposta = new TarifarResponse();
+        resposta.setSessaoExpirada(true);
+        when(aereoClient.tarifarEstrita(any())).thenReturn(resposta);
+        assertEquals("AGUARDANDO_CRITERIOS", service.simular(SIMULACAO_ID, simular(0, 0)).getStatus());
+        assertEquals("OFERTA_EXPIRADA", diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("codigo").asText());
+    }
+
+    @Test
+    void rateioUmDeDoisTrechosNaoDividePassageiroNovamenteNemBaseDeMulta() throws Exception {
+        prepararTarifacaoIndividual(2, 600, 350, 700);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "ratearValoresOriginaisPorTrecho", true);
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertEquals(new BigDecimal("600.00"), response.getPrevia().getTarifaOriginal());
+        assertEquals(new BigDecimal("700.00"), response.getPrevia().getNovaTarifa());
+        assertEquals(new BigDecimal("180.00"), response.getPrevia().getTotalSelecionado());
+        var requests = ArgumentCaptor.forClass(RegraAereaAlteracaoConsultaRequest.class);
+        verify(regraService, org.mockito.Mockito.times(2)).simular(requests.capture());
+        for (var request : requests.getAllValues()) {
+            assertEquals(new BigDecimal("600.00"), request.getValorTarifa());
+            assertEquals(new BigDecimal("650.00"), request.getValorNovaTarifa());
+            assertEquals(1, request.getQuantidadePassageiros());
+            assertEquals(1, request.getQuantidadeTrechos());
+        }
+    }
+
+    @Test
+    void precoAgrupadoConfirmadoETotalSelecionadoSomamUmaUnicaVez() throws Exception {
+        prepararTarifacaoIndividual(2, 600, 700, 700);
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertEquals(new BigDecimal("700.00"), response.getPrevia().getNovaTarifa());
+        assertEquals(new BigDecimal("350.00"), response.getPrevia().getPassageiros().get(0).getNovaTarifa());
+        assertEquals(response.getPrevia().getTotalEstimado(), response.getPrevia().getTotalSelecionado());
+    }
+
+    @Test
+    void precoParaDoisAdultosSemTotalNaoEAssumidoComoUnitarioNemAgrupado() throws Exception {
+        prepararTarifacaoIndividual(2, 600, 350, null);
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertNull(response.getPrevia());
+        assertEquals("PRECOS_INCONSISTENTES", diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("codigo").asText());
+        verifyNoInteractions(regraService);
+    }
+
+    @Test
+    void totalDivergenteOuQuantidadeDeTipoDivergenteNaoProduzPrevia() throws Exception {
+        prepararTarifacaoIndividual(2, 600, 350, 999);
+        assertNull(service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia());
+        assertEquals("PRECOS_INCONSISTENTES", diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("codigo").asText());
+        verifyNoInteractions(regraService);
+    }
+
+    @Test
+    void faltaOriginalIndividualNaoUsaMediaEntreAdultosECriancas() throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(2, 600, 350, 700);
+        reserva.getPassageiros().get(1).setFaixaEtaria("CHD");
+        reserva.getValorReserva().getValorBase().setValorPassageiroList(List.of());
+        TarifarResponse tarifa = new TarifarResponse();
+        Preco preco = new Preco();
+        PrecoTipo adulto = new PrecoTipo(); adulto.setValorTarifa(350.0);
+        PrecoTipo crianca = new PrecoTipo(); crianca.setValorTarifa(175.0);
+        preco.setPrecoAdulto(adulto); preco.setPrecoCrianca(crianca); preco.setTotalTarifa(525.0);
+        tarifa.setPreco(preco);
+        when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_OPCAO", response.getStatus());
+        assertTrue(response.getMensagem().contains("sem estimar medias"));
+        assertEquals("PRECOS_ORIGINAIS_INCOMPLETOS", diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("codigo").asText());
+        verifyNoInteractions(regraService);
+    }
+
+    @Test
+    void tresFalhasDeValoresOriginaisIncompletosTambemExigemRecuperacao() throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(2, 600, 350, 700);
+        reserva.getValorReserva().getValorBase().setValorPassageiroList(List.of());
+        String passageiros = simulacao.getPassageirosJson();
+        for (int tentativa = 1; tentativa <= 3; tentativa++) {
+            RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+            assertNull(response.getPrevia());
+            assertEquals(tentativa < 3 ? "AGUARDANDO_OPCAO" : "AGUARDANDO_CRITERIOS", response.getStatus());
+            var dados = diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL");
+            assertEquals("PRECOS_ORIGINAIS_INCOMPLETOS", dados.path("codigo").asText());
+            assertEquals(tentativa, dados.path("tentativasSemProgresso").asInt());
+            assertEquals(tentativa == 3, dados.path("recuperacaoNecessaria").asBoolean());
+        }
+        assertEquals(passageiros, simulacao.getPassageirosJson());
+        assertNull(simulacao.getResultadosJson());
+        assertThrows(RegraDeNegocioException.class, () -> service.simular(SIMULACAO_ID, simular(0, 0)));
+        verify(aereoClient, org.mockito.Mockito.times(3)).tarifarEstrita(any());
+        verifyNoInteractions(regraService);
+    }
+
+    @Test
+    void zeroDefaultTotalGeralNaoEncobreTotalValidoNaOpcao() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "1234");
+        opcao.getFamilias().get(0).getPreco().setTotalGeral(0.0);
+        opcao.getFamilias().get(0).getPreco().setTotal(450.0);
+        prepararPesquisaLatamComTarifaMinima(opcao, "PODE_SER_MENOR", 300);
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertEquals(new BigDecimal("450.00"), response.getOpcoes().get(0).getFamilias().get(0).getValor());
+    }
+
+    private Reserva prepararTarifacaoIndividual(int quantidade, double original, double novoPorTipo,
+                                                Integer totalTarifa) throws Exception {
+        prepararSimulacaoConjunta();
+        Reserva reserva = prepararReservaIdaVolta();
+        definirTarifaOriginal(reserva, original);
+        if (quantidade > 1) {
+            var passageiros = new java.util.ArrayList<>(reserva.getPassageiros());
+            var valores = new java.util.ArrayList<>(reserva.getValorReserva().getValorBase().getValorPassageiroList());
+            for (int i = 1; i < quantidade; i++) {
+                String nome = "Passageiro" + i;
+                passageiros.add(passageiro(nome, "ADT", "00" + (i + 1), "ATIVO"));
+                ValorPassageiro valor = new ValorPassageiro();
+                valor.setNomePassageiro(nome); valor.setTarifa(original); valor.setTotal(original);
+                valores.add(valor);
+            }
+            reserva.setPassageiros(passageiros);
+            var base = reserva.getValorReserva().getValorBase();
+            base.setValorPassageiroList(valores);
+            base.setTarifa(original * quantidade); base.setTotal(original * quantidade);
+        }
+        simulacao.setTrechosIndicesJson("[0]");
+        simulacao.setCriteriosJson("{\"codgUsuario\":101,\"data\":\"" + LocalDate.now().plusDays(30) + "\"}");
+        simulacao.setPassageirosJson("{\"escopo\":\"TODOS\",\"indices\":"
+                + java.util.stream.IntStream.range(0, quantidade).boxed().toList() + ",\"passageiros\":[]}");
+        TarifarResponse tarifa = new TarifarResponse();
+        Preco preco = new Preco();
+        PrecoTipo adulto = new PrecoTipo(); adulto.setValorTarifa(novoPorTipo);
+        preco.setPrecoAdulto(adulto); preco.setTotalTarifa(totalTarifa == null ? null : totalTarifa.doubleValue());
+        tarifa.setPreco(preco);
+        when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
+        when(regraService.simular(any())).thenAnswer(invocation -> {
+            RegraAereaAlteracaoConsultaRequest request = invocation.getArgument(0);
+            var regra = regraPermitida(false);
+            var calculo = regra.getCalculo();
+            calculo.setValorTarifaBase(request.getValorTarifa());
+            calculo.setValorNovaTarifa(request.getValorNovaTarifa());
+            calculo.setValorTaxasBase(request.getValorTaxas());
+            calculo.setValorNovasTaxas(request.getValorNovasTaxas());
+            BigDecimal diferenca = request.getValorNovaTarifa().subtract(request.getValorTarifa()).max(BigDecimal.ZERO);
+            calculo.setDiferencaTarifaria(diferenca);
+            calculo.setTaxaServico(request.getTaxaServico());
+            calculo.setTotalPrevisto(diferenca.add(request.getTaxaServico()));
+            return regra;
+        });
+        org.mockito.Mockito.clearInvocations(regraService);
+        return reserva;
+    }
+
+    @Test
+    void tresAdultosAgrupadosDistribuemResiduoDeCentavosSemAlterarTotal() throws Exception {
+        prepararTarifacaoIndividual(3, 300, 1000, 1000);
+        var previa = service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia();
+        assertNotNull(previa);
+        assertEquals(new BigDecimal("1000.00"), previa.getNovaTarifa());
+        assertEquals(List.of(new BigDecimal("333.33"), new BigDecimal("333.33"), new BigDecimal("333.34")),
+                previa.getPassageiros().stream().map(RemarcacaoSimulacaoResponse.PreviaPassageiro::getNovaTarifa).toList());
+        assertEquals(new BigDecimal("220.00"), previa.getTotalSelecionado());
+    }
+
+    @Test
+    void rateioDeDoisTrechosSelecionadosMantemTarifaIntegral() throws Exception {
+        prepararTarifacaoIndividual(1, 600, 700, 700);
+        simulacao.setTrechosIndicesJson("[0,1]");
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "ratearValoresOriginaisPorTrecho", true);
+        assertEquals("AGUARDANDO_CRITERIOS", service.simular(SIMULACAO_ID, simular(0, 0)).getStatus());
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcaoPesquisa("VOLTA", "BSB", "CGB", "9999"))));
+        var previa = service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia();
+        assertNotNull(previa);
+        assertEquals(new BigDecimal("600.00"), previa.getTarifaOriginal());
+        assertEquals(new BigDecimal("700.00"), previa.getNovaTarifa());
+        var request = ArgumentCaptor.forClass(RegraAereaAlteracaoConsultaRequest.class);
+        verify(regraService).simular(request.capture());
+        assertEquals(new BigDecimal("600.00"), request.getValue().getValorTarifa());
+        assertEquals(new BigDecimal("700.00"), request.getValue().getValorNovaTarifa());
+    }
+
+    @Test
+    void selecionarUmDeDoisPassageirosNaoRateiaPeloTotalDaReserva() throws Exception {
+        prepararTarifacaoIndividual(2, 600, 350, 350);
+        simulacao.setPassageirosJson("{\"escopo\":\"INDIVIDUAL\",\"indices\":[1],\"passageiros\":[]}");
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "ratearValoresOriginaisPorTrecho", true);
+        var previa = service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia();
+        assertNotNull(previa);
+        assertEquals(1, previa.getPassageiros().size());
+        assertEquals(1, previa.getPassageiros().get(0).getIndice());
+        assertEquals(new BigDecimal("300.00"), previa.getTarifaOriginal());
+        assertEquals(new BigDecimal("350.00"), previa.getNovaTarifa());
+    }
+
+    @Test
+    void tarifaZeroLegitimaDeBebeNaoETratadaComoAusencia() throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(2, 300, 350, 350);
+        reserva.getPassageiros().get(1).setFaixaEtaria("INF");
+        var original = reserva.getValorReserva().getValorBase().getValorPassageiroList().get(1);
+        original.setTarifa(0.0); original.setTotal(0.0);
+        TarifarResponse tarifa = new TarifarResponse(); Preco preco = new Preco();
+        PrecoTipo adulto = new PrecoTipo(); adulto.setValorTarifa(350.0);
+        PrecoTipo bebe = new PrecoTipo(); bebe.setValorTarifa(0.0);
+        preco.setPrecoAdulto(adulto); preco.setPrecoBebe(bebe); preco.setTotalTarifa(350.0);
+        tarifa.setPreco(preco); when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
+        var previa = service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia();
+        assertNotNull(previa);
+        assertEquals(new BigDecimal("0.00"), previa.getPassageiros().get(1).getNovaTarifa());
+        assertEquals("INF", previa.getPassageiros().get(1).getTipo());
+        assertEquals(new BigDecimal("350.00"), previa.getNovaTarifa());
+    }
+
+    @Test
+    void tarifaOmitidaNaoSePassaPorZeroEIndicadorInternoNaoAlteraJsonPublico() throws Exception {
+        PrecoTipo omitido = mapper.readValue("{\"valorTarifaInformado\":true}", PrecoTipo.class);
+        assertFalse(omitido.isValorTarifaInformado());
+        assertEquals(0.0, omitido.getValorTarifa());
+        PrecoTipo zero = mapper.readValue("{\"valorTarifa\":0}", PrecoTipo.class);
+        assertTrue(zero.isValorTarifaInformado());
+        assertEquals(omitido, zero);
+        assertFalse(mapper.writeValueAsString(zero).contains("valorTarifaInformado"));
+        prepararTarifacaoIndividual(1, 300, 350, 350);
+        TarifarResponse tarifa = new TarifarResponse(); Preco preco = new Preco();
+        preco.setPrecoAdulto(omitido); tarifa.setPreco(preco);
+        when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
+        assertNull(service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia());
+        assertEquals("PRECOS_INCOMPLETOS", diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("codigo").asText());
+    }
+
+    @Test
+    void opcaoSemTotaisNaoEApresentadaComoGratuitaOuValorSentinela() throws Exception {
+        Trecho opcao = opcaoPesquisa("ID", "CGB", "BSB", "1234");
+        opcao.getFamilias().get(0).setPreco(new Preco());
+        prepararPesquisaLatamComTarifaMinima(opcao, "PODE_SER_MENOR", 300);
+        RemarcacaoSimulacaoResponse response = service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao());
+        assertNull(response.getOpcoes().get(0).getFamilias().get(0).getValor());
+        assertNull(response.getOpcoes().get(0).getMenorValor());
+    }
+
+    @Test
+    void documentoDuplicadoExigeNomeUnicoENaoUsaTarifaDoPrimeiroPassageiro() throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(2, 600, 350, 350);
+        for (var passageiro : reserva.getPassageiros()) passageiro.setCpf("00000000000");
+        var valores = reserva.getValorReserva().getValorBase().getValorPassageiroList();
+        for (var valor : valores) valor.setCpf("00000000000");
+        valores.get(1).setTarifa(300.0); valores.get(1).setTotal(300.0);
+        simulacao.setPassageirosJson("{\"escopo\":\"INDIVIDUAL\",\"indices\":[1],\"passageiros\":[]}");
+        var previa = service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia();
+        assertNotNull(previa);
+        assertEquals(new BigDecimal("300.00"), previa.getTarifaOriginal());
+        assertEquals(new BigDecimal("350.00"), previa.getNovaTarifa());
+        assertEquals(1, previa.getPassageiros().get(0).getIndice());
+    }
+
+    @Test
+    void doisHomonimosSemCpfNaoCompartilhamUmaUnicaTarifaOriginal() throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(2, 600, 350, 700);
+        reserva.getPassageiros().get(1).setNome("Maria");
+        var base = reserva.getValorReserva().getValorBase();
+        base.setValorPassageiroList(List.of(base.getValorPassageiroList().get(0)));
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertNull(response.getPrevia());
+        assertEquals("PRECOS_ORIGINAIS_INCOMPLETOS", diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("codigo").asText());
+        verifyNoInteractions(regraService);
+    }
+
+    @Test
+    void taxaDoBancoComCpfDuplicadoNaoUsaPrimeiraCorrespondencia() throws Exception {
+        assertTaxasDoBancoAmbiguas("00000000000");
+    }
+
+    @Test
+    void taxaDoBancoComHomonimosNaoUsaPrimeiraCorrespondencia() throws Exception {
+        assertTaxasDoBancoAmbiguas(null);
+    }
+
+    private void assertTaxasDoBancoAmbiguas(String cpf) throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(2, 600, 350, 700);
+        reserva.getPassageiros().get(0).setCpf(cpf);
+        var db = new com.confApi.db.confManager.reservaAereo.ReservaAereo();
+        db.setPassageiros(List.of(passageiroDbComTaxas("Maria", cpf), passageiroDbComTaxas("Maria", cpf)));
+        when(reservaAereoApi.reservaAereoConsultaLocalizadorDb(anyString())).thenReturn(db);
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertNull(response.getPrevia());
+        assertEquals("TAXAS_ORIGINAIS_AMBIGUAS", diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("codigo").asText());
+        verifyNoInteractions(regraService);
+    }
+
+    @Test
+    void taxaDoBancoComCpfDuplicadoPodeSerAssociadaPorNomesUnicos() throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(2, 600, 350, 700);
+        for (var passageiro : reserva.getPassageiros()) passageiro.setCpf("00000000000");
+        var db = new com.confApi.db.confManager.reservaAereo.ReservaAereo();
+        db.setPassageiros(List.of(passageiroDbComTaxas("Maria", "00000000000"),
+                passageiroDbComTaxas("Passageiro1", "00000000000")));
+        when(reservaAereoApi.reservaAereoConsultaLocalizadorDb(anyString())).thenReturn(db);
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertEquals(2, response.getPrevia().getPassageiros().size());
+    }
+
+    private com.confApi.db.confManager.passageiro.Passageiro passageiroDbComTaxas(String nome, String cpf) {
+        var passageiro = new com.confApi.db.confManager.passageiro.Passageiro();
+        passageiro.setNomePassageiro(nome); passageiro.setCpf(cpf);
+        var ida = new com.confApi.db.confManager.reservaValor.ReservaValor();
+        ida.setValorTaxaEmbarque(0.0);
+        var volta = new com.confApi.db.confManager.reservaValor.ReservaValor();
+        volta.setValorTaxaEmbarque(0.0);
+        passageiro.setReservaValores(List.of(ida, volta));
+        return passageiro;
+    }
+
+    @Test
+    void voltarAposTresFalhasConjuntasNaoReidrataOfertasNemPermiteQuartaTarifacao() throws Exception {
+        prepararSimulacaoConjunta();
+        var criteriosIda = pesquisaRemarcacao(); criteriosIda.setData(LocalDate.now().plusDays(30));
+        simulacao.setCriteriosJson(mapper.writeValueAsString(criteriosIda));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setResultadosJson(mapper.writeValueAsString(List.of(opcaoPesquisa("VOLTA", "BSB", "CGB", "5678"))));
+        var criteriosVolta = pesquisaRemarcacao(); criteriosVolta.setData(LocalDate.now().plusDays(33));
+        simulacao.setCriteriosJson(mapper.writeValueAsString(criteriosVolta));
+        when(aereoClient.tarifarEstrita(any())).thenReturn(null);
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("AGUARDANDO_CRITERIOS", service.simular(SIMULACAO_ID, simular(0, 0)).getStatus());
+        String passageiros = simulacao.getPassageirosJson();
+        var voltar = new RemarcacaoRequest.Voltar();
+        voltar.setCodgUsuario(USUARIO_ID); voltar.setVersaoEsperada(simulacao.getVersao());
+        var response = service.voltar(SIMULACAO_ID, voltar);
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.getOpcoes().isEmpty());
+        assertEquals(criteriosIda.getData(), response.getCriterios().getDataSugerida());
+        assertEquals(passageiros, simulacao.getPassageirosJson());
+        assertNull(simulacao.getResultadosJson());
+        assertEquals(3, mapper.readTree(simulacao.getOfertaSelecionadaJson()).path("falhasTarifacao").asInt());
+        var erro = assertThrows(RegraDeNegocioException.class, () -> service.simular(SIMULACAO_ID, simular(0, 0)));
+        assertEquals(409, erro.getStatus());
+        verify(aereoClient, org.mockito.Mockito.times(3)).tarifarEstrita(any());
+        var pesquisa = new PesquisaResponse(); pesquisa.setTrechos1(List.of(opcaoPesquisa("NOVA-IDA", "CGB", "BSB", "1234")));
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(List.of(pesquisa));
+        assertEquals("AGUARDANDO_OPCAO", service.pesquisar(SIMULACAO_ID, criteriosIda).getStatus());
+        assertEquals(0, mapper.readTree(simulacao.getOfertaSelecionadaJson()).path("falhasTarifacao").asInt());
+        assertEquals("AGUARDANDO_CRITERIOS", service.simular(SIMULACAO_ID, simular(0, 0)).getStatus());
+        verify(aereoClient, org.mockito.Mockito.times(3)).tarifarEstrita(any());
+    }
+
+    @Test
+    void bebeComTarifaZeroNaoGeraPreviaSeCalculoDoManagerForIncompleto() throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(2, 300, 350, 350);
+        reserva.getPassageiros().get(1).setFaixaEtaria("INF");
+        var original = reserva.getValorReserva().getValorBase().getValorPassageiroList().get(1);
+        original.setTarifa(0.0); original.setTotal(0.0);
+        TarifarResponse tarifa = new TarifarResponse(); Preco preco = new Preco();
+        PrecoTipo adulto = new PrecoTipo(); adulto.setValorTarifa(350.0);
+        PrecoTipo bebe = new PrecoTipo(); bebe.setValorTarifa(0.0);
+        preco.setPrecoAdulto(adulto); preco.setPrecoBebe(bebe); preco.setTotalTarifa(350.0);
+        tarifa.setPreco(preco); when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            RegraAereaAlteracaoConsultaRequest request = invocation.getArgument(0);
+            var regra = regraPermitida(false);
+            regra.getCalculo().setCalculoCompleto(request.getValorNovaTarifa().signum() > 0);
+            return regra;
+        }).when(regraService).simular(any());
+        var response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertNull(response.getPrevia());
+        assertNull(simulacao.getCalculoJson());
+        assertTrue(response.isPermiteEncaminhar()); // Somente analise humana, sem valores confirmados.
+        assertFalse(response.isExigeFormaPagamento());
+        assertEquals(409, assertThrows(RegraDeNegocioException.class,
+                () -> service.selecionarFormaPagamento(SIMULACAO_ID, formaPagamento(1))).getStatus());
+        verify(regraService, org.mockito.Mockito.times(2)).simular(any());
+    }
+
+    @Test
+    void precosAgrupadosMisturadosComUnitariosOuValoresNaoFinitosNaoSaoAdvinhados() throws Exception {
+        Reserva reserva = prepararTarifacaoIndividual(4, 300, 400, 700);
+        reserva.getPassageiros().get(2).setFaixaEtaria("CHD");
+        reserva.getPassageiros().get(3).setFaixaEtaria("CHD");
+        TarifarResponse tarifa = new TarifarResponse(); Preco preco = new Preco();
+        PrecoTipo adulto = new PrecoTipo(); adulto.setValorTarifa(400.0);
+        PrecoTipo crianca = new PrecoTipo(); crianca.setValorTarifa(150.0);
+        preco.setPrecoAdulto(adulto); preco.setPrecoCrianca(crianca); preco.setTotalTarifa(700.0);
+        tarifa.setPreco(preco); when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
+        assertNull(service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia());
+        assertEquals("PRECOS_INCONSISTENTES", diagnosticoEvento("REMARCACAO_TARIFACAO_INDISPONIVEL")
+                .path("codigo").asText());
+        adulto.setValorTarifa(Double.NaN);
+        assertNull(service.simular(SIMULACAO_ID, simular(0, 0)).getPrevia());
+        verifyNoInteractions(regraService);
+    }
+
     private RemarcacaoRequest.Pesquisar pesquisaRemarcacao() {
         RemarcacaoRequest.Pesquisar request = new RemarcacaoRequest.Pesquisar();
         request.setCodgUsuario(USUARIO_ID);
@@ -1998,6 +2435,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         reserva.setViagens(List.of(
                 trechoReserva("CGB", "BSB", "1234"),
                 trechoReserva("BSB", "CGB", "5678")));
+        definirTarifaOriginal(reserva, 0);
         ConsultarLocalizadorResponse hub = new ConsultarLocalizadorResponse();
         hub.setReservas(List.of(reserva));
         when(aereoClient.carregarReserva(any())).thenReturn(hub);
@@ -2009,6 +2447,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         reserva.setPassageiros(List.of(passageiro("Maria", "ADT", "001", "ATIVO")));
         reserva.setViagens(List.of(trechoReserva("CGB", "BSB", "1234"),
                 trechoReserva("BSB", "CGB", "5678")));
+        definirTarifaOriginal(reserva, 0);
         ConsultarLocalizadorResponse response = new ConsultarLocalizadorResponse();
         response.setReservas(List.of(reserva));
         when(aereoClient.carregarReserva(any())).thenReturn(response);
@@ -2115,7 +2554,7 @@ class ChatConfiancaRemarcacaoServiceTest {
         adulto.setValorTaxaEmbarque(60.0);
         preco.setPrecoAdulto(adulto);
         tarifa.setPreco(preco);
-        when(aereoClient.tarifar(any())).thenReturn(tarifa);
+        when(aereoClient.tarifarEstrita(any())).thenReturn(tarifa);
         when(regraService.simular(any())).thenReturn(regraPermitida(false));
     }
 
