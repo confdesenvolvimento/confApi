@@ -167,6 +167,10 @@ public class ReservaAereoApi {
         if (encontradas.size() > 1) {
             throw new IllegalStateException("Mais de uma reserva para localizador + companhia: " + localizador);
         }
+        if (!encontradas.isEmpty() && (encontradas.get(0).getCodgReservaAereo() == null
+                || encontradas.get(0).getCodgReservaAereo() <= 0)) {
+            throw new IllegalStateException("Manager retornou reserva sem ID valido para o localizador " + localizador);
+        }
         return encontradas.isEmpty() ? null : encontradas.get(0);
     }
 
@@ -252,7 +256,11 @@ public class ReservaAereoApi {
                     new HttpEntity<>(reservaAereo, defaultHeaders(token.getToken())),
                     ReservaAereo.class
             );
-
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null
+                    || response.getBody().getCodgReservaAereo() == null
+                    || response.getBody().getCodgReservaAereo() <= 0) {
+                throw new IllegalStateException("Manager nao confirmou a criacao da reserva aerea.");
+            }
             return response.getBody();
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Erro ao criar reserva aerea no Manager. Localizador: " + safeLocalizador(reservaAereo), e);

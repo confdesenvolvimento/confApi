@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
@@ -36,22 +37,27 @@ public class AereoController {
     }
 
     @PostMapping("/tarifar")
-    public TarifarResponse tarifar(@RequestBody TarifarRequest req) {
-        TarifarResponse result = aereoClient.tarifar(req);
-        return result;
+    public TarifarResponse tarifar(@RequestBody TarifarRequest req,
+            @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
+        return "OPER".equals(req.getTipoTarifa()) ? aereoClient.tarifar(req, usuario) : aereoClient.tarifar(req);
     }
+    public TarifarResponse tarifar(TarifarRequest req) { return tarifar(req, null); }
 
     @PostMapping("/reservar")
-    public ReservarResponse tarifar(@RequestBody ReservarRequest req) {
-        ReservarResponse result = aereoClient.reserva(req);
-        return result;
+    public ReservarResponse tarifar(@RequestBody ReservarRequest req,
+            @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
+        return "OPER".equals(req.getTipoTarifa()) ? aereoClient.reserva(req, usuario) : aereoClient.reserva(req);
     }
+    public ReservarResponse tarifar(ReservarRequest req) { return tarifar(req, null); }
 
     @PostMapping("/carregarReserva")
-    public ConsultarLocalizadorResponse carregaReserva(@RequestBody ConsultarLocalizadorRequest req) {
-        ConsultarLocalizadorResponse result = consultaService.carregarReserva(req);
+    public ConsultarLocalizadorResponse carregaReserva(@RequestBody ConsultarLocalizadorRequest req,
+            @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
+        ConsultarLocalizadorResponse result = "OPER".equals(req.getTipoTarifa())
+                ? aereoClient.carregarReserva(req, usuario) : consultaService.carregarReserva(req);
         return regrasReservaService.enriquecer(result);
     }
+    public ConsultarLocalizadorResponse carregaReserva(ConsultarLocalizadorRequest req) { return carregaReserva(req, null); }
 
     @PostMapping("/obterInformacoesDaFamilia")
     public RegrasAereasReservaResponse obterInformacoesDaFamilia(@RequestBody AereoRegrasFamiliaRequest req) {
@@ -75,15 +81,17 @@ public class AereoController {
     public EmitirResponse emitir(EmitirRequest req) { return aereoClient.emitir(req); }
 
     @PostMapping("/cancelarReserva")
-    public CancelarReservaResponse cancelarReserva(@RequestBody CancelarReservaRequest req) {
-        CancelarReservaResponse result = aereoClient.cancelarReserva(req);
-        return result;
+    public CancelarReservaResponse cancelarReserva(@RequestBody CancelarReservaRequest req,
+            @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
+        return "OPER".equals(req.getTipoTarifa()) ? aereoClient.cancelarReserva(req, usuario) : aereoClient.cancelarReserva(req);
     }
+    public CancelarReservaResponse cancelarReserva(CancelarReservaRequest req) { return cancelarReserva(req, null); }
     @PostMapping("/cancelarBilhete")
-    public ConsultarEticketResponse cancelarBilhete(@RequestBody CancelarBilheteRequest req) {
-        ConsultarEticketResponse result = aereoClient.cancelarBilhete(req);
-        return result;
+    public ConsultarEticketResponse cancelarBilhete(@RequestBody CancelarBilheteRequest req,
+            @RequestHeader(value = "X-Usuario-Token", required = false) String usuario) {
+        return "OPER".equals(req.getTipoTarifa()) ? aereoClient.cancelarBilhete(req, usuario) : aereoClient.cancelarBilhete(req);
     }
+    public ConsultarEticketResponse cancelarBilhete(CancelarBilheteRequest req) { return cancelarBilhete(req, null); }
 
     @PostMapping("/obterParcelas")
     public BuscarFormasFinanciamentoResponse obterParcelas(@RequestBody BuscarFormasFinanciamentoRequest req) {

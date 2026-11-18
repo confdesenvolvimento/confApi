@@ -73,6 +73,8 @@ public class WoobaAirReservationSyncService {
             return WoobaAirReservationSyncResult.ignored(motivoValidacao, reservaWooba);
         }
 
+        reservaWooba.setLocalizador(reservaWooba.getLocalizador().trim().toUpperCase(Locale.ROOT));
+
         Map<String, List<BilheteAereo>> bilhetesWooba = bilhetesPorPassageiro(reservaWooba);
         List<Recebimento> recebimentosWooba = new ArrayList<>(safeList(reservaWooba.getRecebimentos()));
 
@@ -87,7 +89,9 @@ public class WoobaAirReservationSyncService {
         if (novaReserva) {
             ReservaAereo payloadCriacao = prepararReservaParaCriacao(reservaWooba);
             reservaDb = reservaAereoApi.criar(payloadCriacao);
+            validarReservaExistente(reservaDb, reservaWooba);
             reservaDb = recarregarReserva(reservaDb, reservaWooba);
+            validarReservaExistente(reservaDb, reservaWooba);
             result = WoobaAirReservationSyncResult.processed(reservaDb);
             result.setCreated(true);
             if (STATUS_ATIVO.equals(valorStatus(reservaWooba))) {
@@ -95,15 +99,16 @@ public class WoobaAirReservationSyncService {
                 result.setCreatedNotificationSent(true);
             }
         } else {
+            validarReservaExistente(reservaDb, reservaWooba);
             result = WoobaAirReservationSyncResult.processed(reservaDb);
         }
 
         boolean statusMudouParaEmitido = !STATUS_EMITIDO.equals(valorStatus(reservaDb))
                 && STATUS_EMITIDO.equals(valorStatus(reservaWooba));
 
-        if (!novaReserva) {
-            atualizarStatusReservaSeNecessario(reservaDb, reservaWooba, result);
-        }
+        // O POST idempotente pode devolver a reserva criada por outra instancia.
+        // Nesse caso o status recebido ainda precisa ser aplicado ao mesmo ID.
+        atualizarStatusReservaSeNecessario(reservaDb, reservaWooba, result);
 
         sincronizarBilhetes(reservaDb, reservaWooba, bilhetesWooba, result);
         sincronizarRecebimentos(
@@ -128,6 +133,39 @@ public class WoobaAirReservationSyncService {
         result.setReserva(recarregarReserva(reservaDb, reservaWooba));
 
         return result;
+    }
+
+    private void validarReservaExistente(ReservaAereo existente, ReservaAereo entrada) {
+        if (existente == null || existente.getCodgReservaAereo() == null || existente.getCodgReservaAereo() <= 0) {
+            throw new IllegalStateException("Manager nao confirmou o ID da reserva Wooba.");
+        }
+        if (!entrada.getLocalizador().equalsIgnoreCase(defaultString(existente.getLocalizador()).trim())) {
+            throw new IllegalStateException("Manager retornou outro localizador para a reserva Wooba.");
+        }
+        if (existente.getCodgCompanhiaAerea() == null || !Objects.equals(
+                WoobaAirlineCodeNormalizer.canonicalIata(entrada.getCodgCompanhiaAerea().getIataCia()),
+                WoobaAirlineCodeNormalizer.canonicalIata(existente.getCodgCompanhiaAerea().getIataCia()))) {
+            throw new IllegalStateException("Manager retornou outra companhia para a reserva Wooba.");
+        }
+        if (existente.getCodgAgencia() == null || !Objects.equals(
+                entrada.getCodgAgencia().getCodgAgencia(), existente.getCodgAgencia().getCodgAgencia())) {
+            throw new IllegalStateException("Reserva existente em outra agencia. Conferencia manual necessaria.");
+        }
+        if (!Integer.valueOf(2).equals(existente.getFonte())) {
+            throw new IllegalStateException("Reserva existente de outra origem. Conferencia manual necessaria.");
+        }
+        String airExistente = identificadorAir(existente.getRegraReserva());
+        String airEntrada = identificadorAir(entrada.getRegraReserva());
+        if (airExistente != null && airEntrada != null && !airExistente.equals(airEntrada)) {
+            throw new IllegalStateException("Localizador associado a outra transacao AIR Wooba. Conferencia manual necessaria.");
+        }
+    }
+
+    private String identificadorAir(String regra) {
+        String air = regraValue(regra, "WoobaAirUniqueId");
+        if (!isBlank(air)) return air;
+        String unique = regraValue(regra, "WoobaUniqueId");
+        return !isBlank(unique) && unique.toUpperCase(Locale.ROOT).startsWith("AIR-") ? unique : null;
     }
 
     private String motivoIgnorar(ReservaAereo reserva) {
@@ -204,7 +242,7 @@ public class WoobaAirReservationSyncService {
         if (recarregada != null && recarregada.getCodgReservaAereo() != null) {
             return recarregada;
         }
-        return reservaDb;
+        throw new IllegalStateException("Manager nao confirmou a reconsulta da reserva Wooba.");
     }
 
     private void atualizarStatusReservaSeNecessario(ReservaAereo reservaDb,
@@ -349,16 +387,16 @@ public class WoobaAirReservationSyncService {
             return;
         }
 
-        List<Recebimento> recebimentosDb = carregarRecebimentosDb(reservaDb);
         if (recebimentosWooba == null || recebimentosWooba.isEmpty()) {
             if (reservaCancelada) {
-                cancelarRecebimentosExistentes(reservaDb, recebimentosDb, result);
+                cancelarRecebimentosExistentes(reservaDb, consultarRecebimentosPersistidos(reservaDb), result);
             }
             return;
         }
 
         int gravados = 0;
         int atualizados = 0;
+        List<Recebimento> enviadosSemId = new ArrayList<>();
         for (Recebimento recebimentoWooba : recebimentosWooba) {
             if (!recebimentoValidoParaPersistir(recebimentoWooba)) {
                 LOG.log(Level.WARNING, "Recebimento Wooba ignorado por falta de forma de pagamento resolvida. Localizador: {0}",
@@ -368,24 +406,32 @@ public class WoobaAirReservationSyncService {
                 continue;
             }
 
-            recebimentoWooba.setCodgReservaAereo(new ReservaAereo(reservaDb.getCodgReservaAereo()));
+            validarRecebimentoNoContexto(recebimentoWooba, reservaDb, false);
+            WoobaPagamentoIdentidade.exigirIdentidadeForte(recebimentoWooba);
+            // A reserva embutida pode ter sido lida antes da gravacao em outra instancia.
+            List<Recebimento> recebimentosDb = consultarRecebimentosPersistidos(reservaDb);
             Recebimento recebimentoDb = encontrarRecebimento(recebimentosDb, recebimentoWooba);
             if (recebimentoDb == null) {
-                recebimentoApi.gravar(recebimentoWooba);
-                recebimentosDb.add(recebimentoWooba);
-                gravados++;
-            } else if (recebimentoMudou(recebimentoDb, recebimentoWooba)) {
-                if (recebimentoDb.getCodgRecebimento() == null) {
-                    recebimentosDb = consultarRecebimentosPersistidos(reservaDb);
-                    recebimentoDb = encontrarRecebimento(recebimentosDb, recebimentoWooba);
-                    if (recebimentoDb == null) {
-                        throw new IllegalStateException("Manager nao confirmou o ID do recebimento da reserva "
-                                + reservaDb.getCodgReservaAereo());
-                    }
+                WoobaPagamentoIdentidade.validarCriacao(recebimentosDb, recebimentoWooba);
+                if (recebimentoWooba.getCodgRecebimento() != null
+                        || enviadosSemId.stream().anyMatch(enviado -> mesmoRecebimento(enviado, recebimentoWooba))) {
+                    throw new IllegalStateException("Manager nao confirmou o ID do recebimento da reserva "
+                            + reservaDb.getCodgReservaAereo());
                 }
-                Recebimento payload = prepararRecebimentoParaAtualizar(recebimentoDb, recebimentoWooba, reservaDb);
-                recebimentoApi.atualizar(recebimentoDb.getCodgRecebimento(), payload);
-                atualizados++;
+                recebimentoWooba.setCodgReservaAereo(new ReservaAereo(reservaDb.getCodgReservaAereo()));
+                recebimentoApi.gravar(recebimentoWooba);
+                enviadosSemId.add(recebimentoWooba);
+                gravados++;
+            } else {
+                if (recebimentoWooba.getCodgRecebimento() != null
+                        && !Objects.equals(recebimentoWooba.getCodgRecebimento(), recebimentoDb.getCodgRecebimento())) {
+                    throw new IllegalStateException("ID informado diverge da identidade do recebimento Wooba.");
+                }
+                if (recebimentoMudou(recebimentoDb, recebimentoWooba)) {
+                    Recebimento payload = prepararRecebimentoParaAtualizar(recebimentoDb, recebimentoWooba, reservaDb);
+                    recebimentoApi.atualizar(recebimentoDb.getCodgRecebimento(), payload);
+                    atualizados++;
+                }
             }
         }
 
@@ -393,23 +439,25 @@ public class WoobaAirReservationSyncService {
         result.setPagamentosAtualizados(atualizados);
     }
 
-    private List<Recebimento> carregarRecebimentosDb(ReservaAereo reservaDb) {
-        List<Recebimento> recebimentosDb = new ArrayList<>(safeList(reservaDb.getRecebimentos()));
-        if (recebimentosDb.isEmpty() || recebimentosDb.stream()
-                .anyMatch(recebimento -> recebimento == null || recebimento.getCodgRecebimento() == null)) {
-            return consultarRecebimentosPersistidos(reservaDb);
-        }
-        return recebimentosDb;
-    }
-
     private List<Recebimento> consultarRecebimentosPersistidos(ReservaAereo reservaDb) {
         List<Recebimento> recebimentos = recebimentoApi.findByReservaAereoParaSincronizacao(reservaDb.getCodgReservaAereo());
-        if (recebimentos == null || recebimentos.stream()
-                .anyMatch(recebimento -> recebimento == null || recebimento.getCodgRecebimento() == null)) {
-            throw new IllegalStateException("Manager retornou recebimentos sem ID para a reserva "
+        if (recebimentos == null) {
+            throw new IllegalStateException("Manager nao confirmou os recebimentos da reserva "
                     + reservaDb.getCodgReservaAereo());
         }
+        for (Recebimento recebimento : recebimentos) validarRecebimentoNoContexto(recebimento, reservaDb, true);
         return new ArrayList<>(recebimentos);
+    }
+
+    private void validarRecebimentoNoContexto(Recebimento recebimento, ReservaAereo reservaDb, boolean persistido) {
+        if (recebimento == null || (persistido && recebimento.getCodgRecebimento() == null)
+                || (recebimento.getCodgRecebimento() != null && recebimento.getCodgRecebimento() <= 0)) {
+            throw new IllegalStateException("Manager retornou ou recebeu recebimento sem ID valido.");
+        }
+        if (recebimento.getCodgReservaAereo() != null && !Objects.equals(
+                reservaDb.getCodgReservaAereo(), recebimento.getCodgReservaAereo().getCodgReservaAereo())) {
+            throw new IllegalStateException("Recebimento pertence a outra reserva. Conferencia manual necessaria.");
+        }
     }
 
     private void cancelarRecebimentosExistentes(ReservaAereo reservaDb,
@@ -473,46 +521,30 @@ public class WoobaAirReservationSyncService {
         if (recebimentoWooba.getCopiacolaPix() == null) {
             recebimentoWooba.setCopiacolaPix(recebimentoDb.getCopiacolaPix());
         }
-        if (recebimentoWooba.getCodgTransacao() == null) {
+        if (WoobaPagamentoIdentidade.normalizar(recebimentoWooba.getCodgTransacao()) == null) {
             recebimentoWooba.setCodgTransacao(recebimentoDb.getCodgTransacao());
         }
-        if (recebimentoWooba.getOrderGatewayCartao() == null) {
+        if (WoobaPagamentoIdentidade.normalizar(recebimentoWooba.getOrderGatewayCartao()) == null) {
             recebimentoWooba.setOrderGatewayCartao(recebimentoDb.getOrderGatewayCartao());
         }
         return recebimentoWooba;
     }
 
     private Recebimento encontrarRecebimento(List<Recebimento> recebimentosDb, Recebimento recebimentoWooba) {
+        Recebimento encontrado = null;
         for (Recebimento recebimentoDb : recebimentosDb) {
             if (mesmoRecebimento(recebimentoDb, recebimentoWooba)) {
-                return recebimentoDb;
+                if (encontrado != null) {
+                    throw new IllegalStateException("Mais de um recebimento para a identidade Wooba. Conferencia manual necessaria.");
+                }
+                encontrado = recebimentoDb;
             }
         }
-        return null;
+        return encontrado;
     }
 
     private boolean mesmoRecebimento(Recebimento recebimentoDb, Recebimento recebimentoWooba) {
-        if (!isBlank(recebimentoDb.getCodgTransacao()) && !isBlank(recebimentoWooba.getCodgTransacao())) {
-            return recebimentoDb.getCodgTransacao().equalsIgnoreCase(recebimentoWooba.getCodgTransacao());
-        }
-        if (!isBlank(recebimentoDb.getOrderGatewayCartao()) && !isBlank(recebimentoWooba.getOrderGatewayCartao())) {
-            return recebimentoDb.getOrderGatewayCartao().equalsIgnoreCase(recebimentoWooba.getOrderGatewayCartao());
-        }
-
-        String uniqueIdDb = regraValue(recebimentoDb.getMensagem(), "WoobaPaymentUniqueId");
-        String uniqueIdWooba = regraValue(recebimentoWooba.getMensagem(), "WoobaPaymentUniqueId");
-        if (!isBlank(uniqueIdDb) && !isBlank(uniqueIdWooba)) {
-            return uniqueIdDb.equalsIgnoreCase(uniqueIdWooba);
-        }
-
-        String ticketDb = regraValue(recebimentoDb.getMensagem(), "WoobaPaymentTicket");
-        String ticketWooba = regraValue(recebimentoWooba.getMensagem(), "WoobaPaymentTicket");
-        if (!isBlank(ticketDb) && !isBlank(ticketWooba)) {
-            return ticketDb.equalsIgnoreCase(ticketWooba);
-        }
-
-        return Objects.equals(formaPagamentoId(recebimentoDb.getCodgFormaPagto()), formaPagamentoId(recebimentoWooba.getCodgFormaPagto()))
-                && sameDouble(recebimentoDb.getValrRecebimento(), recebimentoWooba.getValrRecebimento());
+        return WoobaPagamentoIdentidade.mesmoPagamento(recebimentoDb, recebimentoWooba);
     }
 
     private boolean recebimentoMudou(Recebimento recebimentoDb, Recebimento recebimentoWooba) {

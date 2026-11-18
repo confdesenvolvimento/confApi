@@ -100,7 +100,7 @@ public class WoobaAirReservationMapper {
         reserva.setCodgUsuarioCriacao(mapUsuario(transaction.path("User")));
         reserva.setPassageiros(mapPassageiros(airDetail, header, issueDate, lastUpdate, woobaStatus, statusDescription));
         reserva.setTrechos(mapTrechos(airDetail.path("Flights"), woobaStatus, statusDescription, companhiaReserva));
-        reserva.setRecebimentos(mapRecebimentos(transaction.path("Payments"), isCanceled(woobaStatus, statusDescription)));
+        reserva.setRecebimentos(mapRecebimentos(transaction.path("Payments"), isCanceled(woobaStatus, statusDescription), paymentScope(header)));
         reserva.setValorTotalReserva(resolveValorTotal(airDetail.path("MonetaryDetail")));
 
         return reserva;
@@ -165,7 +165,7 @@ public class WoobaAirReservationMapper {
         return usuario;
     }
 
-    private List<Recebimento> mapRecebimentos(JsonNode paymentsNode, boolean transacaoCancelada) {
+    private List<Recebimento> mapRecebimentos(JsonNode paymentsNode, boolean transacaoCancelada, String scope) {
         List<Recebimento> recebimentos = new ArrayList<>();
         if (paymentsNode == null || !paymentsNode.isArray()) {
             return recebimentos;
@@ -206,7 +206,7 @@ public class WoobaAirReservationMapper {
             recebimento.setCodgTransacao(firstNonBlank(text(paymentNode, "MerchantTransactionId"), text(paymentNode, "ProviderTransactionId")));
             recebimento.setOrderGatewayCartao(validPaymentId(text(paymentNode, "Id")));
             recebimento.setValrCancelado(pagamentoCancelado ? valor : 0.0);
-            recebimento.setMensagem(buildPagamentoMensagem(paymentNode));
+            recebimento.setMensagem(buildPagamentoMensagem(paymentNode, scope));
             mapCreditCard(creditCardNode, recebimento);
 
             recebimentos.add(recebimento);
@@ -337,10 +337,29 @@ public class WoobaAirReservationMapper {
         ));
     }
 
-    private String buildPagamentoMensagem(JsonNode paymentNode) {
+    private String paymentScope(JsonNode header) {
+        String uniqueId = firstNonBlank(text(header, "UniqueId"), text(header, "TransactionUniqueId"));
+        String id = defaultString(uniqueId).trim().toUpperCase(Locale.ROOT);
+        String porId = id.startsWith("AIR-") ? "AIR" : id.startsWith("TKT-") ? "TKT" : null;
+        Integer type = intValue(header, "TransactionType");
+        String description = text(header, "TransactionTypeDescription");
+        String porTipo = Integer.valueOf(1).equals(type) ? "AIR" : Integer.valueOf(100).equals(type) ? "TKT" : null;
+        if (type == null) {
+            if ("AirReservation".equalsIgnoreCase(defaultString(description))) porTipo = "AIR";
+            if ("AirTicket".equalsIgnoreCase(defaultString(description))) porTipo = "TKT";
+        }
+        if (porId != null && porTipo != null && !porId.equals(porTipo)) {
+            throw new IllegalArgumentException("Tipo e UniqueId da transacao Wooba divergem quanto a origem AIR/TKT do pagamento.");
+        }
+        return porId != null ? porId : porTipo;
+    }
+
+    private String buildPagamentoMensagem(JsonNode paymentNode, String scope) {
         StringBuilder mensagem = new StringBuilder();
         JsonNode creditCardNode = paymentNode.path("CreditCard");
         JsonNode posNode = creditCardNode.path("POS");
+        // Primeiro campo: nao depende dos Links do pagamento nem altera os identificadores existentes.
+        appendRegra(mensagem, "WoobaPaymentScope", scope);
         appendRegra(mensagem, "WoobaPaymentId", text(paymentNode, "Id"));
         appendRegra(mensagem, "WoobaPaymentType", text(paymentNode, "PaymentTypeDescription"));
         appendRegra(mensagem, "WoobaPaymentForm", text(paymentNode, "PaymentFormDescription"));
