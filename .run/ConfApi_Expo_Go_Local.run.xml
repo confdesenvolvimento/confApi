@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" type="Application" factoryName="Application" name="ConfApi local (Expo Go)">
+    <option name="MAIN_CLASS_NAME" value="com.confApi.ConfApiApplication" />
+    <module name="confApi" />
+    <option name="VM_PARAMETERS" value="-Dspring.profiles.active=prod,mobile-local &quot;-Dconfianca.mobile.config=$USER_HOME$/.confianca/confapi-mobile.json&quot;" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

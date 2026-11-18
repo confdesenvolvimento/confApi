@@ -54,6 +54,18 @@ class MobileApiTest {
         when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",false)));
         mvc.perform(get("/api/mobile/services/manager/unidade").header("Authorization",access)).andExpect(status().isForbidden());verify(upstream,never()).forward(any(),any(),any(),any(),any(),any());
     }
+    @Test void legacyRecognitionIsAuthenticatedAndUsesTheSessionIdentity() throws Exception {
+        String path="/api/mobile/services/manager/dispositivo/reconhecer";
+        mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isUnauthorized());
+        when(upstream.call(eq("manager"),eq("dispositivo/reconhecer"),eq("POST"),any())).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",true,"codigoDispositivo",device)));
+        mvc.perform(post(path).header("Authorization",access).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"login\":\"other\",\"codigoDispositivo\":\"forged\",\"tokenExpo\":\"ExponentPushToken[fixture]\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.autorizado").value(true));
+        var body=org.mockito.ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
+        verify(upstream).call(eq("manager"),eq("dispositivo/reconhecer"),eq("POST"),body.capture());
+        assertEquals("fixture",body.getValue().path("login").asText());assertEquals(device,body.getValue().path("codigoDispositivo").asText());
+        verify(upstream,never()).call(eq("manager"),eq("dispositivo/novo"),any(),any());
+    }
     @Test void forgedDeviceQueryCannotSwitchBoundDevice() throws Exception {
         when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",false)));
         mvc.perform(get("/api/mobile/services/manager/dispositivo/login/fixture?codigoDispositivo=forged").header("Authorization",access)).andExpect(status().isOk());

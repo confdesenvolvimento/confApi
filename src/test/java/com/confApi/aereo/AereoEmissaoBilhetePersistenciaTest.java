@@ -27,6 +27,8 @@ class AereoEmissaoBilhetePersistenciaTest {
     private AereoClientV2 client;
     private MockRestServiceServer server;
     private ReservaAereoModel entrada;
+    private String retornoEmissao = "{}";
+    private boolean erroHttp;
     private static final String BASE = "http://fixture/manager/";
     private static final String BILHETE = "{\"codgBilhete\":91,\"numrBilhete\":\"999-0000000001\",\"status\":1,\"dataCancelamento\":null}";
 
@@ -56,7 +58,10 @@ class AereoEmissaoBilhetePersistenciaTest {
         bilhete.setStatus(1); bilhete.setDataEmissao(new Date(1794316541000L));
         pax.setBilhetes(List.of(bilhete)); entrada.setPassageiros(List.of(pax));
         AereoService conversor = mock(AereoService.class);
-        when(conversor.convertToReservaAereoModel(any(ConsultarLocalizadorResponse.class),eq(entrada),eq(true))).thenReturn(entrada);
+        var passageirosEmitidos = entrada.getPassageiros();
+        when(conversor.convertToReservaAereoModel(any(ConsultarLocalizadorResponse.class),eq(entrada),eq(true))).thenAnswer(call -> {
+            entrada.setStatusReserva("Emitida"); entrada.setPassageiros(passageirosEmitidos); return entrada;
+        });
         ReflectionTestUtils.setField(client,"aereoService",conversor);
     }
 
@@ -109,11 +114,27 @@ class AereoEmissaoBilhetePersistenciaTest {
         assertTrue(client.emitir(entrada,false).getMsg().contains("passageiro")); server.verify();
     }
 
+    @Test void erroNoRetornoComBilhetesConfirmadosAtualizaBancoSemReemitir() {
+        retornoEmissao="{\"exception\":{\"message\":\"Retorno inconclusivo\"}}";
+        iniciar(3,"[]"); gravar(HttpStatus.CREATED); releitura(reservaJson(3,"["+BILHETE+"]")); concluir();
+        assertNull(client.emitir(entrada,false).getMsg()); server.verify();
+    }
+    @Test void erroHttpComBilhetesConfirmadosAtualizaBancoSemReemitir() {
+        erroHttp=true;
+        iniciar(3,"[]"); gravar(HttpStatus.CREATED); releitura(reservaJson(3,"["+BILHETE+"]")); concluir();
+        assertNull(client.emitir(entrada,false).getMsg()); server.verify();
+    }
+    @ParameterizedTest @ValueSource(strings={"[]","[{\"localizador\":\"OUTRO1\"}]"})
+    void consultaVaziaOuDivergenteNaoGravaBancoNemUsaBilhetesDoPedido(String reservas) {
+        server.expect(requestTo("http://fixture/hub/api/aereo/emitir")).andRespond(withSuccess("{\"exception\":{\"message\":\"SSR FOID\"}}",MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://fixture/hub/api/aereo/consultar")).andRespond(withSuccess("{\"reservas\":"+reservas+"}",MediaType.APPLICATION_JSON));
+        assertEquals("SSR FOID",client.emitir(entrada,false).getMsg());server.verify();
+    }
     private void iniciar(int status,String bilhetes) {
         server.expect(requestTo("http://fixture/hub/api/aereo/emitir"))
-            .andExpect(method(HttpMethod.POST)).andRespond(withSuccess("{}",MediaType.APPLICATION_JSON));
+            .andExpect(method(HttpMethod.POST)).andRespond(erroHttp ? withStatus(HttpStatus.INTERNAL_SERVER_ERROR) : withSuccess(retornoEmissao,MediaType.APPLICATION_JSON));
         server.expect(requestTo("http://fixture/hub/api/aereo/consultar"))
-            .andRespond(withSuccess("{\"reservas\":[]}",MediaType.APPLICATION_JSON));
+            .andRespond(withSuccess("{\"reservas\":[{\"localizador\":\"ABC123\"}]}",MediaType.APPLICATION_JSON));
         server.expect(requestTo(BASE+"reservaAereo/emitir/77"))
             .andExpect(method(HttpMethod.PUT)).andRespond(withSuccess());
         releitura(reservaJson(status,bilhetes));

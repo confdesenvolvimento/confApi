@@ -25,8 +25,8 @@ public class AppConfig {
     @Bean("chatConfiancaRestTemplate")
     public RestTemplate chatConfiancaRestTemplate(
             RestTemplateBuilder builder,
-            @Value("${chat-confianca.http.connect-timeout-ms:10000}") long connectTimeoutMs,
-            @Value("${chat-confianca.http.request-timeout-ms:60000}") long requestTimeoutMs,
+            @Value("${chat-confianca.http.connect-timeout-ms:180000}") long connectTimeoutMs,
+            @Value("${chat-confianca.http.request-timeout-ms:180000}") long requestTimeoutMs,
             @Value("${chat-confianca.http.max-idle-connections:20}") int maxIdleConnections,
             @Value("${chat-confianca.http.keep-alive-ms:300000}") long keepAliveMs) {
         return pooledRestTemplate(
@@ -35,16 +35,16 @@ public class AppConfig {
                 requestTimeoutMs,
                 maxIdleConnections,
                 keepAliveMs,
-                10000,
-                60000);
+                180_000,
+                180_000);
     }
 
     @Bean("chatConfiancaAuthRestTemplate")
     public RestTemplate chatConfiancaAuthRestTemplate(
             RestTemplateBuilder builder,
-            @Value("${chat-confianca.auth.http.connect-timeout-ms:5000}")
+            @Value("${chat-confianca.auth.http.connect-timeout-ms:180000}")
             long connectTimeoutMs,
-            @Value("${chat-confianca.auth.http.request-timeout-ms:15000}")
+            @Value("${chat-confianca.auth.http.request-timeout-ms:180000}")
             long requestTimeoutMs) {
         return pooledRestTemplate(
                 builder,
@@ -52,8 +52,8 @@ public class AppConfig {
                 requestTimeoutMs,
                 2,
                 300000,
-                5000,
-                15000);
+                180_000,
+                180_000);
     }
 
     @Bean("chatIntencaoAuditExecutor")

@@ -22,6 +22,8 @@ public class EmitirRequest {
     private Integer formaDePagamento;
     private Double valor;
     private String cpf;
+    @lombok.ToString.Exclude
+    private java.util.List<com.confApi.hub.aereo.dto.Passageiro> documentosPassageiros;
 
     public EmitirRequest() {
     }
@@ -49,6 +51,7 @@ public class EmitirRequest {
 
     public EmitirRequest(ReservaAereoModel reservaAerea) {
 
+        this.documentosPassageiros = reservaAerea.getDocumentosPassageiros();
         this.sistema = reservaAerea.getSistema();
         this.localizador = reservaAerea.getLocalizador();
 

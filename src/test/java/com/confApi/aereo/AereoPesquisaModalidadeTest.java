@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -38,19 +39,28 @@ class AereoPesquisaModalidadeTest {
     private final RestTemplate rest = mock(RestTemplate.class);
     private final ConfAppService auth = mock(ConfAppService.class);
     private final AereoClient client = new AereoClient(rest);
+    private final AereoClientV2 clientV2 = new AereoClientV2(rest);
+    private final String hubOriginal = UrlConfig.URL_CONFIANCA_HUB;
     private MockMvc mvc;
 
     @BeforeEach
     void preparar() {
         UrlConfig.URL_CONFIANCA_HUB = "http://localhost.invalid";
         ReflectionTestUtils.setField(client, "confAppService", auth);
+        ReflectionTestUtils.setField(clientV2, "confAppService", auth);
         AereoService service = mock(AereoService.class);
         AereoRegrasReservaService regras = mock(AereoRegrasReservaService.class);
         AereoController v1 = new AereoController(service, regras);
         AereoControllerV2 v2 = new AereoControllerV2(service, regras);
         ReflectionTestUtils.setField(v1, "aereoClient", client);
         ReflectionTestUtils.setField(v2, "aereoClient", client);
+        ReflectionTestUtils.setField(v2, "aereoClientV2", clientV2);
         mvc = MockMvcBuilders.standaloneSetup(v1, v2).build();
+    }
+
+    @AfterEach
+    void restaurarUrl() {
+        UrlConfig.URL_CONFIANCA_HUB = hubOriginal;
     }
 
     static Stream<Class<? extends PesquisaModalidadeRequest>> contratos() {
@@ -69,6 +79,7 @@ class AereoPesquisaModalidadeTest {
 
     static Stream<String> rotas() {
         return Stream.of("/v1/aereo/pesquisar", "/v2/aereo/pesquisar",
+                "/v2/aereo/pesquisarApp",
                 "/v1/aereo/tarifarPesquisa", "/v2/aereo/tarifarPesquisa");
     }
 
@@ -141,7 +152,9 @@ class AereoPesquisaModalidadeTest {
                     return ResponseEntity.ok(List.of());
                 });
         mvc.perform(post(rota).contentType("application/json").content(json))
-                .andExpect(status().isOk()).andExpect(content().json("[]"));
+                .andExpect(status().isOk()).andExpect(content().json(
+                        rota.equals("/v2/aereo/pesquisar")
+                                ? mapper.writeValueAsString(new com.confApi.aereo.dto.PesquisaResponse()) : "[]", true));
         verify(auth).token();
         verify(rest).exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), any(ParameterizedTypeReference.class));
     }

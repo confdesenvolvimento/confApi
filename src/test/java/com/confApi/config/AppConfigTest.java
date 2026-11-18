@@ -44,8 +44,8 @@ class AppConfigTest {
                 0L,
                 -1L));
 
-        assertEquals(5_000, client.connectTimeoutMillis());
-        assertEquals(15_000, client.callTimeoutMillis());
+        assertEquals(180_000, client.connectTimeoutMillis());
+        assertEquals(180_000, client.callTimeoutMillis());
         assertFalse(client.retryOnConnectionFailure());
     }
 

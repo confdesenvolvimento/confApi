@@ -63,8 +63,10 @@ public class VooResponse {
         this.bagagemQuantidade = vooHub.getBagagemQuantidade();
         this.bagagemUnidadeDeMedida = vooHub.getBagagemUnidadeDeMedida();
         this.bagagens = new ArrayList<>();
-        for (BagagemHub bagagemHub : vooHub.getBagagens()){
-            this.bagagens.add(new BagagemResponse(bagagemHub));
+        if (vooHub.getBagagens() != null) {
+            for (BagagemHub bagagemHub : vooHub.getBagagens()) {
+                this.bagagens.add(new BagagemResponse(bagagemHub));
+            }
         }
         this.dataPartida = vooHub.getDataPartida();
         this.horaPartida = vooHub.getHoraPartida();
@@ -80,8 +82,10 @@ public class VooResponse {
         this.isConexao = vooHub.getIsConexao();
         this.isReembolsavel = vooHub.getIsReembolsavel();
         this.assentos = new ArrayList<>();
-        for (AssentoHub assentoHub : vooHub.getAssentos()){
-            this.assentos.add(new AssentoResponse(assentoHub));
+        if (vooHub.getAssentos() != null) {
+            for (AssentoHub assentoHub : vooHub.getAssentos()) {
+                this.assentos.add(new AssentoResponse(assentoHub));
+            }
         }
         this.conexao = vooHub.getConexao();
         this.familia = vooHub.getFamilia();

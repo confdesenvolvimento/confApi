@@ -61,6 +61,8 @@ public class ReservaAereoModel implements Serializable {
     private List<TrechoReserva> trechos;
     private List<ContatoModel> contatos;
     private List<PassageiroModel> passageiros;
+    @lombok.ToString.Exclude
+    private List<Passageiro> documentosPassageiros;
     private String motivoCancelamento = "Desistencia";
     private String descricaoMotivoCancelamento = "Desistencia";
     private Boolean isCancelarTktsAtivos = false;

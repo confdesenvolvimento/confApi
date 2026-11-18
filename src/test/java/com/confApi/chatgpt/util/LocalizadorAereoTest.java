@@ -9,6 +9,21 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 class LocalizadorAereoTest {
     @ParameterizedTest
+    @ValueSource(strings = {"Cancelar kbtxlh", "Cancele kbtxlh", "Abrir kbtxlh",
+            "Visualizar regras kbtxlh", "Consultar regras kbtxlh", "Simular remarcacao kbtxlh"})
+    void aceitaPnrAlfabeticoMinusculoEmComandoDireto(String mensagem) {
+        assertEquals("KBTXLH", LocalizadorAereo.extrair(mensagem));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Cancelar viagem", "Abrir a reserva emitida", "Visualizar regras tarifarias",
+            "Simular remarcacao anterior", "quais as regras desta reserva", "fale sobre kbtxlh",
+            "Abrir chamado", "Cancelar seguro", "Cancelar hotel", "Cancelar pacote"})
+    void naoTransformaPalavrasComunsOuTextoSemContextoEmPnr(String mensagem) {
+        assertNull(LocalizadorAereo.extrair(mensagem));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {
             "NICC3S", "NOABC12", "NROABC12", "NABCDE", "NOABCDE", "NROABCDE",
             "NABC1", "N123456789012", "ABC123", "LA9572345FRJD"

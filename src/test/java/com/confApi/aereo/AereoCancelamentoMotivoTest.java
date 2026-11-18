@@ -99,7 +99,7 @@ class AereoCancelamentoMotivoTest {
         server.expect(requestTo("http://fixture/manager/bilheteAereo/cancelar/999-0000000001"))
                 .andExpect(method(HttpMethod.PUT)).andExpect(jsonPath("$.status").value(0)).andRespond(withSuccess());
         server.expect(requestTo("http://fixture/manager/reservaAereo/localizador/ABC123"))
-                .andExpect(method(HttpMethod.GET)).andRespond(withSuccess("{\"passageiros\":[{\"bilhetes\":[{\"numrBilhete\":\"999-0000000001\",\"status\":0}]}]}",MediaType.APPLICATION_JSON));
+                .andExpect(method(HttpMethod.GET)).andRespond(withSuccess("{\"codgReservaAereo\":77,\"localizador\":\"ABC123\",\"passageiros\":[{\"bilhetes\":[{\"numrBilhete\":\"999-0000000001\",\"status\":0}]}]}",MediaType.APPLICATION_JSON));
         var resposta=client.cancelarBilhete(entrada);assertNull(resposta.getException());assertEquals("Cancelado",resposta.getStatus());server.verify();
     }
 

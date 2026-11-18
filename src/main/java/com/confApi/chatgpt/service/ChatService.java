@@ -217,6 +217,8 @@ public class ChatService {
                     .retryOnConnectionFailure(false).build() : client;
             try (Response r = clienteTurno.newCall(request).execute()) {
                 if (somenteTextoTi && !r.isSuccessful()) throw new IOException("TI_GERACAO_INDISPONIVEL");
+                if (responses != null && !r.isSuccessful())
+                    throw new OpenAiUnavailableException("OPENAI_RESPONSES_HTTP_" + r.code());
                 JsonNode root = OpenAiCompletionResponse.read(r, om);
                 if (responses != null) root = responses.completion(root);
                 completionId = root.path("id").asText();

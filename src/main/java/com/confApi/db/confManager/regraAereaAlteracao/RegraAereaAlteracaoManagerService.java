@@ -1,21 +1,11 @@
 package com.confApi.db.confManager.regraAereaAlteracao;
 
-import com.confApi.confApp.ConfAppResp;
-import com.confApi.confApp.ConfAppService;
-import com.confApi.config.UrlConfig;
+import com.confApi.chatconfianca.client.ChatConfiancaManagerClient;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaRequest;
 import com.confApi.db.confManager.regraAereaAlteracao.dto.RegraAereaAlteracaoConsultaResponse;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.io.Serializable;
 import java.util.logging.Level;
@@ -28,15 +18,11 @@ public class RegraAereaAlteracaoManagerService implements Serializable {
     private static final String API_ACTION_CONSULTAR = "regrasAereas/alteracao/consultar";
     private static final String API_ACTION_SIMULAR = "regrasAereas/alteracao/simular";
 
-    private final RestTemplate restTemplate;
+    private final ChatConfiancaManagerClient manager;
     private final ObjectMapper mapper;
 
-    @Autowired
-    private ConfAppService confAppService;
-
-    @Autowired
-    public RegraAereaAlteracaoManagerService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    public RegraAereaAlteracaoManagerService(ChatConfiancaManagerClient manager) {
+        this.manager = manager;
         this.mapper = new ObjectMapper()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
                 .configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
@@ -52,54 +38,30 @@ public class RegraAereaAlteracaoManagerService implements Serializable {
     }
 
     private RegraAereaAlteracaoConsultaResponse executarConsulta(String action, RegraAereaAlteracaoConsultaRequest request) {
-        String url = montarUrl(action);
         try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    new HttpEntity<>(request, defaultHeaders()),
-                    String.class
-            );
-
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                return mapper.readValue(response.getBody(), RegraAereaAlteracaoConsultaResponse.class);
+            // Reutiliza a autenticacao do chat e sua renovacao unica em caso de HTTP 401.
+            // O cliente tambem impede chamadas anonimas quando a autenticacao falha.
+            String body = manager.post(action, request, String.class);
+            if (body != null && !body.isBlank()) {
+                RegraAereaAlteracaoConsultaResponse response =
+                        mapper.readValue(body, RegraAereaAlteracaoConsultaResponse.class);
+                if (response != null && response.getStatus() != null && !response.getStatus().isBlank()) {
+                    return response;
+                }
             }
-
-            return fallback("ERRO_CONSULTA", "Nao foi possivel consultar regra de alteracao/remarcacao no manager.");
+            LOG.warning("Resposta invalida na consulta de regra aerea de alteracao/remarcacao.");
         } catch (Exception ex) {
-            LOG.log(Level.WARNING, "Erro ao consultar regra aerea de alteracao/remarcacao", ex);
-            return fallback("ERRO_CONSULTA", "Falha ao consultar regra de alteracao/remarcacao. A reserva foi carregada sem a analise de alteracao.");
+            // Nao registrar credenciais, corpos de resposta ou dados da reserva.
+            LOG.log(Level.WARNING, "Falha na consulta de regra aerea de alteracao/remarcacao: {0}",
+                    ex.getClass().getSimpleName());
         }
+        return fallback();
     }
 
-    private String montarUrl(String action) {
-        String base = UrlConfig.URL_CONFIANCA_MANAGER == null ? "" : UrlConfig.URL_CONFIANCA_MANAGER;
-        if (!base.endsWith("/")) {
-            base += "/";
-        }
-        return base + action;
-    }
-
-    private HttpHeaders defaultHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        try {
-            ConfAppResp token = confAppService.token();
-            if (token != null && token.getToken() != null) {
-                headers.setBearerAuth(token.getToken());
-            }
-        } catch (Exception ex) {
-            LOG.log(Level.WARNING, "Falha ao obter token para consultar regra aerea de alteracao/remarcacao", ex);
-        }
-
-        return headers;
-    }
-
-    private RegraAereaAlteracaoConsultaResponse fallback(String status, String mensagem) {
+    private RegraAereaAlteracaoConsultaResponse fallback() {
         RegraAereaAlteracaoConsultaResponse response = new RegraAereaAlteracaoConsultaResponse();
-        response.setStatus(status);
-        response.setMensagem(mensagem);
+        response.setStatus("ERRO_CONSULTA");
+        response.setMensagem("Nao foi possivel consultar regra de alteracao/remarcacao no manager.");
         return response;
     }
 }

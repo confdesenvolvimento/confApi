@@ -114,6 +114,9 @@ public class ChatConfiancaRemarcacaoService {
     private static final String NOVO_VALOR_MINIMO_IGUAL_OU_MAIOR = "IGUAL_OU_MAIOR";
     private static final String MENSAGEM_TARIFA_ABAIXO_MINIMO =
             "A regra da companhia permite a remarcacao somente para tarifa igual ou superior a tarifa original.";
+    private static final String AVISO_REGRAS_PENDENTES =
+            "Nao foi possivel consultar todas as regras da companhia agora. "
+                    + "Continue a solicitacao de remarcacao; a equipe validara as regras e os valores antes de concluir.";
     private static final int PAGAMENTO_FATURA = 1;
     private static final int PAGAMENTO_CARTAO = 2;
     private static final BigDecimal LIMITE_DU_DIFERENCA_TARIFA = new BigDecimal("400.00");
@@ -682,6 +685,8 @@ public class ChatConfiancaRemarcacaoService {
         selecao.setOpcao(primeiraSelecao.getOpcaoView());
         selecao.setFamilia(primeiraSelecao.getFamiliaView());
         TrechoReserva original = trecho(reserva, indicesObrigatorios.get(0));
+        String impedimentoRegra = revalidarRegrasPendentes(simulacao, reserva);
+        if (impedimentoRegra != null) return bloquear(simulacao, impedimentoRegra);
         CalculoPassageiros calculoPassageiros = montarPreviaPassageiros(
                 reserva, original, tarifa.getPreco(), passageirosSelecionados,
                 primeiraSelecao.getOpcaoView(), primeiraSelecao.getFamiliaView(),
@@ -703,8 +708,10 @@ public class ChatConfiancaRemarcacaoService {
         simulacao = salvar(simulacao);
 
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
-                "Previa da alteracao",
-                "Confira os valores estimados. Um atendente precisa validar a disponibilidade e concluir a remarcacao.");
+                previa.isCalculoCompleto() ? "Previa da alteracao" : "Resumo da solicitacao de remarcacao",
+                previa.isCalculoCompleto()
+                        ? "Confira os valores estimados. Um atendente precisa validar a disponibilidade e concluir a remarcacao."
+                        : AVISO_REGRAS_PENDENTES);
         response.setPrevia(previa);
         preencherTrechoOriginal(response, simulacao);
         preencherPassageirosSelecionados(response, simulacao);
@@ -798,7 +805,9 @@ public class ChatConfiancaRemarcacaoService {
                         + " com base na simulacao " + simulacao.getId() + ".");
         RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
                 "Solicitacao encaminhada",
-                "A equipe recebeu a reserva, o voo escolhido, a regra e a previa calculada.");
+                previa != null && !previa.isCalculoCompleto()
+                        ? "A equipe recebeu sua solicitacao e os voos escolhidos. As regras e os valores serao confirmados no atendimento."
+                        : "A equipe recebeu a reserva, o voo escolhido, a regra e a previa calculada.");
         response.setStatus(ENCAMINHADO);
         response.setPrevia(previa);
         response.setExigeFormaPagamento(exigeFormaPagamento(previa));
@@ -867,6 +876,9 @@ public class ChatConfiancaRemarcacaoService {
                 resumo.append(" | Total estimado ")
                         .append(primeiro(previa.getMoeda(), "BRL"))
                         .append(" ").append(total);
+            }
+            if (!previa.isCalculoCompleto()) {
+                resumo.append(" | Regras, multa e total pendentes de validacao pelo atendente");
             }
         }
         RemarcacaoSimulacaoResponse.FormaPagamento pagamento = formaSelecionada(simulacao);
@@ -1132,14 +1144,11 @@ public class ChatConfiancaRemarcacaoService {
         simulacao.setCompanhiaIata(companhiaTrecho(trecho));
         simulacao.setTrechoOriginalJson(json(trecho));
 
-        RegraAereaAlteracaoConsultaResponse regra = regraService.simular(
+        RegraAereaAlteracaoConsultaResponse regra = consultarRegra(
                 montarRequestRegra(reserva, trecho, null, null));
         simulacao.setRegraSnapshotJson(json(regra));
         simulacao.setRegraId(regra == null || regra.getRegra() == null ? null : regra.getRegra().getId());
-        if (falhaTecnicaRegra(regra)) {
-            return recuperarFalhaConsultaRegra(simulacao, reserva);
-        }
-        if (!regraPermite(regra)) {
+        if (!falhaTecnicaRegra(regra) && !regraPermite(regra)) {
             String motivo = regra == null || vazio(regra.getMensagem())
                     ? "Nao foi possivel confirmar uma regra aprovada para esse trecho."
                     : regra.getMensagem();
@@ -1169,12 +1178,10 @@ public class ChatConfiancaRemarcacaoService {
             List<RegraAereaAlteracaoConsultaResponse> regras = new ArrayList<>();
             for (Integer indiceConjunto : indicesObrigatorios) {
                 RegraAereaAlteracaoConsultaResponse regraTrecho = indiceConjunto.equals(indice)
-                        ? regra : regraService.simular(montarRequestRegra(
+                        ? regra : consultarRegra(montarRequestRegra(
                                 reserva, trecho(reserva, indiceConjunto), null, null));
-                if (falhaTecnicaRegra(regraTrecho)) {
-                    return recuperarFalhaConsultaRegra(simulacao, reserva);
-                }
-                if (!regrasCompativeis(regra, regraTrecho)) {
+                if (!falhaTecnicaRegra(regraTrecho) && (!regraPermite(regraTrecho)
+                        || (!falhaTecnicaRegra(regra) && !regrasCompativeis(regra, regraTrecho)))) {
                     return bloquear(simulacao,
                             "Os trechos possuem regras diferentes ou nao homologadas para calculo conjunto. "
                                     + "A equipe precisa analisar a remarcacao de ida e volta.", false);
@@ -1201,6 +1208,9 @@ public class ChatConfiancaRemarcacaoService {
         dadosEvento.put("trechosObrigatorios", indicesObrigatorios);
         dadosEvento.put("remarcacaoConjunta", indicesObrigatorios.size() > 1);
         dadosEvento.put("regraId", simulacao.getRegraId());
+        if (regrasPendentes(simulacao)) {
+            registrarEvento(simulacao, "REMARCACAO_REGRA_PENDENTE_VALIDACAO", AVISO_REGRAS_PENDENTES, null);
+        }
         registrarEvento(simulacao, "REMARCACAO_TRECHO_SELECIONADO",
                 "Trecho " + simulacao.getOrigem() + " - " + simulacao.getDestino() + " selecionado.",
                 json(dadosEvento));
@@ -1211,33 +1221,46 @@ public class ChatConfiancaRemarcacaoService {
         return regra == null || "ERRO_CONSULTA".equalsIgnoreCase(regra.getStatus());
     }
 
-    /** A transport failure is not a commercial denial. Retry must validate the rules again. */
-    private RemarcacaoSimulacaoResponse recuperarFalhaConsultaRegra(
-            SimulacaoRemarcacao simulacao, Reserva reserva) {
-        limparResultadosPosteriores(simulacao);
-        simulacao.setPassageirosJson(null);
-        simulacao.setTrechoIndice(null);
-        simulacao.setOrigem(null);
-        simulacao.setDestino(null);
-        simulacao.setTrechoOriginalJson(null);
-        simulacao.setTrechosIndicesJson(null);
-        simulacao.setTrechosOriginaisJson(null);
-        simulacao.setRegraId(null);
-        simulacao.setRegraSnapshotJson(null);
-        simulacao.setStatus(AGUARDANDO_TRECHO);
-        String mensagem = "Nao foi possivel consultar as regras da companhia agora. "
-                + "Isso nao confirma que a reserva seja inelegivel. Selecione novamente o trecho "
-                + "para tentar a consulta; se persistir, use Falar com atendente no chat. "
-                + "Nenhuma alteracao ou cobranca foi realizada.";
-        simulacao.setMotivoBloqueio(mensagem);
-        simulacao = salvar(simulacao);
-        registrarEvento(simulacao, "REMARCACAO_ERRO_CONSULTA_REGRA", mensagem, null);
-        List<Integer> elegiveis = indicesTrechosElegiveis(reserva);
-        RemarcacaoSimulacaoResponse response = respostaBase(simulacao,
-                "Consulta de regras indisponivel", mensagem);
-        response.setTrechos(montarTrechos(reserva, elegiveis, null));
-        preencherSelecaoIdaVolta(response, reserva, elegiveis);
+    private RegraAereaAlteracaoConsultaResponse consultarRegra(RegraAereaAlteracaoConsultaRequest request) {
+        RegraAereaAlteracaoConsultaResponse response = regraService.simular(request);
+        if (response != null) return response;
+        response = new RegraAereaAlteracaoConsultaResponse();
+        response.setStatus("ERRO_CONSULTA");
         return response;
+    }
+
+    private boolean regrasPendentes(SimulacaoRemarcacao simulacao) {
+        return regrasSnapshot(simulacao).stream().anyMatch(this::falhaTecnicaRegra);
+    }
+
+    /** Reconsulta somente as regras que falharam, sem perder recusas comerciais confirmadas. */
+    private String revalidarRegrasPendentes(SimulacaoRemarcacao simulacao, Reserva reserva) {
+        if (!regrasPendentes(simulacao)) return null;
+        List<Integer> indices = indicesTrechosSimulacao(simulacao);
+        List<RegraAereaAlteracaoConsultaResponse> anteriores = regrasSnapshot(simulacao);
+        List<RegraAereaAlteracaoConsultaResponse> atuais = new ArrayList<>();
+        RegraAereaAlteracaoConsultaResponse referencia = null;
+        for (int ordem = 0; ordem < indices.size(); ordem++) {
+            Integer indice = indices.get(ordem);
+            RegraAereaAlteracaoConsultaResponse atual = ordem < anteriores.size() ? anteriores.get(ordem) : null;
+            if (falhaTecnicaRegra(atual)) {
+                atual = consultarRegra(montarRequestRegra(reserva, trecho(reserva, indice), null, null));
+            }
+            atuais.add(atual);
+            if (falhaTecnicaRegra(atual)) continue;
+            if (!regraPermite(atual)) {
+                return primeiro(atual.getMensagem(), "A regra da companhia nao permite esta remarcacao.");
+            }
+            if (!indices.containsAll(resolverIndicesTrechosObrigatorios(reserva, indice, atual))) {
+                return "A regra da companhia exige a remarcacao conjunta de outros trechos. A equipe precisa analisar a solicitacao.";
+            }
+            if (referencia != null && !regrasCompativeis(referencia, atual)) {
+                return "Os trechos possuem regras diferentes para calculo conjunto. A equipe precisa analisar a solicitacao.";
+            }
+            referencia = atual;
+        }
+        simulacao.setRegraSnapshotJson(json(atuais));
+        return null;
     }
 
     private RemarcacaoSimulacaoResponse prepararPassageiros(
@@ -2190,7 +2213,8 @@ public class ChatConfiancaRemarcacaoService {
         previa.setTaxaServico(BigDecimal.ZERO);
         previa.setTotalEstimado(BigDecimal.ZERO);
         previa.setTotalSelecionado(BigDecimal.ZERO);
-        previa.setCalculoCompleto(true);
+        previa.setCalculoCompleto(!regrasPendentes(simulacao));
+        if (regrasPendentes(simulacao)) resultado.getRegras().addAll(regrasSnapshot(simulacao));
 
         boolean houveRateioOriginal = false;
         String resumoRegra = null;
@@ -2246,9 +2270,11 @@ public class ChatConfiancaRemarcacaoService {
                     1,
                     indicesTrechos.size());
             regraRequest.setFamiliaTarifariaAlterada(familiaTarifariaAlterada);
-            RegraAereaAlteracaoConsultaResponse regra = regraService.simular(regraRequest);
+            RegraAereaAlteracaoConsultaResponse regra = consultarRegra(regraRequest);
             resultado.getRegras().add(regra);
-            if (exigeTarifaIgualOuMaior(regra)
+            RegraAereaAlteracaoConsultaResponse regraMinimo = falhaTecnicaRegra(regra)
+                    ? regraSnapshot(simulacao) : regra;
+            if (exigeTarifaIgualOuMaior(regraMinimo)
                     && !tarifaIgualOuMaior(originais.getTarifa(), novaTarifa)) {
                 resultado.setMotivo(MENSAGEM_TARIFA_ABAIXO_MINIMO);
                 return resultado;
@@ -2256,7 +2282,8 @@ public class ChatConfiancaRemarcacaoService {
             RegraAereaAlteracaoCalculoResponse calculo = regra == null ? null : regra.getCalculo();
             boolean calculoIncompleto = calculo == null
                     || !Boolean.TRUE.equals(calculo.getCalculoCompleto());
-            if (!regraPermite(regra) || calculoIncompleto) {
+            boolean regraPendente = falhaTecnicaRegra(regra);
+            if (!regraPendente && (!regraPermite(regra) || calculoIncompleto)) {
                 String nome = nomePassageiro(passageiro, indice < 0 ? 0 : indice);
                 String motivo = calculoIncompleto
                         ? "Nao foi possivel obter todos os valores necessarios para calcular " + nome + "."
@@ -2265,6 +2292,20 @@ public class ChatConfiancaRemarcacaoService {
                                 : regra.getMensagem();
                 resultado.setMotivo(motivo);
                 return resultado;
+            }
+            if (!regraPendente && !indicesTrechos.containsAll(resolverIndicesTrechosObrigatorios(
+                    reserva, indicesTrechos.get(0), regra))) {
+                resultado.setMotivo("A regra da companhia exige a remarcacao conjunta de outros trechos.");
+                return resultado;
+            }
+            if (regraPendente) {
+                // Mantem somente valores conhecidos. Multa e total nao podem ser inferidos sem a regra.
+                previa.setCalculoCompleto(false);
+                calculo = new RegraAereaAlteracaoCalculoResponse();
+                calculo.setValorTarifaBase(originais.getTarifa());
+                calculo.setValorNovaTarifa(novaTarifa);
+                calculo.setValorTaxasBase(originais.getTaxaEmbarque());
+                calculo.setValorNovasTaxas(novaTaxaEmbarque);
             }
             if (resultado.getRegraId() == null && regra.getRegra() != null) {
                 resultado.setRegraId(regra.getRegra().getId());
@@ -2284,15 +2325,15 @@ public class ChatConfiancaRemarcacaoService {
             item.setNovaTaxaEmbarque(zero(calculo.getValorNovasTaxas()));
             item.setTaxaServicoOriginal(taxaServicoOriginal);
             item.setNovaTaxaServico(taxaServicoNova);
-            item.setMulta(zero(calculo.getValorMulta()));
-            item.setMultaIsentaPorAntecedencia(Boolean.TRUE.equals(calculo.getMultaIsentaPorAntecedencia()));
+            item.setMulta(regraPendente ? null : zero(calculo.getValorMulta()));
+            item.setMultaIsentaPorAntecedencia(regraPendente ? null : Boolean.TRUE.equals(calculo.getMultaIsentaPorAntecedencia()));
             item.setLimiteHorasIsencaoMulta(calculo.getLimiteHorasIsencaoMulta());
-            item.setDiferencaTarifaria(zero(calculo.getDiferencaTarifaria()));
+            item.setDiferencaTarifaria(regraPendente ? null : zero(calculo.getDiferencaTarifaria()));
             item.setDiferencaTaxaEmbarque(diferencaNaoNegativa(
                     calculo.getValorNovasTaxas(), calculo.getValorTaxasBase()));
-            item.setTaxaDu(zero(calculo.getTaxaServico()));
-            item.setTotalEstimado(zero(calculo.getTotalPrevisto()));
-            item.setCalculoCompleto(true);
+            item.setTaxaDu(regraPendente ? null : zero(calculo.getTaxaServico()));
+            item.setTotalEstimado(regraPendente ? null : zero(calculo.getTotalPrevisto()));
+            item.setCalculoCompleto(!regraPendente);
             previa.getPassageiros().add(item);
 
             previa.setTarifaOriginal(somar(previa.getTarifaOriginal(), item.getTarifaOriginal()));
@@ -2317,6 +2358,15 @@ public class ChatConfiancaRemarcacaoService {
                         + "A companhia e o atendente devem validar valores e assentos antes da conclusao."
                 : "Esta e uma estimativa por passageiro, nao uma alteracao concluida. "
                         + "Valores e assentos dependem de nova validacao pela companhia.");
+        if (!previa.isCalculoCompleto()) {
+            previa.setMulta(null);
+            previa.setDiferencaTarifaria(null);
+            previa.setTaxaServico(null);
+            previa.setTotalEstimado(null);
+            previa.setTotalSelecionado(null);
+            previa.setRegraResumo(AVISO_REGRAS_PENDENTES);
+            previa.setAviso("Multa e valor total a confirmar pela equipe. Nenhuma alteracao ou cobranca foi realizada.");
+        }
         LocalDateTime validadeTarifa = LocalDateTime.now().plusMinutes(15);
         previa.setValidoAte(simulacao.getExpiraEm() != null && simulacao.getExpiraEm().isBefore(validadeTarifa)
                 ? simulacao.getExpiraEm() : validadeTarifa);
@@ -2486,6 +2536,7 @@ public class ChatConfiancaRemarcacaoService {
         response.setTitulo(titulo);
         response.setMensagem(mensagem);
         response.setMotivoBloqueio(simulacao.getMotivoBloqueio());
+        response.setAvisoRegras(regrasPendentes(simulacao) ? AVISO_REGRAS_PENDENTES : null);
         response.setExpiraEm(simulacao.getExpiraEm());
         List<Integer> indices = indicesTrechosSimulacao(simulacao);
         response.setRemarcacaoConjunta(indices.size() > 1);
@@ -2734,7 +2785,7 @@ public class ChatConfiancaRemarcacaoService {
     }
 
     private boolean exigeFormaPagamento(RemarcacaoSimulacaoResponse.Previa previa) {
-        return previa != null && totalPrevia(previa).compareTo(BigDecimal.ZERO) > 0;
+        return previa != null && previa.isCalculoCompleto() && totalPrevia(previa).compareTo(BigDecimal.ZERO) > 0;
     }
 
     private BigDecimal totalPrevia(RemarcacaoSimulacaoResponse.Previa previa) {
@@ -2929,7 +2980,7 @@ public class ChatConfiancaRemarcacaoService {
 
     private RegraAereaAlteracaoConsultaResponse regraSnapshot(SimulacaoRemarcacao simulacao) {
         List<RegraAereaAlteracaoConsultaResponse> regras = regrasSnapshot(simulacao);
-        return regras.isEmpty() ? null : regras.get(0);
+        return regras.stream().filter(item -> !falhaTecnicaRegra(item)).findFirst().orElse(null);
     }
 
     private List<RegraAereaAlteracaoConsultaResponse> regrasSnapshot(SimulacaoRemarcacao simulacao) {

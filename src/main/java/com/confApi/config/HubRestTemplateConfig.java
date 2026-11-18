@@ -14,8 +14,8 @@ public class HubRestTemplateConfig {
     @Bean
     public RestTemplate hubRestTemplate(
             RestTemplateBuilder builder,
-            @Value("${hub.connect-timeout-ms:8000}") long connectTimeout,
-            @Value("${hub.read-timeout-ms:30000}") long readTimeout
+            @Value("${hub.connect-timeout-ms:180000}") long connectTimeout,
+            @Value("${hub.read-timeout-ms:180000}") long readTimeout
     ) {
         return builder
                 .setConnectTimeout(Duration.ofMillis(connectTimeout))

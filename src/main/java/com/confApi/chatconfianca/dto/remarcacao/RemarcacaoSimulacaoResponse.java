@@ -19,6 +19,7 @@ public class RemarcacaoSimulacaoResponse {
     private String titulo;
     private String mensagem;
     private String motivoBloqueio;
+    private String avisoRegras;
     private LocalDateTime expiraEm;
     private boolean permiteEncaminhar;
     private boolean permiteVoltar;

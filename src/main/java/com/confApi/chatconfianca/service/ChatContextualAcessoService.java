@@ -59,6 +59,7 @@ public class ChatContextualAcessoService {
                 return;
             }
             if (positivo(usuario.getCodgUnidade()) && Objects.equals(usuario.getCodgUnidade(), unidade.getCodgUnidade())) return;
+            if (ChatAgenciaSessaoPolicy.permiteSelecaoGlobal(usuario)) return;
             List<String> globais = manager.getList("chat-confianca/consultas/usuarios/" + codgUsuario + "/perfis",
                     new ParameterizedTypeReference<List<String>>() { });
             if (globais != null && globais.stream().filter(Objects::nonNull)
