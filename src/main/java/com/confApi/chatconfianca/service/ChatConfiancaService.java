@@ -3023,6 +3023,9 @@ public class ChatConfiancaService {
         if (usuario == null || agencia == null) {
             throw regra(403, "Nao foi possivel validar a agencia da sessao.");
         }
+        if (ChatAgenciaSessaoPolicy.permiteSelecaoGlobal(usuario)) {
+            return;
+        }
         if (usuario.getCodgUnidade() != null
                 && Objects.equals(usuario.getCodgUnidade(), agencia.getCodgUnidade())) {
             return;
@@ -3035,7 +3038,7 @@ public class ChatConfiancaService {
                 usuario.getCodgUsuario(), agencia.getCodgUnidade())) {
             return;
         }
-      // throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
+        throw regra(403, "A agencia informada nao pertence a unidade do usuario.");
     }
 
     private void validarTextoObrigatorio(String valor, String mensagem) {

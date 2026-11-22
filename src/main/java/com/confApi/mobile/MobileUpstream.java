@@ -13,13 +13,15 @@ import java.io.*;
 public class MobileUpstream {
     static final ObjectMapper JSON=new ObjectMapper();
     final MobileSettings settings;
-    private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).followRedirects(HttpClient.Redirect.NEVER).build();
+    private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofMinutes(3)).followRedirects(HttpClient.Redirect.NEVER).build();
     private String technicalToken;
     private Instant tokenUntil=Instant.EPOCH;
     private Map<String,String> destinations=Map.of();
     private Instant configUntil=Instant.EPOCH;
     private JsonNode propertyRows;
     private Instant propertiesUntil=Instant.EPOCH;
+    private final Object propertiesLock=new Object();
+    private final Object destinationsLock=new Object();
     MobileUpstream(MobileSettings settings) { this.settings=settings; }
     protected synchronized String technicalToken() {
         if(technicalToken!=null&&tokenUntil.isAfter(Instant.now()))return technicalToken;
@@ -29,14 +31,20 @@ public class MobileUpstream {
         technicalToken=token;tokenUntil=Instant.now().plusSeconds(60);return token;
     }
     protected JsonNode request(String url,String method,JsonNode body,String authorization) {
+        return requestWithHeaders(url,method,body,authorization,Map.of());
+    }
+    protected JsonNode requestWithHeaders(String url,String method,JsonNode body,String authorization,Map<String,String> headers) {
         try {
-            var builder=HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(40)).header("Accept","application/json").header("Content-Type","application/json");
+            var builder=HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofMinutes(3)).header("Accept","application/json").header("Content-Type","application/json");
             if(authorization!=null)builder.header("Authorization","Bearer "+authorization);
+            headers.forEach(builder::header);
             builder.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body.toString()));
             var response=http.send(builder.build(),HttpResponse.BodyHandlers.ofInputStream());
             byte[] bytes;try(var stream=response.body()){bytes=stream.readNBytes(2_000_001);}
             if(bytes.length>2_000_000)throw new MobileFailure(502,"RESPOSTA_INVALIDA");
-            if(response.statusCode()<200||response.statusCode()>=300)throw new MobileFailure(response.statusCode()==401?401:502,response.statusCode()==401?"ACESSO_INVALIDO":"INTEGRACAO_INDISPONIVEL");
+            // These credentials belong to the gateway, never to the mobile session.
+            if(response.statusCode()==401)throw integrationAuthenticationFailure(authorization);
+            if(response.statusCode()<200||response.statusCode()>=300)throw new MobileFailure(502,"INTEGRACAO_INDISPONIVEL");
             if(bytes.length==0)return JSON.createObjectNode();
             try{return JSON.readTree(bytes);}catch(com.fasterxml.jackson.core.JsonProcessingException notJson){return TextNode.valueOf(new String(bytes,java.nio.charset.StandardCharsets.UTF_8));}
         } catch(MobileFailure failure) { throw failure; }
@@ -44,32 +52,52 @@ public class MobileUpstream {
         catch(Exception failure) { throw new MobileFailure(503,"INTEGRACAO_INDISPONIVEL"); }
     }
     JsonNode call(String service,String path,String method,JsonNode body) { return request(destination(service)+path,method,body,technicalToken()); }
-    private synchronized JsonNode properties() {
-        if(propertyRows==null||!propertiesUntil.isAfter(Instant.now())) {
-            JsonNode rows=request(settings.initial("manager")+"propertiesapp","GET",null,technicalToken());
-            if(!rows.isArray())throw new MobileFailure(502,"CONFIGURACAO_INVALIDA");
-            propertyRows=rows;propertiesUntil=Instant.now().plusSeconds(60);
+    private synchronized MobileFailure integrationAuthenticationFailure(String rejectedToken) {
+        // A delayed rejection must not evict a newer credential obtained by another request.
+        if(rejectedToken!=null&&rejectedToken.equals(technicalToken)) {
+            technicalToken=null;tokenUntil=Instant.EPOCH;
         }
-        return propertyRows;
+        // Reauthenticate on the next call, without replaying a possibly executed business POST.
+        return new MobileFailure(503,"AUTENTICACAO_INTEGRACAO_INDISPONIVEL");
     }
-    synchronized String destination(String service) {
-        if(settings.development())return settings.initial(service);
-        if(!configUntil.isAfter(Instant.now())) {
-            var names=Map.of("manager","baseUrl","hub","baseUrlHub","cache","urlCache","confapi","urlApi","cservice","urlCservice","email","urlEmailBase","orcamento","urlOrcamentoClienteBase");
-            var found=new HashMap<String,String>();
-            JsonNode rows=properties();
-            for(var entry:names.entrySet())for(JsonNode row:rows) {
-                if(row.path("status").asInt()==1&&(entry.getValue().equalsIgnoreCase(row.path("nome").asText())||("app"+entry.getValue()).equalsIgnoreCase(row.path("nome").asText()))) {
-                    String value=row.path("descricao").asText("");
-                    if(!settings.allowedProductionOrigin(value))throw new MobileFailure(503,"DESTINO_NAO_AUTORIZADO");
-                    found.put(entry.getKey(),settings.validate(value));
-                }
+    JsonNode registerDevice(JsonNode body,String clientIp) {
+        String origin=MobileClientIp.literal(clientIp);
+        return requestWithHeaders(destination("manager")+"dispositivo/novo","POST",body,technicalToken(),
+                Map.of("X-Auth-Client-IP",origin));
+    }
+    private JsonNode properties() {
+        // A consulta de configuracao nao ocupa o monitor de destinos e token tecnico.
+        synchronized(propertiesLock) {
+            if(propertyRows==null||!propertiesUntil.isAfter(Instant.now())) {
+                JsonNode rows=request(settings.initial("manager")+"propertiesapp","GET",null,technicalToken());
+                if(!rows.isArray())throw new MobileFailure(502,"CONFIGURACAO_INVALIDA");
+                propertyRows=rows;propertiesUntil=Instant.now().plusSeconds(60);
             }
-            destinations=Map.copyOf(found);configUntil=Instant.now().plusSeconds(60);
+            return propertyRows;
         }
-        String value=destinations.get(service);
-        if(value==null)throw new MobileFailure(503,"DESTINO_NAO_CONFIGURADO");
-        return value;
+    }
+    String destination(String service) {
+        if(settings.development())return settings.initial(service);
+        String configured=settings.productionDestination(service);
+        if(configured!=null)return configured;
+        synchronized(destinationsLock) {
+            if(!configUntil.isAfter(Instant.now())) {
+                var names=Map.of("manager","baseUrl","hub","baseUrlHub","cache","urlCache","confapi","urlApi","cservice","urlCservice","email","urlEmailBase","orcamento","urlOrcamentoClienteBase");
+                var found=new HashMap<String,String>();
+                JsonNode rows=properties();
+                for(var entry:names.entrySet())for(JsonNode row:rows) {
+                    if(row.path("status").asInt()==1&&(entry.getValue().equalsIgnoreCase(row.path("nome").asText())||("app"+entry.getValue()).equalsIgnoreCase(row.path("nome").asText()))) {
+                        String value=row.path("descricao").asText("");
+                        if(!settings.allowedProductionOrigin(value))throw new MobileFailure(503,"DESTINO_NAO_AUTORIZADO");
+                        found.put(entry.getKey(),settings.validate(value));
+                    }
+                }
+                destinations=Map.copyOf(found);configUntil=Instant.now().plusSeconds(60);
+            }
+            String value=destinations.get(service);
+            if(value==null)throw new MobileFailure(503,"DESTINO_NAO_CONFIGURADO");
+            return value;
+        }
     }
     JsonNode publicProperties() {
         Set<String> allowed=Set.of("versao","chatia","emitir","hotel","seguro","novidade","ofertas","codigovalidacaoemail","codigovalidacaosms","codigovalidacaowhatsapp","smshabilitado","quantidademeses","orcamentoaereo","apporcamentoaereo","orcamentohotel","apporcamentohotel","orcamentocarro","apporcamentocarro","orcamentoseguro","apporcamentoseguro","orcamentocomposto","apporcamentocomposto","oecamentocomposto","habilitarleituracartao","apphabilitarleituracartao","remarcacao","appremarcacao");
@@ -173,11 +201,13 @@ public class MobileUpstream {
     private Response forward(String service,String path,String query,String method,byte[] body,String contentType,String delegation) {
         try {
             String uri=destination(service)+path+(query==null?"":"?"+query);
-            var builder=HttpRequest.newBuilder(URI.create(uri)).timeout(Duration.ofSeconds(120)).header("Authorization","Bearer "+technicalToken()).header("Accept","*/*");
+            String credential=technicalToken();
+            var builder=HttpRequest.newBuilder(URI.create(uri)).timeout(Duration.ofMinutes(3)).header("Authorization","Bearer "+credential).header("Accept","*/*");
             if(contentType!=null)builder.header("Content-Type",contentType);
             if(delegation!=null)builder.header(MobileChatDelegations.HEADER,delegation);
             var response=http.send(builder.method(method,body.length==0?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(body)).build(),HttpResponse.BodyHandlers.ofInputStream());
             if(response.statusCode()>=300&&response.statusCode()<400){response.body().close();throw new MobileFailure(502,"REDIRECIONAMENTO_NAO_PERMITIDO");}
+            if(response.statusCode()==401){response.body().close();throw integrationAuthenticationFailure(credential);}
             return new Response(response.statusCode(),response.headers().firstValue("Content-Type").orElse("application/octet-stream"),response.body(),publicResponseHeaders(response.headers()));
         } catch(MobileFailure failure){throw failure;}catch(InterruptedException failure){Thread.currentThread().interrupt();throw new MobileFailure(503,"INTEGRACAO_INDISPONIVEL");}catch(Exception failure){throw new MobileFailure(503,"INTEGRACAO_INDISPONIVEL");}
     }

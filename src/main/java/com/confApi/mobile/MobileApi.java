@@ -14,12 +14,21 @@ import java.util.*;
 public class MobileApi {
     private final MobileSessions sessions;private final MobileUpstream upstream;
     private final MobileChatDelegations delegations;
+    @org.springframework.beans.factory.annotation.Autowired
+    private MobileClientIp clientIp = new MobileClientIp("");
     public MobileApi(MobileSessions sessions,MobileUpstream upstream,MobileChatDelegations delegations){this.sessions=sessions;this.upstream=upstream;this.delegations=delegations;}
     @GetMapping("/config") public JsonNode config(HttpServletRequest request){sessions.limit("config:"+request.getRemoteAddr(),120,60);return upstream.publicProperties();}
-    @PostMapping("/identificar") public Object identify(@RequestBody JsonNode body,HttpServletRequest request){return sessions.start(body.path("login").asText(),null,body.path("deviceId").asText(),request.getRemoteAddr());}
-    @PostMapping("/entrar") public Object login(@RequestBody JsonNode body,HttpServletRequest request){return sessions.start(body.path("login").asText(),body.path("password").asText(),body.path("deviceId").asText(),request.getRemoteAddr());}
-    @PostMapping("/renovar") public Object renew(@RequestBody JsonNode body,HttpServletRequest request){sessions.limit("renew:"+request.getRemoteAddr(),120,60);return sessions.renew(body.path("refreshToken").asText());}
-    private MobileSessions.Session session(HttpServletRequest request){return sessions.require(request.getHeader("Authorization"));}
+    @PostMapping("/identificar") public Object identify(@RequestBody JsonNode body,HttpServletRequest request){return sessions.start(body.path("login").asText(),null,body.path("deviceId").asText(),request.getRemoteAddr(),body.get("publicJwk"));}
+    @PostMapping("/entrar") public Object login(@RequestBody JsonNode body,HttpServletRequest request){return sessions.start(body.path("login").asText(),body.path("password").asText(),body.path("deviceId").asText(),request.getRemoteAddr(),body.get("publicJwk"));}
+    @PostMapping("/renovar") public Object renew(@RequestBody JsonNode body,HttpServletRequest request){sessions.limit("renew:"+request.getRemoteAddr(),120,60);return sessions.renew(body.path("refreshToken").asText(),request.getHeader("DPoP"),request.getMethod(),publicUri(request),body.path("renewalId").asText(null));}
+    private MobileSessions.Session session(HttpServletRequest request){return sessions.require(request.getHeader("Authorization"),request.getHeader("DPoP"),request.getMethod(),publicUri(request));}
+    private String publicUri(HttpServletRequest request) {
+        if(request.getHeader("DPoP")==null)return null;
+        String path=request.getRequestURI().substring(request.getContextPath().length());
+        if(!path.startsWith("/api/mobile/"))throw new MobileFailure(400,"ROTA_INVALIDA");
+        // Origin is configured inside the application; client Host/Forwarded headers are not trusted.
+        return upstream.settings.initial("confapi")+path.substring(1);
+    }
     @PostMapping("/sair") public ResponseEntity<?> close(HttpServletRequest request){sessions.close(session(request));return ResponseEntity.noContent().build();}
     @GetMapping("/perfil") public JsonNode profile(HttpServletRequest request){return sessions.profile(session(request));}
     @PostMapping("/codigo/enviar") public Object send(@RequestBody JsonNode body,HttpServletRequest request){return sessions.sendCode(session(request),body.path("channel").asText("sms"),body.path("copyEmail").asBoolean(false));}
@@ -30,15 +39,18 @@ public class MobileApi {
         String prefix=request.getContextPath()+"/api/mobile/services/"+service+"/";
         String path=request.getRequestURI().substring(prefix.length());String method=request.getMethod();
         // Contratos próprios do login atual. Nunca permitir consulta de outro usuário.
-        if("manager".equals(service)&&"GET".equals(method)&&path.equals("dispositivo/login/"+session.login))return ResponseEntity.ok(sessions.device(session));
+        if("manager".equals(service)&&"GET".equals(method)&&ownLogin(path,"dispositivo/login/",session.login))return ResponseEntity.ok(sessions.device(session));
         byte[] body=request.getInputStream().readNBytes(20_000_001);
         if(body.length>20_000_000)throw new MobileFailure(413,"CORPO_EXCEDIDO");
-        if("manager".equals(service)&&"POST".equals(method)&&path.equals("dispositivo/novo")) {
-            JsonNode result=sessions.register(session,MobileUpstream.JSON.readTree(body));return ResponseEntity.status(result.path("autorizado").asBoolean()?200:202).body(result);
+        if("manager".equals(service)&&"POST".equals(method)&&path.equals("dispositivo/reconhecer")) {
+            return ResponseEntity.ok(sessions.recognize(session,MobileUpstream.JSON.readTree(body)));
         }
-        if("manager".equals(service)&&"GET".equals(method)&&path.equals("usuario/findByLogin/"+session.login)) {
+        if("manager".equals(service)&&"POST".equals(method)&&path.equals("dispositivo/novo")) {
+            JsonNode result=sessions.register(session,clientIp.resolve(request),MobileUpstream.JSON.readTree(body));return ResponseEntity.status(result.path("autorizado").asBoolean()?200:202).body(result);
+        }
+        if("manager".equals(service)&&"GET".equals(method)&&ownLogin(path,"usuario/findByLogin/",session.login)) {
             sessions.requireActive(session);
-            return ResponseEntity.ok(MobileUpstream.sanitized(upstream.call("manager",path,"GET",null)));
+            return ResponseEntity.ok(MobileUpstream.sanitized(upstream.call("manager","usuario/findByLogin/"+session.login,"GET",null)));
         }
         MobileRoutes.require(service,method,path,request.getQueryString());
         sessions.requireActive(session);MobileRoutes.ownPath(service,path,request.getQueryString(),session);
@@ -104,6 +116,9 @@ public class MobileApi {
         // ResponseEntity<?> usa conversores de mensagens; o recurso preserva o streaming e fecha a entrada.
         InputStream content=new SequenceInputStream(new ByteArrayInputStream(new byte[]{(byte)first}),input);
         return outgoing.header("Content-Type",response.contentType()).body(new InputStreamResource(content));
+    }
+    private static boolean ownLogin(String path,String prefix,String login) {
+        return path.startsWith(prefix)&&path.substring(prefix.length()).equalsIgnoreCase(login);
     }
     @ExceptionHandler(MobileFailure.class) public ResponseEntity<?> failure(MobileFailure failure){return ResponseEntity.status(failure.status).body(Map.of("code",failure.code));}
     @ExceptionHandler({com.fasterxml.jackson.core.JsonProcessingException.class,IllegalArgumentException.class}) public ResponseEntity<?> invalid(){return ResponseEntity.badRequest().body(Map.of("code","DADOS_INVALIDOS"));}

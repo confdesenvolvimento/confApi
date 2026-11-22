@@ -453,6 +453,72 @@ class ChatConfiancaServiceTest {
     }
 
     @Test
+    void administrativoGlobalDoManagerPodeSelecionarAgenciaSemGanharGestaoDoChat() {
+        prepararOutraUnidadeParaSessao();
+        fixture.atendente.setCodgUnidade(null);
+        fixture.atendente.setTipoUsuario("Administrativo");
+        fixture.perfisAtendente.clear();
+        fixture.vinculoAtendente.setAtivo(false);
+
+        var sessao = service.montarSessao(ATENDENTE, 999);
+
+        assertEquals(999, sessao.getAgencia().getCodgAgencia());
+        assertEquals(2, sessao.getUnidade().getCodgUnidade());
+        assertFalse(sessao.isAdmin());
+        assertFalse(sessao.isGestor());
+        assertFalse(sessao.isAtendente());
+        assertTrue(sessao.getPerfis().isEmpty());
+    }
+
+    @Test
+    void administrativoVinculadoAUnidadeContinuaRestritoASuaUnidade() {
+        prepararOutraUnidadeParaSessao();
+        fixture.atendente.setTipoUsuario("Administrativo");
+        var erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.montarSessao(ATENDENTE, 999));
+        assertEquals(403, erro.getStatus());
+    }
+
+    @Test
+    void administrativoVinculadoAAgenciaNaoPodeTrocarAgencia() {
+        fixture.solicitante.setTipoUsuario("Administrativo");
+        var erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.montarSessao(SOLICITANTE, 999));
+        assertEquals(403, erro.getStatus());
+        verify(manager, never()).get("chat-confianca/consultas/agencias/999", RefAgencia.class);
+    }
+
+    @Test
+    void usuarioSemVinculosNaoGanhaSelecaoGlobalPelaAusenciaDeUnidade() {
+        prepararOutraUnidadeParaSessao();
+        fixture.atendente.setCodgUnidade(null);
+        fixture.atendente.setTipoUsuario("Agente");
+        var erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.montarSessao(ATENDENTE, 999));
+        assertEquals(403, erro.getStatus());
+    }
+
+    @Test
+    void administrativoGlobalInativoContinuaSemAcesso() {
+        fixture.atendente.setCodgUnidade(null);
+        fixture.atendente.setTipoUsuario("Administrativo");
+        fixture.atendente.setAtivoChat(false);
+        var erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.montarSessao(ATENDENTE, CODG_AGENCIA));
+        assertEquals(403, erro.getStatus());
+    }
+
+    @Test
+    void administrativoGlobalNaoPodeSelecionarAgenciaInativa() {
+        fixture.atendente.setCodgUnidade(null);
+        fixture.atendente.setTipoUsuario("Administrativo");
+        fixture.agencia.setAtivoChat(false);
+        var erro = assertThrows(RegraDeNegocioException.class,
+                () -> service.montarSessao(ATENDENTE, CODG_AGENCIA));
+        assertEquals(403, erro.getStatus());
+    }
+
+    @Test
     void vinculoInativoNaoAutorizaSelecionarAgenciaDeOutraUnidade() {
         prepararOutraUnidadeParaSessao();
         DepartamentoUnidade departamento = departamentoUnidade();

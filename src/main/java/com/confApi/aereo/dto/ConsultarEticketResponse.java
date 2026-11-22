@@ -12,4 +12,7 @@ public class ConsultarEticketResponse {
     private ExceptionDetail exception;
     private Reserva reserva;
     private String status;
+    // Confirmações por bilhete preservadas mesmo quando a sincronização local falha.
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    private java.util.List<String> bilhetesCanceladosFornecedor;
 }

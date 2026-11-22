@@ -1,5 +1,12 @@
 package com.confApi.chatconfianca.service;
 
+import com.confApi.chatconfianca.client.ChatConfiancaTokenProvider;
+import com.confApi.config.UrlConfig;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import com.confApi.aereo.AereoClient;
 import com.confApi.aereo.dto.ConsultarLocalizadorRequest;
 import com.confApi.aereo.dto.ConsultarLocalizadorResponse;
@@ -53,6 +60,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -842,7 +854,7 @@ class ChatConfiancaRemarcacaoServiceTest {
     }
 
     @Test
-    void falhaTecnicaDaRegraPermiteTentarNovamenteSemDeclararInelegibilidade() {
+    void falhaTecnicaDaRegraAvancaPreservandoIdaVoltaEPassageiros() {
         prepararReservaIdaVolta();
         RegraAereaAlteracaoConsultaResponse erro = new RegraAereaAlteracaoConsultaResponse();
         erro.setStatus("ERRO_CONSULTA");
@@ -851,19 +863,17 @@ class ChatConfiancaRemarcacaoServiceTest {
         simulacao.setCalculoJson("previa antiga");
         RemarcacaoSimulacaoResponse response = service.selecionarTrecho(
                 SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
-        assertEquals("AGUARDANDO_TRECHO", response.getStatus());
-        assertEquals(2, response.getTrechos().size());
-        assertTrue(response.getMensagem().contains("Selecione novamente"));
-        assertNull(simulacao.getTrechoIndice());
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+        assertTrue(response.isRemarcacaoConjunta());
+        assertEquals(2, response.getQuantidadeTrechos());
+        assertTrue(response.getAvisoRegras().contains("Continue a solicitacao"));
+        assertEquals(0, simulacao.getTrechoIndice());
+        assertEquals("[0,1]", simulacao.getTrechosIndicesJson());
         assertNull(simulacao.getRegraId());
         assertNull(simulacao.getResultadosJson());
         assertNull(simulacao.getCalculoJson());
-        assertNull(simulacao.getPassageirosJson());
-        RemarcacaoRequest.Pesquisar pesquisa = new RemarcacaoRequest.Pesquisar();
-        pesquisa.setCodgUsuario(USUARIO_ID);
-        pesquisa.setData(LocalDate.now().plusDays(10));
-        assertThrows(RegraDeNegocioException.class,
-                () -> service.pesquisar(SIMULACAO_ID, pesquisa));
+        assertNotNull(simulacao.getPassageirosJson());
+        assertEquals(response.getAvisoRegras(), service.consultar(SIMULACAO_ID, USUARIO_ID).getAvisoRegras());
         verify(aereoClient, never()).tarifarEstrita(any());
         when(regraService.simular(any())).thenReturn(regraPermitida(false));
         assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(
@@ -879,9 +889,10 @@ class ChatConfiancaRemarcacaoServiceTest {
         when(regraService.simular(any())).thenReturn(regraPermitida(false), erro);
         RemarcacaoSimulacaoResponse response = service.selecionarTrecho(
                 SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1)));
-        assertEquals("AGUARDANDO_TRECHO", response.getStatus());
+        assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
         assertFalse(response.getMensagem().contains("regras diferentes"));
-        assertNull(simulacao.getRegraSnapshotJson());
+        assertNotNull(response.getAvisoRegras());
+        assertTrue(simulacao.getRegraSnapshotJson().contains("ERRO_CONSULTA"));
         verify(aereoClient, never()).tarifarEstrita(any());
     }
 
@@ -889,8 +900,144 @@ class ChatConfiancaRemarcacaoServiceTest {
     void respostaNulaDaConsultaDeRegraNaoDeveSerInelegibilidadeComercial() {
         prepararReservaIdaVolta();
         when(regraService.simular(any())).thenReturn(null);
-        assertEquals("AGUARDANDO_TRECHO", service.selecionarTrecho(
+        assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(
                 SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))).getStatus());
+    }
+
+    @Test
+    void falhaDeRegrasMantemSelecaoIndividualEPermiteEscolherPassageiros() {
+        Reserva reserva = prepararReservaIdaVolta();
+        reserva.setPassageiros(List.of(passageiro("Maria", "ADT", "001", "ATIVO"),
+                passageiro("Joao", "ADT", "002", "ATIVO")));
+        when(regraService.simular(any())).thenReturn(null);
+        RemarcacaoRequest.SelecionarTrecho request = new RemarcacaoRequest.SelecionarTrecho();
+        request.setCodgUsuario(USUARIO_ID);
+        request.setTrechoIndice(1);
+        RemarcacaoSimulacaoResponse response = service.selecionarTrecho(SIMULACAO_ID, request);
+        assertEquals("AGUARDANDO_PASSAGEIROS", response.getStatus());
+        assertFalse(response.isRemarcacaoConjunta());
+        assertEquals("[1]", simulacao.getTrechosIndicesJson());
+        assertEquals(2, response.getPassageiros().size());
+        assertNull(response.getMotivoBloqueio());
+        assertNotNull(response.getAvisoRegras());
+    }
+
+    @Test
+    void falhaNaPrimeiraRegraNaoIgnoraRecusaComercialDoSegundoTrecho() {
+        prepararReservaIdaVolta();
+        RegraAereaAlteracaoConsultaResponse negada = regraPermitida(false);
+        negada.setStatus("NAO_PERMITIDA");
+        negada.getRegra().setPermiteAlteracao(false);
+        when(regraService.simular(any())).thenReturn(null, negada);
+        assertEquals("NAO_ELEGIVEL", service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))).getStatus());
+    }
+
+    @Test
+    void falhaPersistenteDeRegrasPermitePesquisarSimularEEncaminharSemInventarTotal() throws Exception {
+        prepararReservaIdaVolta();
+        prepararTarifacaoPermitida();
+        when(regraService.simular(any())).thenReturn(null);
+        assertEquals("AGUARDANDO_CRITERIOS", service.selecionarTrecho(
+                SIMULACAO_ID, selecionarIdaVolta(List.of(0, 1))).getStatus());
+        PesquisaResponse pesquisa = new PesquisaResponse();
+        pesquisa.setTrechos1(List.of(opcaoPesquisa("IDA-ID", "CGB", "BSB", "1234")));
+        when(aereoClient.pesquisarDisponibilidadeEstrita(any())).thenReturn(List.of(pesquisa));
+        assertEquals("AGUARDANDO_OPCAO", service.pesquisar(SIMULACAO_ID, pesquisaRemarcacao()).getStatus());
+        assertEquals("AGUARDANDO_CRITERIOS", service.simular(SIMULACAO_ID, simular(0, 0)).getStatus());
+        pesquisa.setTrechos1(List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678")));
+        RemarcacaoRequest.Pesquisar volta = pesquisaRemarcacao();
+        volta.setData(LocalDate.now().plusDays(33));
+        assertEquals("AGUARDANDO_OPCAO", service.pesquisar(SIMULACAO_ID, volta).getStatus());
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertFalse(response.getPrevia().isCalculoCompleto());
+        assertNull(response.getPrevia().getMulta());
+        assertNull(response.getPrevia().getTotalEstimado());
+        assertNull(response.getPrevia().getTotalSelecionado());
+        assertNull(response.getPrevia().getPassageiros().get(0).getMulta());
+        assertNull(response.getPrevia().getPassageiros().get(0).getTotalEstimado());
+        assertFalse(response.isExigeFormaPagamento());
+        assertTrue(response.isPermiteEncaminhar());
+        assertEquals(2, response.getPrevia().getTrechosSelecionados().size());
+        RemarcacaoSimulacaoResponse retomada = service.consultar(SIMULACAO_ID, USUARIO_ID);
+        assertTrue(retomada.isPermiteEncaminhar());
+        assertNotNull(retomada.getAvisoRegras());
+        RemarcacaoRequest.Encaminhar encaminhar = new RemarcacaoRequest.Encaminhar();
+        encaminhar.setCodgUsuario(USUARIO_ID);
+        assertEquals("ENCAMINHADO", service.encaminhar(SIMULACAO_ID, encaminhar).getStatus());
+        verify(chatService).registrarMensagemSistema(eq(CONVERSA_ID),
+                contains("total pendentes de validacao"), contains("\"calculoCompleto\":false"));
+        verifyNoInteractions(limitesService);
+    }
+
+    @Test
+    void falhaApenasNoCalculoFinalGeraResumoPendenteSemBloquear() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        prepararTarifacaoPermitida();
+        when(regraService.simular(any())).thenReturn(null);
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertFalse(response.getPrevia().isCalculoCompleto());
+        assertTrue(response.isPermiteEncaminhar());
+        assertNull(response.getPrevia().getTotalEstimado());
+    }
+
+    @Test
+    void regrasRecuperadasAntesDoCalculoRestauramPreviaCompleta() throws Exception {
+        prepararSimulacaoConjunta();
+        RegraAereaAlteracaoConsultaResponse erro = new RegraAereaAlteracaoConsultaResponse();
+        erro.setStatus("ERRO_CONSULTA");
+        simulacao.setRegraSnapshotJson(mapper.writeValueAsString(List.of(erro, erro)));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        prepararTarifacaoPermitida();
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("PREVIA_DISPONIVEL", response.getStatus());
+        assertTrue(response.getPrevia().isCalculoCompleto());
+        assertNotNull(response.getPrevia().getTotalEstimado());
+        assertNull(response.getAvisoRegras());
+    }
+
+    @Test
+    void recusaComercialAoReconsultarRegraPendenteContinuaBloqueando() throws Exception {
+        prepararSimulacaoConjunta();
+        RegraAereaAlteracaoConsultaResponse erro = new RegraAereaAlteracaoConsultaResponse();
+        erro.setStatus("ERRO_CONSULTA");
+        simulacao.setRegraSnapshotJson(mapper.writeValueAsString(List.of(erro, erro)));
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        prepararTarifacaoPermitida();
+        RegraAereaAlteracaoConsultaResponse negada = regraPermitida(false);
+        negada.setStatus("NAO_PERMITIDA");
+        negada.getRegra().setPermiteAlteracao(false);
+        negada.setMensagem("Tarifa nao permite alteracao.");
+        when(regraService.simular(any())).thenReturn(negada);
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("NAO_ELEGIVEL", response.getStatus());
+        assertEquals(negada.getMensagem(), response.getMotivoBloqueio());
+        assertNull(response.getPrevia());
+    }
+
+    @Test
+    void falhaNoCalculoNaoIgnoraTarifaMinimaJaConfirmada() throws Exception {
+        prepararSimulacaoConjunta();
+        service.simular(SIMULACAO_ID, simular(0, 0));
+        Reserva reserva = prepararReservaIdaVolta();
+        definirTarifaOriginal(reserva, 500.0);
+        simulacao.setRegraSnapshotJson(mapper.writeValueAsString(regraPermitida(false, "IGUAL_OU_MAIOR")));
+        simulacao.setResultadosJson(mapper.writeValueAsString(
+                List.of(opcaoPesquisa("VOLTA-ID", "BSB", "CGB", "5678"))));
+        prepararTarifacaoPermitida();
+        when(regraService.simular(any())).thenReturn(null);
+        RemarcacaoSimulacaoResponse response = service.simular(SIMULACAO_ID, simular(0, 0));
+        assertEquals("NAO_ELEGIVEL", response.getStatus());
+        assertTrue(response.getMensagem().contains("tarifa igual ou superior"));
     }
 
     @Test
@@ -2441,6 +2588,60 @@ class ChatConfiancaRemarcacaoServiceTest {
         when(aereoClient.carregarReserva(any())).thenReturn(hub);
     }
 
+    @Test
+    void deveAvancarTrechoIndividualAposRenovarTokenDaConsultaDeRegras() throws Exception {
+        validarSelecaoComRenovacaoDeToken(false);
+    }
+
+    @Test
+    void deveAvancarIdaVoltaAposRenovarTokenDaConsultaDeRegras() throws Exception {
+        validarSelecaoComRenovacaoDeToken(true);
+    }
+
+    private void validarSelecaoComRenovacaoDeToken(boolean conjunta) throws Exception {
+        prepararReservaIdaVolta();
+        simulacao.setStatus("AGUARDANDO_TRECHO");
+        String previousUrl = UrlConfig.URL_CONFIANCA_MANAGER;
+        var metrics = new SimpleMeterRegistry();
+        try {
+            UrlConfig.URL_CONFIANCA_MANAGER = "http://manager.test/";
+            var rest = new RestTemplate();
+            var server = MockRestServiceServer.bindTo(rest).build();
+            var tokens = mock(ChatConfiancaTokenProvider.class);
+            when(tokens.bearerToken()).thenReturn("antigo", "renovado");
+            var httpClient = new ChatConfiancaManagerClient(rest, tokens, metrics);
+            var regras = new RegraAereaAlteracaoManagerService(httpClient);
+            service = new ChatConfiancaRemarcacaoService(manager, chatService, aereoClient,
+                    aeroportoService, regras, limitesService, mapper, reservaAereoApi);
+            String endpoint = "http://manager.test/regrasAereas/alteracao/simular";
+            server.expect(requestTo(endpoint))
+                    .andExpect(header("Authorization", "Bearer antigo"))
+                    .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+            for (int i = 0; i < (conjunta ? 2 : 1); i++) {
+                server.expect(requestTo(endpoint))
+                        .andExpect(header("Authorization", "Bearer renovado"))
+                        .andExpect(jsonPath("$.exigirRegraAprovada").value(true))
+                        .andRespond(withSuccess(
+                                mapper.writeValueAsString(regraPermitida(false)), MediaType.APPLICATION_JSON));
+            }
+            var request = new RemarcacaoRequest.SelecionarTrecho();
+            request.setCodgUsuario(USUARIO_ID);
+            if (conjunta) request.setTrechosIndices(List.of(0, 1));
+            else request.setTrechoIndice(0);
+            var response = service.selecionarTrecho(SIMULACAO_ID, request);
+            assertEquals("AGUARDANDO_CRITERIOS", response.getStatus());
+            assertEquals(conjunta, response.isRemarcacaoConjunta());
+            assertEquals(conjunta ? 2 : 1, response.getQuantidadeTrechos());
+            assertNull(response.getMotivoBloqueio());
+            verify(tokens).invalidateIfCurrent("antigo");
+            server.verify();
+            verify(aereoClient, never()).tarifarEstrita(any());
+        } finally {
+            UrlConfig.URL_CONFIANCA_MANAGER = previousUrl;
+            metrics.close();
+        }
+    }
+
     private Reserva prepararReservaIdaVolta() {
         Reserva reserva = new Reserva();
         reserva.setLocalizador("ABC123");
@@ -2676,6 +2877,7 @@ class ChatConfiancaRemarcacaoServiceTest {
 
     private void prepararPrevia(String total) throws Exception {
         RemarcacaoSimulacaoResponse.Previa previa = new RemarcacaoSimulacaoResponse.Previa();
+        previa.setCalculoCompleto(true);
         previa.setTotalEstimado(new BigDecimal(total));
         previa.setTotalSelecionado(new BigDecimal(total));
         previa.setCalculoCompleto(true);

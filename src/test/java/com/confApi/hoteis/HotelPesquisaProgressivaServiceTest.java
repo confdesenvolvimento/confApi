@@ -90,13 +90,27 @@ class HotelPesquisaProgressivaServiceTest {
     }
     @Test void consultaFornecedorUnicoEAtualizaCadastroNaProximaPesquisa() throws Exception {
         when(sistemas.findByCodgProduto(2)).thenReturn(List.of(new Sistema("HotelDO", "DO")))
-                .thenReturn(List.of(new Sistema("NovoFornecedor", "NF")));
+                .thenReturn(List.of(new Sistema("EZLink", "EZ")));
         when(consulta.pesquisarFornecedor(any(),anyString())).thenReturn(hoteis(1));
         aguardar(service.iniciar("ana",new HotelPesquisaModelFront()).id(),1,true);
         aguardar(service.iniciar("ana",new HotelPesquisaModelFront()).id(),1,true);
         verify(consulta).pesquisarFornecedor(any(),eq("HotelDO"));
-        verify(consulta).pesquisarFornecedor(any(),eq("NovoFornecedor"));
+        verify(consulta).pesquisarFornecedor(any(),eq("EZLink"));
         verifyNoMoreInteractions(consulta);
+    }
+    @Test void ignoraSistemasSemIntegracaoNaPesquisaRapida() throws Exception {
+        when(sistemas.findByCodgProduto(2)).thenReturn(List.of(new Sistema("Interno", "IN"),
+                new Sistema("HotelDO", "DO"), new Sistema("NovoFornecedor", "NF")));
+        when(consulta.pesquisarFornecedor(any(),eq("HotelDO"))).thenReturn(hoteis(1));
+        aguardar(service.iniciar("ana",new HotelPesquisaModelFront()).id(),1,true);
+        verify(consulta).pesquisarFornecedor(any(),eq("HotelDO"));
+        verifyNoMoreInteractions(consulta);
+    }
+    @Test void cadastroApenasComSistemasSemIntegracaoConcluiSemConsultar() {
+        when(sistemas.findByCodgProduto(2)).thenReturn(List.of(new Sistema("Interno", "IN")));
+        var pagina=service.iniciar("ana",new HotelPesquisaModelFront());
+        assertTrue(pagina.concluida());assertEquals(0,pagina.totalDisponivel());
+        assertTrue(pagina.falhas().isEmpty());verifyNoInteractions(consulta);
     }
     @Test void cadastroSemFornecedoresConcluiImediatamente() {
         when(sistemas.findByCodgProduto(2)).thenReturn(List.of());

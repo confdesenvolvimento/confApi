@@ -17,6 +17,7 @@ class MobileSessionsTest {
         profile=MobileUpstream.JSON.readTree("{\"id\":42,\"status\":1,\"login\":\"fixture\",\"celular\":\"65999990000\",\"email\":\"fixture@example.test\",\"senhaTemporaria\":1,\"chaveToken\":\"private-upstream-token\",\"senha\":\"private-password\"}");
         when(upstream.call(eq("manager"),eq("usuario/auth"),eq("POST"),any())).thenReturn(profile);
         when(upstream.call("manager","wooba/turUsuarios/fixture","POST",null)).thenReturn(profile);
+        when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",false,"situacao","NAO_CADASTRADO")));
         when(upstream.call("manager","usuario/findByLogin/fixture","GET",null)).thenReturn(MobileUpstream.JSON.readTree("{\"codgUsuario\":42,\"status\":1,\"codigoWooba\":420,\"idToken\":\"own-key\"}"));
     }
     Map<String,Object> start(boolean password){return sessions.start("fixture",password?"user-password":null,device,"127.0.0.1");}
@@ -30,7 +31,7 @@ class MobileSessionsTest {
     @Test void identifierSessionDoesNotExposeProfileOrAuthorizeBusiness() {
         var result=start(false);var s=session(result);JsonNode publicProfile=(JsonNode)result.get("profile");
         assertEquals("0000",publicProfile.path("celular").asText());assertFalse(publicProfile.has("id"));assertFalse(publicProfile.has("chaveToken"));
-        assertThrows(MobileFailure.class,()->sessions.requireActive(s));assertThrows(MobileFailure.class,()->sessions.register(s,profile));
+        assertThrows(MobileFailure.class,()->sessions.requireActive(s));assertThrows(MobileFailure.class,()->sessions.register(s,"203.0.113.8",profile));
     }
     @Test void invalidPasswordNeverCreatesSession(){when(upstream.call(eq("manager"),eq("usuario/auth"),eq("POST"),any())).thenReturn(MobileUpstream.JSON.createObjectNode());assertThrows(MobileFailure.class,()->start(true));}
     @Test void technicalJwtIsNotAMobileSession(){assertThrows(MobileFailure.class,()->sessions.require("Bearer header.payload.signature"));}
@@ -41,13 +42,33 @@ class MobileSessionsTest {
     @Test void wrongExpiredOrExhaustedSmsDoesNotAuthenticate(){var s=session(start(false));String code=send(s);String wrong=code.equals("000000")?"000001":"000000";for(int i=0;i<5;i++)assertThrows(MobileFailure.class,()->sessions.validateCode(s,wrong));assertThrows(MobileFailure.class,()->sessions.validateCode(s,code));assertFalse(s.primary);s.attempts=0;s.otpUntil=Instant.EPOCH;assertThrows(MobileFailure.class,()->sessions.validateCode(s,code));}
     @Test void failingAccountCheckDoesNotUpgradeIdentifierSession(){var s=session(start(false));String code=send(s);when(upstream.call("manager","usuario/findByLogin/fixture","GET",null)).thenThrow(new MobileFailure(503,"UNAVAILABLE"));assertThrows(MobileFailure.class,()->sessions.validateCode(s,code));assertFalse(s.primary||s.contact);}
     @Test void resendIsThrottled(){var s=session(start(false));send(s);assertThrows(MobileFailure.class,()->sessions.sendCode(s,"sms"));verify(upstream,times(1)).deliver(any(),anyString(),anyString());}
-    @Test void pendingDeviceBlocksBusinessEvenAfterPassword(){var s=session(start(true));when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",false,"situacao","EM_AUTORIZACAO")));assertThrows(MobileFailure.class,()->sessions.requireActive(s));assertThrows(MobileFailure.class,()->sessions.register(s,profile));}
+    @Test void pendingDeviceBlocksBusinessEvenAfterPassword(){var s=session(start(true));when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",false,"situacao","EM_AUTORIZACAO")));assertThrows(MobileFailure.class,()->sessions.requireActive(s));assertThrows(MobileFailure.class,()->sessions.register(s,"203.0.113.8",profile));}
     @Test void onlyApprovedMatchingDeviceCanAccess(){var s=session(start(true));when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",true,"codigoDispositivo",device)));assertDoesNotThrow(()->sessions.requireActive(s));when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",true,"codigoDispositivo","another")));assertThrows(MobileFailure.class,()->sessions.requireActive(s));}
     @Test void registrationBindsIdentityAndDeviceOnServer() {
         var s=session(start(false));sessions.validateCode(s,send(s));
-        sessions.register(s,MobileUpstream.JSON.valueToTree(Map.of("login","someone-else","codigoDispositivo","forged","metadados",Map.of("osName","iOS"))));
-        var body=ArgumentCaptor.forClass(JsonNode.class);verify(upstream).call(eq("manager"),eq("dispositivo/novo"),eq("POST"),body.capture());
+        sessions.register(s,"203.0.113.8",MobileUpstream.JSON.valueToTree(Map.of("login","someone-else","codigoDispositivo","forged","metadados",Map.of("osName","iOS"))));
+        var body=ArgumentCaptor.forClass(JsonNode.class);verify(upstream).registerDevice(body.capture(),eq("203.0.113.8"));
         assertEquals("fixture",body.getValue().path("login").asText());assertEquals(device,body.getValue().path("codigoDispositivo").asText());assertEquals("iOS",body.getValue().path("metadados").path("osName").asText());
+    }
+    @Test void legacyRecognitionRequiresPasswordOrValidatedContactAndBindsTheSession() {
+        var proof=MobileUpstream.JSON.valueToTree(Map.of("login","other","codigoDispositivo","forged","codigoDispositivoLegado","iPhone","modeloDispositivo","iPhone 13","marcaDispositivo","Apple","tokenExpo","ExponentPushToken[fixture]","autorizado",true));
+        var s=session(start(false));
+        assertThrows(MobileFailure.class,()->sessions.recognize(s,proof));
+        verify(upstream,never()).call(eq("manager"),eq("dispositivo/reconhecer"),any(),any());
+        sessions.validateCode(s,send(s));sessions.recognize(s,proof);
+        var body=ArgumentCaptor.forClass(JsonNode.class);
+        verify(upstream).call(eq("manager"),eq("dispositivo/reconhecer"),eq("POST"),body.capture());
+        assertEquals("fixture",body.getValue().path("login").asText());assertEquals(device,body.getValue().path("codigoDispositivo").asText());
+        assertEquals("iPhone",body.getValue().path("codigoDispositivoLegado").asText());
+        assertEquals("ExponentPushToken[fixture]",body.getValue().path("tokenExpo").asText());assertFalse(body.getValue().has("autorizado"));
+        verify(upstream,never()).registerDevice(any(),any());
+    }
+    @Test void recognitionNeverGrantsBusinessAccessLocally() {
+        var s=session(start(true));
+        when(upstream.call(eq("manager"),eq("dispositivo/reconhecer"),eq("POST"),any())).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",true,"codigoDispositivo",device)));
+        sessions.recognize(s,MobileUpstream.JSON.createObjectNode());
+        when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",false)));
+        assertThrows(MobileFailure.class,()->sessions.requireActive(s));
     }
     @Test void sessionKeepsExistingTwentyDayLoginWithShortAccessTokens(){
         var s=session(start(true));var now=Instant.now();
@@ -68,4 +89,17 @@ class MobileSessionsTest {
         assertFalse(result.toString().contains("private-"));
         verify(upstream,never()).call(eq("manager"),contains("?codigoDispositivo="),anyString(),any());
     }
+
+    @Test void smsFromBeforeResetCannotRegisterAndClientCannotForgeItsResetId(){
+        var s=session(start(true));s.contact=true;s.contactResetId="old-reset";
+        when(upstream.call("manager","dispositivo/login/fixture?codigoDispositivo="+device,"GET",null)).thenReturn(MobileUpstream.JSON.valueToTree(Map.of("autorizado",false,"resetValidacaoId","new-reset")));
+        var body=MobileUpstream.JSON.valueToTree(Map.of("resetValidacaoId","new-reset"));
+        assertThrows(MobileFailure.class,()->sessions.register(s,"203.0.113.8",body));verify(upstream,never()).registerDevice(any(),any());
+        sessions.validateCode(s,send(s));assertEquals("new-reset",s.contactResetId);
+        sessions.register(s,"203.0.113.8",MobileUpstream.JSON.valueToTree(Map.of("resetValidacaoId","forged")));
+        var sent=ArgumentCaptor.forClass(JsonNode.class);verify(upstream).registerDevice(sent.capture(),eq("203.0.113.8"));
+        assertEquals("new-reset",sent.getValue().path("resetValidacaoId").asText());
+        assertThrows(MobileFailure.class,()->sessions.requireActive(s));
+    }
+
 }

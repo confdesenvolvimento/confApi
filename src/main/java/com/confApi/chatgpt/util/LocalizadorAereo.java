@@ -35,6 +35,15 @@ public final class LocalizadorAereo {
             }
         }
 
+        // Comandos diretos tambem contextualizam um PNR alfabetico em minusculas.
+        Matcher comando = Pattern.compile(
+                "\\b(?:ABRIR|ABRA|CANCELAR|CANCELE|REMARCAR|REMARQUE|"
+                        + "(?:VISUALIZAR|CONSULTAR)\\s+REGRAS|SIMULAR\\s+REMARCACAO)\\s+([A-Z0-9]{5,13})\\b")
+                .matcher(texto);
+        if (comando.find() && isValido(comando.group(1))) {
+            return comando.group(1);
+        }
+
         // Fora de um marcador explícito, preserve a evidência do texto original.
         // Converter a frase inteira em maiúsculas transformava DESTA/QUAIS em PNR.
         Matcher tokens = Pattern.compile("(?<![\\p{L}\\p{N}])[A-Za-z0-9]{5,13}(?![\\p{L}\\p{N}])").matcher(normalizarSemAcento(input));
@@ -63,6 +72,7 @@ public final class LocalizadorAereo {
                 "PASSAGEIROS", "TARIFA", "TARIFARIA", "TARIFARIAS", "EXISTE", "PAGAR", "IGUAL", "EXPLIQUE", "FALHAR",
                 "RESTRICOES", "SITUACAO", "BAGAGEM", "INCLUIDA", "SIMPLES", "PERMITE", "TEXTO", "VIAGEM", "TODOS",
                 "MINHA", "MINHAS", "CONSULTAR", "EMITIR", "AGORA", "ANTERIOR", "ANTERIORES",
+                "CHAMADO", "CHAMADOS", "SEGURO", "SEGUROS", "HOTEL", "HOTEIS", "PACOTE", "PACOTES",
                 "CANCELADA", "CANCELADAS", "CONFIRMADA", "CONFIRMADAS", "INFORMACOES", "DETALHES"
         ).contains(candidato);
     }

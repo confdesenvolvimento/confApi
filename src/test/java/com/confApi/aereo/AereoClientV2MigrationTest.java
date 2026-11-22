@@ -139,12 +139,12 @@ class AereoClientV2MigrationTest {
             .andExpect(header("Authorization","Bearer fixture"))
             .andRespond(withSuccess("{}",MediaType.APPLICATION_JSON));
         server.expect(requestTo("http://fixture/hub/api/aereo/consultar"))
-            .andRespond(withSuccess("{\"reservas\":[]}",MediaType.APPLICATION_JSON));
+            .andRespond(withSuccess("{\"reservas\":[{\"localizador\":\"ABC123\"}]}",MediaType.APPLICATION_JSON));
         entrada.setStatusReserva("Emitida");
         PassageiroModel passageiro=new PassageiroModel();
-        BilheteModel bilhete=new BilheteModel(); bilhete.setNumeroBilhete("9990000000001");
+        BilheteModel bilhete=new BilheteModel(); bilhete.setNumeroBilhete("9990000000001"); bilhete.setStatus(1);
         passageiro.setBilhetes(List.of(bilhete)); entrada.setPassageiros(List.of(passageiro));
-        when(conversor.convertToReservaAereoModel(any(),eq(entrada),eq(true))).thenReturn(entrada);
+        when(conversor.convertToReservaAereoModel(any(),eq(entrada),eq(true))).thenAnswer(call -> { entrada.setStatusReserva("Emitida"); entrada.setPassageiros(List.of(passageiro)); return entrada; });
         server.expect(requestTo("http://fixture/manager/reservaAereo/emitir/77"))
             .andExpect(method(HttpMethod.PUT)).andRespond(withServerError());
         HttpHeaders headers=new HttpHeaders();headers.set("X-Antifraude-Operacao","fixture-operation");

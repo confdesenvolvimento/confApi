@@ -14,7 +14,7 @@ import javax.servlet.*;import javax.servlet.http.*;import java.io.*;import java.
  @org.springframework.beans.factory.annotation.Autowired(required=false) private LocalDevelopment localDevelopment=LocalDevelopment.disabled();
  public static V2.Actor actor(HttpServletRequest req,String scope){var actor=(V2.Actor)req.getAttribute("auth.v2.actor");if(actor==null)throw new V2.Failure(401);actor.require(scope);return actor;}
  @Override protected void configure(HttpSecurity http)throws Exception {
-  http.requestMatcher(req->{String p=req.getRequestURI().substring(req.getContextPath().length());return p.startsWith("/internal/v2/")||p.startsWith("/api/v2/")||(p.startsWith("/api/plantao/token")||(V2.enabled()&&p.startsWith("/api/auth/")));})
+  http.requestMatcher(req->{String p=req.getRequestURI().substring(req.getContextPath().length());return p.startsWith("/internal/v2/")||p.startsWith("/api/v2/")||(V2.enabled()&&(p.startsWith("/api/plantao/token")||p.startsWith("/api/auth/")));})
    .csrf().disable().sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and().authorizeRequests().anyRequest().hasRole("V2").and()
    .addFilterBefore(new OncePerRequestFilter(){protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,FilterChain chain)throws ServletException,IOException {
     res.setHeader("Cache-Control","no-store");res.setHeader("X-Correlation-ID",UUID.randomUUID().toString());

@@ -10,4 +10,6 @@ public class GeradorAereoPDF {
     private String reservaLocalizaodr;
     private String emails;
     private Boolean semValores;
+    private String assunto;
+    private String mensagem;
 }
