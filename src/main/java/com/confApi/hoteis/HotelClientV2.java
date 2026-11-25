@@ -509,14 +509,7 @@ public class HotelClientV2 {
         rhBanco.setCodgUsuarioCancelamento(null);
         rhBanco.setCodgUsuarioCriacao(new Usuario(preReserva.getUsuario()));
         rhBanco.setDataEmissao(null);
-        /*Inicio Regra Cancelamento AJUSTAR*/
-        if (preReserva.getHotel().getPrazoPagamentoFornecedor() == null) {
-            rhBanco.setDataLimiteEmissao(new Timestamp(new Date().getTime()));
-        } else {
-
-            rhBanco.setDataLimiteEmissao(new Timestamp(preReserva.getHotel().getPrazoPagamentoFornecedor().getTime()));
-        }
-        /*Final Regra Cancelamento AJUSTAR*/
+        aplicarPrazosReserva(rhBanco, preReserva);
 
         rhBanco.setDescricaoMotivoCancelamento(null);
         rhBanco.setLocalizador(hotelApi.getReservasHotelRsList().get(0).getIdentificador());
@@ -528,16 +521,6 @@ public class HotelClientV2 {
 
         for (HotelAcomodacao ac : preReserva.getAcomodacao()) {
             rhBanco.setDescricaoRegraCancelamento(ac.getDescricaoRegraCancelamento());
-            if (ac.getPrazoPagamentoCliente() == null) {
-                rhBanco.setPrazoPagamentoCliente(new java.sql.Timestamp(new Date().getTime()));
-            } else {
-                rhBanco.setPrazoPagamentoCliente(new java.sql.Timestamp(ac.getPrazoPagamentoCliente().getTime()));
-            }
-            if (ac.getPrazoPagamentoFornecedor() == null) {
-                rhBanco.setPrazoPagamentoFornecedor(new java.sql.Timestamp(new Date().getTime()));
-            } else {
-                rhBanco.setPrazoPagamentoFornecedor(new java.sql.Timestamp(ac.getPrazoPagamentoFornecedor().getTime()));
-            }
             HotelQuartoValor hotelQuartoValor = new HotelQuartoValor();
             if (ac.getCodgRoom().length() > 10) {
                 hotelQuartoValor.setCodgFornecedorSistema(hotelApi.getReservasHotelRsList().get(0).getAcomodacoes().get(i).getCodgRoom());
@@ -606,5 +589,35 @@ public class HotelClientV2 {
         }
 
         return rhBanco;
+    }
+
+    /** Conserva o limite mais restritivo das acomodações selecionadas e do hotel. */
+    private static void aplicarPrazosReserva(ReservaHotel reserva, HotelPreReserva origem) {
+        Date clienteGeral = origem.getHotel().getPrazoPagamentoCliente();
+        Date fornecedorGeral = origem.getHotel().getPrazoPagamentoFornecedor();
+        Date cliente = clienteGeral;
+        Date fornecedor = fornecedorGeral;
+        boolean clienteConferido = true;
+        boolean fornecedorConferido = true;
+        for (HotelAcomodacao quarto : origem.getAcomodacao()) {
+            Date prazoCliente = menorPrazo(clienteGeral, quarto.getPrazoPagamentoCliente());
+            Date prazoFornecedor = menorPrazo(fornecedorGeral, quarto.getPrazoPagamentoFornecedor());
+            clienteConferido &= prazoCliente != null;
+            fornecedorConferido &= prazoFornecedor != null;
+            cliente = menorPrazo(cliente, prazoCliente);
+            fornecedor = menorPrazo(fornecedor, prazoFornecedor);
+        }
+        reserva.setPrazoPagamentoCliente(clienteConferido ? timestamp(cliente) : null);
+        Date limiteFornecedor = fornecedorConferido ? fornecedor : null;
+        reserva.setPrazoPagamentoFornecedor(timestamp(limiteFornecedor));
+        reserva.setDataLimiteEmissao(timestamp(limiteFornecedor));
+    }
+
+    private static Date menorPrazo(Date primeiro, Date segundo) {
+        return segundo == null ? primeiro : primeiro == null || segundo.before(primeiro) ? segundo : primeiro;
+    }
+
+    private static Timestamp timestamp(Date data) {
+        return data == null ? null : new Timestamp(data.getTime());
     }
 }
