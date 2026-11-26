@@ -6,6 +6,9 @@ import com.confApi.hoteis.model.reserva.CancelarReservaRequestHotelFront;
 import com.confApi.hoteis.model.reserva.HotelCarregaModelFront;
 import com.confApi.hoteis.model.reserva.ReservarRequestFront;
 import com.confApi.hub.hotel.dto.HotelReserva;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -78,6 +81,11 @@ public class HotelSearchController {
     @PostMapping("/efetuarReserva2")
     public HotelReserva efetuarReserva2(@RequestBody ReservarRequestFront req, @RequestParam String idAgencia) {
         return service.efetuarReserva2(req, idAgencia);
+    }
+
+    @ExceptionHandler(ReservaOmnibeesFalha.class)
+    ResponseEntity<ReservaOmnibeesFalha.Resposta> informarFalhaOmnibees(ReservaOmnibeesFalha falha) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(falha.resposta());
     }
 
     @PostMapping("/carregarReserva")

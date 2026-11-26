@@ -125,21 +125,30 @@ public class HotelClient {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<ReservarRequest> entity = new HttpEntity<>(hubRequest, headers);
 
-            ResponseEntity<HotelReserva> hubResponse = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    entity,
-                    HotelReserva.class
-            );
+            ResponseEntity<HotelReserva> hubResponse = enviarReserva(url, entity);
 
             if (!hubResponse.getStatusCode().is2xxSuccessful()) {
                 throw new RuntimeException("Erro ao chamar HUB Reserva Hotel. HTTP " + hubResponse.getStatusCode());
             }
             return hubResponse.getBody();
+        } catch (ReservaOmnibeesFalha e) {
+            throw e;
         } catch (Exception e) {
-            e.printStackTrace();
-            logErro("Erro ao efetuar reserva hotel", e);
-            throw new RuntimeException("Erro ao efetuar reserva de hotel no HUB", e);
+            int statusHttp = e instanceof HttpStatusCodeException http ? http.getRawStatusCode() : -1;
+            Logger.getLogger(HotelClient.class.getName()).log(Level.WARNING,
+                    "Reserva de hotel no HUB não confirmada. Categoria {0}, HTTP {1}.",
+                    new Object[]{e.getClass().getSimpleName(), statusHttp});
+            throw new IllegalStateException("Erro ao efetuar reserva de hotel no HUB");
+        }
+    }
+
+    private ResponseEntity<HotelReserva> enviarReserva(String url, HttpEntity<ReservarRequest> entity) {
+        try {
+            return restTemplate.exchange(url, HttpMethod.POST, entity, HotelReserva.class);
+        } catch (HttpStatusCodeException e) {
+            ReservaOmnibeesFalha falha = ReservaOmnibeesFalha.interpretar(entity.getBody(), e);
+            if (falha != null) throw falha;
+            throw e;
         }
     }
 
