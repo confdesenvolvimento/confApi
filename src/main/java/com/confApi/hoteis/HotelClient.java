@@ -130,7 +130,9 @@ public class HotelClient {
             if (!hubResponse.getStatusCode().is2xxSuccessful()) {
                 throw new RuntimeException("Erro ao chamar HUB Reserva Hotel. HTTP " + hubResponse.getStatusCode());
             }
-            return hubResponse.getBody();
+            HotelReserva reserva = hubResponse.getBody();
+            if (reserva != null) reserva.setDivergenciasOperacao(DivergenciasHotel.comparar(req, reserva));
+            return reserva;
         } catch (ReservaOmnibeesFalha e) {
             throw e;
         } catch (Exception e) {
@@ -338,6 +340,7 @@ public class HotelClient {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.setBearerAuth(bearerToken);
+        com.confApi.operacao.RastreioReserva.propagar(headers);
         return headers;
     }
 

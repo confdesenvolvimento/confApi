@@ -215,6 +215,7 @@ public class SeguroReservaAPI {
                 headers.setBearerAuth(token.getToken());
             }
 
+            com.confApi.operacao.RastreioReserva.propagar(headers);
             HttpEntity<SeguroReserva> requestEntity =
                     new HttpEntity<>(seguroReserva, headers);
 

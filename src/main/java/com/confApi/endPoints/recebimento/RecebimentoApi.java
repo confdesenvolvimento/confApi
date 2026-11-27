@@ -4,6 +4,7 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.recebimento.Recebimento;
+import com.confApi.operacao.RastreioReserva;
 import com.confApi.util.TelegramErrorAlert;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
@@ -160,6 +161,7 @@ public class RecebimentoApi {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.setBearerAuth(bearerToken);
+        RastreioReserva.propagar(headers);
         return headers;
     }
 }

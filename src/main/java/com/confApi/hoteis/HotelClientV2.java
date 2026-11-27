@@ -22,6 +22,9 @@ import com.confApi.hoteis.model.reserva.ReservarRequestFront;
 import com.confApi.hub.aereo.RecebimentoModel;
 import com.confApi.hub.hotel.dto.Hospedes;
 import com.confApi.hub.hotel.dto.HotelReserva;
+import com.confApi.hub.hotel.dto.ReservasHotelRs;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +36,8 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class HotelClientV2 {
 
+    private static final Logger LOG = LoggerFactory.getLogger(HotelClientV2.class);
+    private static final String SISTEMA_OMNIBEES = Integer.toString(HotelServiceV2.CODIGO_SISTEMA_OMNIBEES);
     private final HotelServiceV2 hotelService;
     @Autowired private HotelSearchService pesquisaAtual;
     private final MarkupService markupService;
@@ -61,7 +66,8 @@ public class HotelClientV2 {
     public ReservaHotel efetuarReserva(HotelPreReserva hotelPreReserva) {
 
         ReservarRequestFront reqBanco = new ReservarRequestFront(hotelPreReserva);
-        HotelReserva reserva = hotelService.efetuarReserva(reqBanco);
+        boolean omnibees = SISTEMA_OMNIBEES.equals(hotelPreReserva.getHotel().getCodigoSistema());
+        HotelReserva reserva = reservarNoFornecedor(reqBanco, omnibees);
         if (reserva == null || reserva.getReservasHotelRsList() == null || reserva.getReservasHotelRsList().size() != 1
                 || reserva.getReservasHotelRsList().get(0) == null
                 || reserva.getReservasHotelRsList().get(0).getIdentificador() == null
@@ -70,13 +76,48 @@ public class HotelClientV2 {
         }
         int status = StatusReservaHotelFornecedor.codigo(reserva.getReservasHotelRsList().get(0).getStatus());
         if (status != 1) throw new IllegalStateException("O fornecedor não confirmou a reserva de hotel.");
-        ReservaHotel rhBanco = convertToDB(reserva, hotelPreReserva);
-        rhBanco.setStatus(status);
-        if (hotelPreReserva.getCodgPacote() != null && hotelPreReserva.getCodgPacote() > 0)
-            rhBanco.setCodgReservaPacote(new com.confApi.db.confManager.reservaPacote.ReservaPacote(hotelPreReserva.getCodgPacote()));
-        ReservaHotel reservaHotel = hotelService.criarReservaDB(rhBanco);
+        ReservaHotel rhBanco = null;
+        try {
+            rhBanco = convertToDB(reserva, hotelPreReserva);
+            rhBanco.setStatus(status);
+            rhBanco.setDivergenciasOperacao(DivergenciasHotel.comparar(reqBanco, reserva));
+            if (hotelPreReserva.getCodgPacote() != null && hotelPreReserva.getCodgPacote() > 0) {
+                rhBanco.setCodgReservaPacote(new com.confApi.db.confManager.reservaPacote.ReservaPacote(hotelPreReserva.getCodgPacote()));
+            }
+            return hotelService.criarReservaDB(rhBanco);
+        } catch (RuntimeException erro) {
+            if (!omnibees) throw erro;
+            LOG.warn("Reserva Omnibees confirmada no fornecedor com gravação pendente no Manager ({})",
+                    erro.getClass().getSimpleName());
+            var confirmada = reserva.getReservasHotelRsList().get(0);
+            Date entrada = rhBanco == null ? dataReserva(reserva.getDataEntrada(), confirmada.getDataEntrada(), null)
+                    : rhBanco.getDataEntrada();
+            Date saida = rhBanco == null ? dataReserva(reserva.getDataSaida(), confirmada.getDataSaida(), null)
+                    : rhBanco.getDataSaida();
+            throw ReservaOmnibeesFalha.gravacaoNaoConfirmada(confirmada.getIdentificador(), entrada, saida,
+                    reserva.getObservacaoOmnibees(), erro);
+        }
+    }
 
-        return reservaHotel;
+    private HotelReserva reservarNoFornecedor(ReservarRequestFront pedido, boolean omnibees) {
+        try {
+            return hotelService.efetuarReserva(pedido);
+        } catch (ReservaOmnibeesFalha erro) {
+            var resposta = erro.resposta();
+            if (!omnibees || !"OMNIBEES_DETALHES_INDISPONIVEIS".equals(resposta.codigo()) || resposta.localizador() == null) {
+                throw erro;
+            }
+            var confirmada = new ReservasHotelRs();
+            confirmada.setIdentificador(resposta.localizador());
+            confirmada.setStatus("Reserved");
+            var reserva = new HotelReserva();
+            reserva.setCodgHotel(pedido.getCodgHotel());
+            reserva.setDataEntrada(pedido.getDtCheckIn());
+            reserva.setDataSaida(pedido.getDtCheckOut());
+            reserva.setReservasHotelRsList(List.of(confirmada));
+            reserva.setObservacaoOmnibees(resposta.mensagem());
+            return reserva;
+        }
     }
 
     public HotelReserva carregarReserva(HotelCarregaModelFront req) {
@@ -474,36 +515,27 @@ public class HotelClientV2 {
         ReservaHotel rhBanco = new ReservaHotel();
         rhBanco.setCodgAgencia(preReserva.getUsuario().getAgencia());
         Hotel hotelDB = new Hotel();
-        //hotelDB.setCodgCidade(preReserva.getHotel().getCidade());
-//        hotelDB.setCodgCidade(new Cidade(72));
-//        hotelDB.setCodgHotel(Integer.parseInt(hotelApi.getCodgHotel()));
-        hotelDB.setIdentificacaoHotelSitema(hotelApi.getCodgHotel());
-        // hotelDB.setCodgSistema(new SistemaApi().findByCodgSistema(Integer.valueOf(preReserva.getHotel().getCodigoSistema())));
-        if (preReserva.getHotel() != null) {
-            hotelDB.setCodgSistema(new Sistema());
-            if (preReserva.getHotel().getCodigoHotelSistema() != null) {
-                Sistema sistemaApi = new Sistema(Integer.valueOf(preReserva.getHotel().getCodigoSistema()));
-                hotelDB.setCodgSistema(sistemaApi);
-                rhBanco.setCodgSistema(sistemaApi);
-            }
-            if (preReserva.getHotel().getNomeSistema() != null) {
-                hotelDB.getCodgSistema().setNomeSistema(preReserva.getHotel().getNomeSistema());
-                rhBanco.getCodgSistema().setNomeSistema(preReserva.getHotel().getNomeSistema());
-            }
+        var hotel = preReserva.getHotel();
+        boolean omnibees = SISTEMA_OMNIBEES.equals(hotel.getCodigoSistema());
+        Sistema sistema = new Sistema();
+        sistema.setNomeSistema(hotel.getNomeSistema());
+        if (hotel.getCodigoSistema() != null && !hotel.getCodigoSistema().isBlank()) {
+            sistema.setCodgSistema(Integer.valueOf(hotel.getCodigoSistema()));
+            rhBanco.setCodgSistema(sistema);
         }
+        hotelDB.setCodgSistema(sistema);
+        hotelDB.setIdentificacaoHotelSitema(hotel.getCodigoHotelSistema() == null
+                ? hotelApi.getCodgHotel() : hotel.getCodigoHotelSistema());
 
-        hotelDB.setMapa(null);
-
-        hotelDB.setUrlImagemHotel(preReserva.getHotel().getUrlImagem());
-        hotelDB.setTelefone(preReserva.getHotel().getTelefone());
-        hotelDB.setNomeHotel(preReserva.getHotel().getNome());
-        hotelDB.setLongitude(preReserva.getHotel().getLongitude().toString());
-        hotelDB.setLatitude(preReserva.getHotel().getLatitude().toString());
-        hotelDB.setIdentificacaoHotelSitema(preReserva.getHotel().getCodigoHotelSistema());
-        hotelDB.setFax(preReserva.getHotel().getFax());
-        hotelDB.setEstrela(preReserva.getHotel().getCategoria().doubleValue());
-        hotelDB.setEndereco1(preReserva.getHotel().getEndereco());
-        hotelDB.setEmail(preReserva.getHotel().getEmail());
+        hotelDB.setUrlImagemHotel(hotel.getUrlImagem());
+        hotelDB.setTelefone(hotel.getTelefone());
+        hotelDB.setNomeHotel(hotel.getNome());
+        hotelDB.setLongitude(Objects.toString(hotel.getLongitude(), null));
+        hotelDB.setLatitude(Objects.toString(hotel.getLatitude(), null));
+        hotelDB.setFax(hotel.getFax());
+        hotelDB.setEstrela(hotel.getCategoria() == null ? null : hotel.getCategoria().doubleValue());
+        hotelDB.setEndereco1(hotel.getEndereco());
+        hotelDB.setEmail(hotel.getEmail());
         rhBanco.setCodgHotel(hotelDB);
 
         rhBanco.setCodgUsuarioCancelamento(null);
@@ -512,21 +544,24 @@ public class HotelClientV2 {
         aplicarPrazosReserva(rhBanco, preReserva);
 
         rhBanco.setDescricaoMotivoCancelamento(null);
-        rhBanco.setLocalizador(hotelApi.getReservasHotelRsList().get(0).getIdentificador());
+        var retorno = hotelApi.getReservasHotelRsList().get(0);
+        rhBanco.setLocalizador(retorno.getIdentificador());
         rhBanco.setStatus(StatusReservaHotel.Confirmada.getValor());
-
-        rhBanco.setDataEntrada(hotelApi.getDataEntrada());
-        rhBanco.setDataSaida(hotelApi.getDataSaida());
-        Integer i = 0;
+        rhBanco.setDataEntrada(omnibees ? dataReserva(hotelApi.getDataEntrada(), retorno.getDataEntrada(), hotel.getDataEntrada())
+                : hotelApi.getDataEntrada());
+        rhBanco.setDataSaida(omnibees ? dataReserva(hotelApi.getDataSaida(), retorno.getDataSaida(), hotel.getDataSaida())
+                : hotelApi.getDataSaida());
+        if (omnibees) rhBanco.setObservacaoOmnibees(hotelApi.getObservacaoOmnibees());
+        int i = 0;
 
         for (HotelAcomodacao ac : preReserva.getAcomodacao()) {
             rhBanco.setDescricaoRegraCancelamento(ac.getDescricaoRegraCancelamento());
             HotelQuartoValor hotelQuartoValor = new HotelQuartoValor();
-            if (ac.getCodgRoom().length() > 10) {
-                hotelQuartoValor.setCodgFornecedorSistema(hotelApi.getReservasHotelRsList().get(0).getAcomodacoes().get(i).getCodgRoom());
-            } else {
-                hotelQuartoValor.setCodgFornecedorSistema(ac.getCodgRoom());
+            String codigoQuarto = ac.getCodgRoom();
+            if (!omnibees && codigoQuarto != null && codigoQuarto.length() > 10) {
+                codigoQuarto = retorno.getAcomodacoes().get(i).getCodgRoom();
             }
+            hotelQuartoValor.setCodgFornecedorSistema(codigoQuarto);
             hotelQuartoValor.setSiglaTipoQuarto(null);
             hotelQuartoValor.setNomeTipoQuarto(null);
             hotelQuartoValor.setNomeQuarto(ac.getNomeQuarto());
@@ -553,25 +588,25 @@ public class HotelClientV2 {
                 hotelQuartoValor.setHotelHospedeList(new ArrayList<>());
             }
 
-            for (Hospedes hospedeAc : ac.getHospedes()) {
+            for (Hospedes hospedeAc : ac.getHospedes() == null ? List.<Hospedes>of() : ac.getHospedes()) {
                 HotelHospede hH = new HotelHospede();
                 //  hH.setCodgHotelQuartoValor(hotelQuartoValor);
-                if (hospedeAc.getTipo().equalsIgnoreCase("ADT")) {
+                if ("ADT".equalsIgnoreCase(hospedeAc.getTipo())) {
                     hH.setTipoHospede("1");
                     hotelQuartoValor.setQtdAdt(hotelQuartoValor.getQtdAdt() + 1);
-                } else if (hospedeAc.getTipo().equalsIgnoreCase("CHD")) {
+                } else if ("CHD".equalsIgnoreCase(hospedeAc.getTipo())) {
                     hH.setTipoHospede("2");
                     hotelQuartoValor.setQtdChd(hotelQuartoValor.getQtdChd() + 1);
-                } else if (hospedeAc.getTipo().equalsIgnoreCase("INF")) {
+                } else if ("INF".equalsIgnoreCase(hospedeAc.getTipo())) {
                     hotelQuartoValor.setQtdChd(hotelQuartoValor.getQtdChd() + +1);
                     hH.setTipoHospede("3");
                 } else {
                     hH.setTipoHospede("1");
                 }
                 hH.setHospedeIdade(hospedeAc.getIdade());
-                if (hospedeAc.getSexo().equalsIgnoreCase("M")) {
+                if ("M".equalsIgnoreCase(hospedeAc.getSexo())) {
                     hH.setHospedeSexo(1);
-                } else if (hospedeAc.getSexo().equalsIgnoreCase("F")) {
+                } else if ("F".equalsIgnoreCase(hospedeAc.getSexo())) {
                     hH.setHospedeSexo(0);
                 } else {
                     hH.setHospedeSexo(1);
@@ -589,6 +624,10 @@ public class HotelClientV2 {
         }
 
         return rhBanco;
+    }
+
+    private static Date dataReserva(Date geral, Date reserva, Date solicitada) {
+        return geral != null ? geral : reserva != null ? reserva : solicitada;
     }
 
     /** Conserva o limite mais restritivo das acomodações selecionadas e do hotel. */

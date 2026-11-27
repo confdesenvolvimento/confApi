@@ -16,10 +16,14 @@ import com.confApi.hub.hotel.mapper.HotelReservaMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 @Component
 public class HotelServiceV2 {
+    static final int CODIGO_SISTEMA_OMNIBEES = 3;
     private final RestTemplate restTemplate;
     @Autowired private ConfAppService confAppService;
     @Autowired private UsuarioApi usuarioApi;
@@ -29,12 +33,32 @@ public class HotelServiceV2 {
 
     public HotelReserva efetuarReserva(ReservarRequestFront req) {
         ReservarRequest request = HotelReservaMapper.toHubV2(req);
-        return restTemplate.exchange(url(UrlConfig.URL_CONFIANCA_HUB, "api/hotel/efetuarReserva"),
-                HttpMethod.POST, new HttpEntity<>(request, headers()), HotelReserva.class).getBody();
+        HttpEntity<ReservarRequest> entity = new HttpEntity<>(request, headers());
+        try {
+            return restTemplate.exchange(url(UrlConfig.URL_CONFIANCA_HUB, "api/hotel/efetuarReserva"),
+                    HttpMethod.POST, entity, HotelReserva.class).getBody();
+        } catch (HttpStatusCodeException ex) {
+            ReservaOmnibeesFalha falha = ReservaOmnibeesFalha.interpretar(request, ex);
+            if (falha != null) throw falha;
+            throw ex;
+        }
     }
 
     public ReservaHotel criarReservaDB(ReservaHotel pedido) {
-        ReservaHotel criada = restTemplate.exchange(url(UrlConfig.URL_CONFIANCA_MANAGER, "reservaHotel"),
+        boolean omnibees = pedido.getCodgSistema() != null
+                && Integer.valueOf(CODIGO_SISTEMA_OMNIBEES).equals(pedido.getCodgSistema().getCodgSistema());
+        try {
+            return enviarEConsultarReservaDB(pedido, omnibees);
+        } catch (ResourceAccessException | HttpServerErrorException | IllegalStateException erro) {
+            if (!omnibees) throw erro;
+            // O Manager usa o localizador Omnibees como chave da criação.
+            return enviarEConsultarReservaDB(pedido, true);
+        }
+    }
+
+    private ReservaHotel enviarEConsultarReservaDB(ReservaHotel pedido, boolean omnibees) {
+        String rota = omnibees ? "reservaHotel/confirmada-omnibees" : "reservaHotel";
+        ReservaHotel criada = restTemplate.exchange(url(UrlConfig.URL_CONFIANCA_MANAGER, rota),
                 HttpMethod.POST, new HttpEntity<>(pedido, headers()), ReservaHotel.class).getBody();
         if (criada == null || criada.getCodgReservaHotel() == null || criada.getCodgReservaHotel() <= 0
                 || pedido.getLocalizador() == null || !pedido.getLocalizador().equalsIgnoreCase(criada.getLocalizador())) {
@@ -44,10 +68,14 @@ public class HotelServiceV2 {
         referencia.setCodgReservaHotelDB(criada.getCodgReservaHotel().longValue());
         referencia.setLocalizador(criada.getLocalizador());
         ReservaHotel confirmada = consultarReservaDB(referencia);
-        if (!java.util.Objects.equals(criada.getStatus(), confirmada.getStatus())
+        Integer statusEsperado = omnibees ? pedido.getStatus() : criada.getStatus();
+        if (!java.util.Objects.equals(statusEsperado, confirmada.getStatus())
                 || pedido.getCodgReservaPacote() != null && (confirmada.getCodgReservaPacote() == null
                 || !java.util.Objects.equals(pedido.getCodgReservaPacote().getCodgPacote(), confirmada.getCodgReservaPacote().getCodgPacote()))) {
             throw new IllegalStateException("A gravação da reserva precisa de conferência no Manager. Não refaça a reserva.");
+        }
+        if (omnibees && confirmada.getObservacaoOmnibees() == null) {
+            confirmada.setObservacaoOmnibees(pedido.getObservacaoOmnibees());
         }
         return confirmada;
     }
@@ -95,6 +123,7 @@ public class HotelServiceV2 {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
         headers.setBearerAuth(confAppService.token().getToken());
+        com.confApi.operacao.RastreioReserva.propagar(headers);
         return headers;
     }
     private static String url(String base, String relative) { return base.replaceAll("/+$", "") + "/" + relative; }

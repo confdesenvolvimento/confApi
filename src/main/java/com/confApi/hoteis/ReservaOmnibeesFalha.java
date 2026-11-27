@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import java.io.IOException;
+import java.util.Date;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpStatusCodeException;
@@ -22,8 +23,25 @@ final class ReservaOmnibeesFalha extends RuntimeException {
     private final Resposta resposta;
 
     private ReservaOmnibeesFalha(Resultado resultado, String localizador, String codigoFornecedor) {
-        super(resultado.mensagem);
-        this.resposta = new Resposta(resultado.name(), resultado.etapa, resultado.mensagem, localizador, codigoFornecedor);
+        this(new Resposta(resultado.name(), resultado.etapa, resultado.mensagem, localizador, codigoFornecedor,
+                null, null, null), null);
+    }
+
+    private ReservaOmnibeesFalha(Resposta resposta, Throwable causa) {
+        super(resposta.mensagem(), causa);
+        this.resposta = resposta;
+    }
+
+    static ReservaOmnibeesFalha gravacaoNaoConfirmada(String localizador, Date entrada, Date saida,
+                                                         String observacao, RuntimeException causa) {
+        String referencia = localizador != null && LOCALIZADOR.matcher(localizador).matches() ? localizador : null;
+        return new ReservaOmnibeesFalha(new Resposta("OMNIBEES_MANAGER_NAO_CONFIRMADO", "MANAGER",
+                "A Omnibees confirmou a reserva, mas a gravação no Manager ficou pendente. Confira antes de reservar novamente.",
+                referencia, null, observacao, epochMillis(entrada), epochMillis(saida)), causa);
+    }
+
+    private static Long epochMillis(Date data) {
+        return data == null ? null : data.getTime();
     }
 
     Resposta resposta() {
@@ -63,7 +81,8 @@ final class ReservaOmnibeesFalha extends RuntimeException {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record Resposta(String codigo, String etapa, String mensagem, String localizador, String codigoFornecedor) { }
+    record Resposta(String codigo, String etapa, String mensagem, String localizador, String codigoFornecedor,
+                    String observacaoOmnibees, Long dataEntrada, Long dataSaida) { }
 
     private enum Resultado {
         OMNIBEES_NAO_ENVIADA("INITIATE", "O envio da confirmação da reserva à Omnibees não foi realizado.", true),

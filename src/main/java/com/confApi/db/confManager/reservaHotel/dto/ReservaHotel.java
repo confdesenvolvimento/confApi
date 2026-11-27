@@ -9,8 +9,10 @@ import com.confApi.db.confManager.recebimento.Recebimento;
 import com.confApi.db.confManager.reservaPacote.ReservaPacote;
 import com.confApi.db.confManager.sistema.Sistema;
 import com.confApi.db.confManager.usuario.Usuario;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.sql.Timestamp;
 import java.util.Date;
@@ -18,6 +20,12 @@ import java.util.List;
 
 @Data
 public class ReservaHotel implements Serializable {
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    private java.util.List<com.confApi.operacao.DivergenciaOperacao> divergenciasOperacao = new java.util.ArrayList<>();
+
+
+    @Serial
+    private static final long serialVersionUID = -7952366561908760902L;
 
     private Integer codgReservaHotel;
     private Usuario codgUsuarioCriacao;
@@ -47,6 +55,8 @@ public class ReservaHotel implements Serializable {
     private Boolean isExterno = false;
     private Integer numeroDeQuartos = 0;
     private Integer quantidadeDiarias = 0;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String observacaoOmnibees;
 
     public ReservaHotel() {
     }
