@@ -6,6 +6,7 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.recebimento.Recebimento;
+import com.confApi.rodoviario.dto.RodoviarioCompraModel;
 import com.confApi.seguros.dto.SeguroCompraModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
@@ -60,7 +61,7 @@ public class RecebimentoService {
         }
 
         Recebimento recebimento = new Recebimento(req.getRecebimento());
-        System.out.println("recebimento.getCodgReservaCarro():: "+ recebimento.getCodgReservaCarro());
+        System.out.println("recebimento.getCodgReservaCarro():: " + recebimento.getCodgReservaCarro());
 
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
@@ -81,9 +82,9 @@ public class RecebimentoService {
             ResponseEntity<Recebimento> response =
                     restTemplate.exchange(
                             UrlConfig.URL_CONFIANCA_MANAGER
-                                    + "recebimento/"
-                                    + sistemaNome
-                                    + "?autorizacao=false",
+                            + "recebimento/"
+                            + sistemaNome
+                            + "?autorizacao=false",
                             HttpMethod.POST,
                             requestEntity,
                             Recebimento.class
@@ -97,11 +98,48 @@ public class RecebimentoService {
         }
     }
 
+    /**
+     * O Manager registra o faturado ou processa o cartão na Rede.
+     * A falha é propagada para que o orquestrador confira a cobrança
+     * antes de permitir outra tentativa.
+     */
+    public Recebimento criarRecebimento(RodoviarioCompraModel req) {
+        if (req == null || req.getRecebimento() == null) {
+            throw new IllegalArgumentException("Recebimento rodoviário obrigatório.");
+        }
+
+        Recebimento recebimento = new Recebimento(req.getRecebimento());
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ConfAppResp token = confAppService.token();
+        if (token == null || token.getToken() == null || token.getToken().isBlank()) {
+            throw new IllegalStateException(
+                    "Autenticação do Manager indisponível para o recebimento rodoviário."
+            );
+        }
+        headers.setBearerAuth(token.getToken());
+
+        ResponseEntity<Recebimento> response = restTemplate.exchange(
+                UrlConfig.URL_CONFIANCA_MANAGER + "recebimento/RODOVIARIO?autorizacao=false",
+                HttpMethod.POST,
+                new HttpEntity<>(recebimento, headers),
+                Recebimento.class
+        );
+
+        if (response.getBody() == null) {
+            throw new IllegalStateException(
+                    "O Manager não confirmou o recebimento rodoviário."
+            );
+        }
+        return response.getBody();
+    }
 
     private String resolverSistemaNomeCarro(CarroCompraModel req) {
         if (req == null
-                || req.getReservaCarro() == null
-                || req.getReservaCarro().getSistema() == null) {
+            || req.getReservaCarro() == null
+            || req.getReservaCarro().getSistema() == null) {
             return "MB";
         }
 

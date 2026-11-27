@@ -4,6 +4,7 @@ import com.confApi.geradorPdf.aereo.GeradorAereoPDF;
 import com.confApi.geradorPdf.aereo.GeradorAereoPDFModel;
 import com.confApi.geradorPdf.carro.GeradorCarroPDFModel;
 import com.confApi.geradorPdf.hotel.GeradorHotelPDFModel;
+import com.confApi.geradorPdf.rodoviario.GeradorRodoviarioPDFModel;
 import com.confApi.geradorPdf.seguro.GeradorSeguroPDFModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
@@ -60,6 +61,25 @@ public class GeradorPDFController {
     @PostMapping("/reservaCarro")
     public void geradorCarroPdf(@RequestBody GeradorCarroPDFModel geradorCarroPDFModel)  {
         geradorPDFService.popularCarroPDF(geradorCarroPDFModel);
+    }
+
+    @PostMapping({"/reservaRodoviario", "/reservaRodoviario/"})
+    public void geradorRodoviarioPdf(@RequestBody GeradorRodoviarioPDFModel modelo) {
+        geradorPDFService.popularRodoviarioPDF(modelo);
+    }
+
+    @PostMapping({"/gerarRodoviarioPDF", "/gerarRodoviarioPDF/"})
+    public ResponseEntity<byte[]> gerarRodoviarioPDF(@RequestBody GeradorRodoviarioPDFModel modelo) {
+        byte[] pdfBytes = geradorPDFService.gerarPopularRodoviarioPDF(modelo);
+        String localizador = modelo.getReservaRodoviarioModelPDF().getLocalizador().trim()
+                .replaceAll("[^A-Za-z0-9_-]", "_");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentLength(pdfBytes.length);
+        headers.setContentDisposition(ContentDisposition.inline()
+                .filename("reserva-rodoviaria-" + localizador + ".pdf")
+                .build());
+        return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
     }
 
     @PostMapping("/reservaSeguro")
