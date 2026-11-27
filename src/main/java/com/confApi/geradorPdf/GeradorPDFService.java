@@ -17,229 +17,220 @@ import com.confApi.geradorPdf.carro.GeradorCarroPDFModel;
 import com.confApi.geradorPdf.carro.ReservaCarroModelPDF;
 import com.confApi.geradorPdf.hotel.EnvioReservaHotelPDF;
 import com.confApi.geradorPdf.hotel.GeradorHotelPDFModel;
+import com.confApi.geradorPdf.rodoviario.EnvioReservaRodoviarioPDF;
+import com.confApi.geradorPdf.rodoviario.GeradorRodoviarioPDFModel;
+import com.confApi.geradorPdf.rodoviario.PlanoViagemReservaRodoviarioPDF;
+import com.confApi.geradorPdf.rodoviario.ReservaRodoviarioModelPDF;
 import com.confApi.geradorPdf.seguro.EnvioReservaSeguroPDF;
 import com.confApi.geradorPdf.seguro.GeradorSeguroPDFModel;
 import com.confApi.geradorPdf.seguro.PlanoViagemReservaSeguroPDF;
 import com.confApi.geradorPdf.seguro.ReservaSeguroModelPDF;
 import com.confApi.hub.aereo.ReservaAereoModel;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-import java.util.ArrayList;
 
 @Service
 public class GeradorPDFService {
 
     @Autowired
     private ReservaAereoService reservaAereoService;
+
     @Autowired
     private UsuarioService usuarioService;
 
-    public byte[] gerarPopularAereoPDF(GeradorAereoPDFModel geradorAereoPDFModel) {
-        EnvioReservaAereoPDF envioReservaAereoPDF = new EnvioReservaAereoPDF(geradorAereoPDFModel);
-        return new GeradorPDFApi().gerarAereoPDF(envioReservaAereoPDF); // 👈 retorna o byte[]
+    public byte[] gerarPopularAereoPDF(GeradorAereoPDFModel modelo) {
+        return new GeradorPDFApi().gerarAereoPDF(new EnvioReservaAereoPDF(modelo));
     }
 
-    public void popularAereoPDF(GeradorAereoPDFModel geradorAereoPDFModel) {
-        EnvioReservaAereoPDF envioReservaAereoPDF = new EnvioReservaAereoPDF(geradorAereoPDFModel);
-        new GeradorPDFApi().envioAereoPDF(envioReservaAereoPDF);
+    public void popularAereoPDF(GeradorAereoPDFModel modelo) {
+        new GeradorPDFApi().envioAereoPDF(new EnvioReservaAereoPDF(modelo));
     }
 
-    public void popularHotelPDF(GeradorHotelPDFModel geradorHotelPDFModel) {
-      //  System.out.println("getUsuarioConfDto :  "+geradorHotelPDFModel.getUsuarioConfDto());
-        EnvioReservaHotelPDF envioReservaHotelPDF = new EnvioReservaHotelPDF(geradorHotelPDFModel);
-      //  System.out.println("reserva : "+envioReservaHotelPDF.getReservaHotelModelPDF().getLocalizador());
-        new GeradorPDFApi().envioHotelPDF(envioReservaHotelPDF);
+    public void popularHotelPDF(GeradorHotelPDFModel modelo) {
+        new GeradorPDFApi().envioHotelPDF(new EnvioReservaHotelPDF(modelo));
     }
 
-    public void popularCarroPDF(GeradorCarroPDFModel geradorCarroPDFModel) {
-
-        if (geradorCarroPDFModel == null
-                || geradorCarroPDFModel.getReservaCarroModelPDF() == null) {
+    public void popularCarroPDF(GeradorCarroPDFModel modelo) {
+        if (modelo == null || modelo.getReservaCarroModelPDF() == null) {
             return;
         }
-
-        ReservaCarroModelPDF reservaCarroModelPDF = geradorCarroPDFModel.getReservaCarroModelPDF();
-
-        reservaCarroModelPDF.setCompanhiaCarroName(ajustarNomeLocadora(reservaCarroModelPDF.getCompanhiaCarroName())
-        );
-
-        /*
-         * Caso já tenha criado o método da logo,
-         * execute depois da normalização do nome.
-         */
-        preencherLogoLocadora(reservaCarroModelPDF);
-
-        EnvioReservaCarroPDF envioReservaCarroPDF = new EnvioReservaCarroPDF(geradorCarroPDFModel);
-
-        new GeradorPDFApi().envioCarroPDF(envioReservaCarroPDF);
+        ReservaCarroModelPDF reserva = modelo.getReservaCarroModelPDF();
+        reserva.setCompanhiaCarroName(ajustarNomeLocadora(reserva.getCompanhiaCarroName()));
+        preencherLogoLocadora(reserva);
+        new GeradorPDFApi().envioCarroPDF(new EnvioReservaCarroPDF(modelo));
     }
 
     private void preencherLogoLocadora(ReservaCarroModelPDF reserva) {
         if (reserva == null) {
             return;
         }
-
-        /*
-         * Preserva uma logo que já tenha sido enviada pelo Front.
-         */
         if (reserva.getCompanhiaCarroLogo() != null
-                && !reserva
-                .getCompanhiaCarroLogo()
-                .trim()
-                .isEmpty()) {
+            && !reserva.getCompanhiaCarroLogo().trim().isEmpty()) {
             return;
         }
-
-        String logo = LocadoraLogoResolver.resolver(null, reserva.getCompanhiaCarroName());
-        reserva.setCompanhiaCarroLogo(logo);
+        reserva.setCompanhiaCarroLogo(
+                LocadoraLogoResolver.resolver(null, reserva.getCompanhiaCarroName()));
     }
 
     private String ajustarNomeLocadora(String nomeLocadora) {
-
-        if (nomeLocadora == null
-                || nomeLocadora.trim().isEmpty()) {
+        if (nomeLocadora == null || nomeLocadora.trim().isEmpty()) {
             return nomeLocadora;
         }
-
-        String nomeAjustado = nomeLocadora.trim();
-
-        nomeAjustado = nomeAjustado.replaceFirst("\\s*[-–|]?\\s*"
-                        + "\\d{2}\\.?\\d{3}\\.?\\d{3}/?\\d{4}-?\\d{2}"
-                        + "\\s*$",
-                ""
-        );
-
-        /*
-         * Remove espaços duplicados que possam restar.
-         */
-        nomeAjustado = nomeAjustado
+        return nomeLocadora.trim()
+                .replaceFirst("\\s*[-–|]?\\s*\\d{2}\\.?\\d{3}\\.?\\d{3}/?\\d{4}-?\\d{2}\\s*$", "")
                 .replaceAll("\\s{2,}", " ")
                 .trim();
-
-        return nomeAjustado;
     }
 
-    public void popularSeguroPDF(GeradorSeguroPDFModel geradorSeguroPDFModel) {
-
-        if (geradorSeguroPDFModel == null) {
-            throw new IllegalArgumentException(
-                    "Os dados para geração do seguro não foram informados."
-            );
+    public void popularSeguroPDF(GeradorSeguroPDFModel modelo) {
+        if (modelo == null) {
+            throw new IllegalArgumentException("Os dados para geração do seguro não foram informados.");
         }
-
-        ReservaSeguroModelPDF reserva = geradorSeguroPDFModel.getReservaSeguroModelPDF();
-
+        ReservaSeguroModelPDF reserva = modelo.getReservaSeguroModelPDF();
         if (reserva == null) {
-            throw new IllegalArgumentException(
-                    "A reserva de seguro não foi informada."
-            );
+            throw new IllegalArgumentException("A reserva de seguro não foi informada.");
         }
-
-        PlanoViagemReservaSeguroPDF plano = geradorSeguroPDFModel.getPlanoViagemReservaSeguroPDF();
-
+        PlanoViagemReservaSeguroPDF plano = modelo.getPlanoViagemReservaSeguroPDF();
         if (plano == null) {
             plano = new PlanoViagemReservaSeguroPDF();
-
-            geradorSeguroPDFModel.setPlanoViagemReservaSeguroPDF(plano);
+            modelo.setPlanoViagemReservaSeguroPDF(plano);
         }
-
-        /*
-         * Protege o projeto de e-mail contra listas nulas
-         * enviadas explicitamente no JSON.
-         */
         if (reserva.getSegurados() == null) {
             reserva.setSegurados(new ArrayList<>());
         }
-
         if (reserva.getRecebimentos() == null) {
             reserva.setRecebimentos(new ArrayList<>());
         }
-
-        String identificador;
-
-        if (reserva.getLocalizador() != null
-                && !reserva.getLocalizador().trim().isEmpty()) {
-
-            identificador = reserva.getLocalizador().trim();
-
-        } else if (reserva.getCodgReservaSeguroDB() != null) {
-
-            identificador = String.valueOf(
-                    reserva.getCodgReservaSeguroDB()
-            );
-
-        } else {
-            identificador = "NÃO INFORMADO";
-        }
-
+        String identificador = reserva.getLocalizador() != null
+                               && !reserva.getLocalizador().trim().isEmpty()
+                ? reserva.getLocalizador().trim()
+                : reserva.getCodgReservaSeguroDB() != null
+                ? String.valueOf(reserva.getCodgReservaSeguroDB()) : "NÃO INFORMADO";
         boolean cancelada = reserva.getDataCancelamento() != null
-                        || (
-                        reserva.getStatusDescricao() != null
-                                && "CANCELADO".equalsIgnoreCase(
-                                reserva.getStatusDescricao().trim()
-                        )
-                )
-                        || (
-                        reserva.getStatusDescricao() != null
-                                && "CANCELADA".equalsIgnoreCase(
-                                reserva.getStatusDescricao().trim()
-                        )
-                );
-
-        /*
-         * Só define assunto e mensagem quando o Front
-         * não tiver enviado valores próprios.
-         */
-        if (plano.getAssunto() == null
-                || plano.getAssunto().trim().isEmpty()) {
-
-            plano.setAssunto(cancelada
-                            ? "Cancelamento Reserva Seguro - "
-                            + identificador
-                            : "Reserva Seguro - "
-                            + identificador
-            );
+                            || (reserva.getStatusDescricao() != null
+                                && ("CANCELADO".equalsIgnoreCase(reserva.getStatusDescricao().trim())
+                                    || "CANCELADA".equalsIgnoreCase(reserva.getStatusDescricao().trim())));
+        if (plano.getAssunto() == null || plano.getAssunto().trim().isEmpty()) {
+            plano.setAssunto((cancelada ? "Cancelamento Reserva Seguro - " : "Reserva Seguro - ")
+                             + identificador);
         }
-
-        if (plano.getMensagem() == null
-                || plano.getMensagem().trim().isEmpty()) {
-
+        if (plano.getMensagem() == null || plano.getMensagem().trim().isEmpty()) {
             plano.setMensagem(cancelada
-                            ? "Informamos que a reserva de seguro "
-                            + identificador
-                            + " foi cancelada."
-                            : "Segue o plano de viagem da reserva "
-                            + "de seguro "
-                            + identificador
-                            + " conforme solicitado."
-            );
+                    ? "Informamos que a reserva de seguro " + identificador + " foi cancelada."
+                    : "Segue o plano de viagem da reserva de seguro " + identificador
+                      + " conforme solicitado.");
+        }
+        new GeradorPDFApi().envioSeguroPDF(new EnvioReservaSeguroPDF(modelo));
+    }
+
+    public void popularRodoviarioPDF(GeradorRodoviarioPDFModel modelo) {
+        new GeradorPDFApi().envioRodoviarioPDF(prepararRodoviarioPDF(modelo, true));
+    }
+
+    public byte[] gerarPopularRodoviarioPDF(GeradorRodoviarioPDFModel modelo) {
+        return new GeradorPDFApi().gerarRodoviarioPDF(prepararRodoviarioPDF(modelo, false));
+    }
+
+    private EnvioReservaRodoviarioPDF prepararRodoviarioPDF(
+            GeradorRodoviarioPDFModel modelo, boolean exigirDestinatario) {
+        if (modelo == null || modelo.getReservaRodoviarioModelPDF() == null) {
+            throw new IllegalArgumentException("A reserva rodoviária não foi informada.");
+        }
+        if (modelo.getUsuarioConfDto() == null) {
+            throw new IllegalArgumentException("O usuário do envio rodoviário não foi informado.");
         }
 
-        EnvioReservaSeguroPDF envioReservaSeguroPDF = new EnvioReservaSeguroPDF(geradorSeguroPDFModel);
+        ReservaRodoviarioModelPDF reserva = modelo.getReservaRodoviarioModelPDF();
+        if (reserva.getLocalizador() == null || reserva.getLocalizador().isBlank()) {
+            throw new IllegalArgumentException("A reserva rodoviária não possui localizador.");
+        }
+        if (reserva.getTrechos() == null || reserva.getTrechos().isEmpty()) {
+            throw new IllegalArgumentException("A reserva rodoviária não possui itinerário para o comprovante.");
+        }
+        if (reserva.getRecebimentos() == null) {
+            reserva.setRecebimentos(new ArrayList<>());
+        }
+        if (reserva.getValores() == null) {
+            reserva.setValores(new ReservaRodoviarioModelPDF.ValoresPDF());
+        }
 
-        new GeradorPDFApi().envioSeguroPDF(envioReservaSeguroPDF);
+        PlanoViagemReservaRodoviarioPDF plano = modelo.getPlanoViagemReservaRodoviarioPDF();
+        if (plano == null) {
+            plano = new PlanoViagemReservaRodoviarioPDF();
+            modelo.setPlanoViagemReservaRodoviarioPDF(plano);
+        }
+        if (exigirDestinatario) {
+            normalizarDestinatariosRodoviario(plano);
+        }
+        if (exigirDestinatario && (plano.getEmailPara() == null || plano.getEmailPara().isBlank())) {
+            throw new IllegalArgumentException("Informe o e-mail para enviar o comprovante rodoviário.");
+        }
 
+        boolean cancelada = Integer.valueOf(2).equals(reserva.getStatus())
+                            || (reserva.getDataCancelamento() != null
+                                && !reserva.getDataCancelamento().isBlank());
+        String localizador = reserva.getLocalizador().trim();
+        if (plano.getAssunto() == null || plano.getAssunto().isBlank()) {
+            plano.setAssunto((cancelada ? "Cancelamento Reserva Rodoviária - "
+                    : "Plano de viagem - Reserva Rodoviária ") + localizador);
+        }
+        if (plano.getMensagem() == null || plano.getMensagem().isBlank()) {
+            plano.setMensagem(cancelada
+                    ? "Informamos que a reserva rodoviária " + localizador + " foi cancelada."
+                    : "Segue em anexo o plano de viagem da reserva rodoviária "
+                      + localizador + ".");
+        }
+
+        return new EnvioReservaRodoviarioPDF(modelo);
+    }
+
+    private void normalizarDestinatariosRodoviario(PlanoViagemReservaRodoviarioPDF plano) {
+        Map<String, String> para = new LinkedHashMap<>();
+        Map<String, String> copias = new LinkedHashMap<>();
+        Map<String, String> lista = new LinkedHashMap<>();
+        adicionarEmailsRodoviario(para, plano.getEmailPara());
+        adicionarEmailsRodoviario(copias, plano.getEmailCopia());
+        adicionarEmailsRodoviario(lista, plano.getEmailsList());
+
+        // emailsList é um campo legado: aproveita apenas endereços ainda ausentes.
+        lista.forEach((chave, email) -> {
+            if (!copias.containsKey(chave)) {
+                para.putIfAbsent(chave, email);
+            }
+        });
+        copias.keySet().removeAll(para.keySet());
+
+        plano.setEmailPara(String.join(";", para.values()));
+        plano.setEmailCopia(copias.isEmpty() ? null : String.join(";", copias.values()));
+        plano.setEmailsList(null);
+        plano.setReceberCopiaEmail(false);
+    }
+
+    private void adicionarEmailsRodoviario(Map<String, String> destino, String lista) {
+        if (lista == null || lista.isBlank()) {
+            return;
+        }
+        for (String item : lista.split("[;,]")) {
+            String email = item.trim();
+            if (!email.isEmpty()) {
+                destino.putIfAbsent(email.toLowerCase(Locale.ROOT), email);
+            }
+        }
     }
 
     public void popularAereoPDFApp(GeradorAereoPDF geradorAereoPDF) {
-
         UsuarioResponse usuarioResponse = usuarioService.consultarUsuario(geradorAereoPDF.getUsuarioLogin());
         usuarioResponse.setAgencia(new Agencia(geradorAereoPDF.getAgenciaCodg()));
-       // System.out.println("usuarioResponse : "+usuarioResponse);
-
         ReservaAereoResponse reservaAereoResponse = reservaAereoService.consultarLocalizador(
-                new ReservaAereoConsultarLocalizadorRequest(geradorAereoPDF, usuarioResponse.getAgencia())
-        );
-
-        GeradorAereoPDFModel geradorAereoPDFModel = new GeradorAereoPDFModel(
+                new ReservaAereoConsultarLocalizadorRequest(geradorAereoPDF, usuarioResponse.getAgencia()));
+        GeradorAereoPDFModel modelo = new GeradorAereoPDFModel(
                 new ReservaAereoModel(reservaAereoResponse),
                 new UsuarioConfDto(usuarioResponse),
-                new PlanoViagemReservaAereoPDF(geradorAereoPDF)
-        );
-
-        EnvioReservaAereoPDF envioReservaAereoPDF = new EnvioReservaAereoPDF(geradorAereoPDFModel);
-        new GeradorPDFApi().envioAereoPDF(envioReservaAereoPDF);
+                new PlanoViagemReservaAereoPDF(geradorAereoPDF));
+        new GeradorPDFApi().envioAereoPDF(new EnvioReservaAereoPDF(modelo));
     }
 }
-

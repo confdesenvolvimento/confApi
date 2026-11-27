@@ -46,11 +46,15 @@ class RodoviarioReservaMapperTest {
         assertEquals(0, mapper.status(json.readTree(RodoviarioReservaServiceTest.COMPRA.replace("emitted", "pending"))));
         assertEquals(0, mapper.status(json.readTree(RodoviarioReservaServiceTest.COMPRA.replace("paid", "canceled"))));
     }
-    @Test void preservaTotalDeVendaInformadoPeloFrontECustoRealDoFornecedor() throws Exception {
-        var req = template(); req.getValores().setValorTotalMkp(new BigDecimal("20.00"));
+    @Test void usaTotalConfirmadoPeloFornecedorERegistraDivergencia() throws Exception {
+        var req = template();
+        req.getValores().setValorTotalNet(new BigDecimal("20.00"));
+        req.getValores().setValorTotalMkp(new BigDecimal("20.00"));
         var mapped = mapper.mapear(req, json.readTree(RodoviarioReservaServiceTest.COMPRA), Map.of(11, "ROD_1", 22, "CIT_15"));
-        assertEquals(new BigDecimal("20.00"), mapped.getValores().getValorTotalMkp());
         assertEquals(0, new BigDecimal("22.40").compareTo(mapped.getValores().getValorTotalNet()));
+        assertEquals(mapped.getValores().getValorTotalNet(), mapped.getValores().getValorTotalMkp());
+        assertEquals(1, mapped.getDivergenciasOperacao().size());
+        assertEquals("VALOR_TOTAL_NET", mapped.getDivergenciasOperacao().get(0).campo());
     }
     @Test void rejeitaValorInvalidoAntesDaOperacaoExterna() throws Exception {
         var req = template(); req.getValores().setValorTotalMkp(new BigDecimal("-1.00"));

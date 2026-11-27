@@ -6,8 +6,9 @@ import com.confApi.confApp.ConfAppResp;
 import com.confApi.confApp.ConfAppService;
 import com.confApi.config.UrlConfig;
 import com.confApi.db.confManager.recebimento.Recebimento;
-import com.confApi.seguros.dto.SeguroCompraModel;
 import com.confApi.operacao.RastreioReserva;
+import com.confApi.rodoviario.dto.RodoviarioCompraModel;
+import com.confApi.seguros.dto.SeguroCompraModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,30 +35,50 @@ public class RecebimentoService {
     public Recebimento criarRecebimento(SeguroCompraModel req) {
         if (req == null || req.getRecebimento() == null) return null;
         String sistemaNome = req.getSistema() != null ? req.getSistema().getNomeSistema() : "Hero";
-        return criarRecebimento(new Recebimento(req.getRecebimento()), sistemaNome);
+        return criarRecebimento(new Recebimento(req.getRecebimento()), sistemaNome, false);
     }
 
     public Recebimento criarRecebimento(CarroCompraModel req) {
         if (req == null || req.getRecebimento() == null) {
             return null;
         }
-        return criarRecebimento(new Recebimento(req.getRecebimento()), resolverSistemaNomeCarro(req));
+        return criarRecebimento(new Recebimento(req.getRecebimento()), resolverSistemaNomeCarro(req), false);
     }
 
-    private Recebimento criarRecebimento(Recebimento recebimento, String sistemaNome) {
+    public Recebimento criarRecebimento(RodoviarioCompraModel req) {
+        if (req == null || req.getRecebimento() == null) {
+            throw new IllegalArgumentException("Recebimento rodoviário obrigatório.");
+        }
+        Recebimento resposta = criarRecebimento(new Recebimento(req.getRecebimento()), "RODOVIARIO", true);
+        if (resposta == null) {
+            throw new IllegalStateException("O Manager não confirmou o recebimento rodoviário.");
+        }
+        return resposta;
+    }
+
+    private Recebimento criarRecebimento(Recebimento recebimento, String sistemaNome, boolean tokenObrigatorio) {
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.setContentType(MediaType.APPLICATION_JSON);
         RastreioReserva.propagar(headers);
+
+        ConfAppResp token;
         try {
-            ConfAppResp token = confAppService.token();
-            if (token != null && token.getToken() != null) {
-                headers.setBearerAuth(token.getToken());
-            }
+            token = confAppService.token();
         } catch (Exception ex) {
             LOG.warn("Falha antes de enviar recebimento operacao={} tipo={}",
                     RastreioReserva.id(), ex.getClass().getSimpleName());
+            if (tokenObrigatorio) {
+                throw new IllegalStateException("Autenticação do Manager indisponível para o recebimento rodoviário.");
+            }
             return null;
+        }
+        String bearer = token == null ? null : token.getToken();
+        if (tokenObrigatorio && (bearer == null || bearer.isBlank())) {
+            throw new IllegalStateException("Autenticação do Manager indisponível para o recebimento rodoviário.");
+        }
+        if (bearer != null) {
+            headers.setBearerAuth(bearer);
         }
 
         Recebimento resposta;
@@ -81,7 +102,6 @@ public class RecebimentoService {
         }
         return resposta;
     }
-
 
     private String resolverSistemaNomeCarro(CarroCompraModel req) {
         if (req == null

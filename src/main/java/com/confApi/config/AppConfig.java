@@ -8,6 +8,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.OkHttp3ClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestTemplate;
 
@@ -20,6 +21,19 @@ public class AppConfig {
     @Bean
     public RestTemplate restTemplate() {
         return new RestTemplate();
+    }
+
+    @Bean
+    public RestTemplate recebimentoRedeRestTemplate() {
+        var fabrica = new SimpleClientHttpRequestFactory() {
+            @Override
+            protected void prepareConnection(java.net.HttpURLConnection conexao, String metodo) throws java.io.IOException {
+                super.prepareConnection(conexao, metodo);
+                conexao.setInstanceFollowRedirects(false);
+            }
+        };
+        fabrica.setBufferRequestBody(false);
+        return new RestTemplate(fabrica);
     }
 
     @Bean("chatConfiancaRestTemplate")

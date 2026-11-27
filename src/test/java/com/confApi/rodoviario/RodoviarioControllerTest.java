@@ -111,6 +111,17 @@ class RodoviarioControllerTest {
                 .andExpect(status().isInternalServerError()).andExpect(jsonPath("$.codigo").value("ERRO_INTERNO"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("SEGREDO"))));
     }
+    @Test void falhaDoManagerNaGravacaoNaoRepassaCorpoPrivado() throws Exception {
+        when(manager.salvarCompleta(any(), isNull())).thenThrow(
+                org.springframework.web.client.HttpServerErrorException.create(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY, "Falha", org.springframework.http.HttpHeaders.EMPTY,
+                        "{\"mensagem\":\"DETALHE_PRIVADO_MANAGER\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        java.nio.charset.StandardCharsets.UTF_8));
+        mvc.perform(post("/v1/rodoviario/reservas/salvarCompleta").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.requerConferencia").value(true))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("DETALHE_PRIVADO_MANAGER"))));
+    }
     @Test void jsonMalformadoContinuaRetornando400AntesDoFornecedor() throws Exception {
         mvc.perform(post("/v1/rodoviario/pesquisar").contentType(MediaType.APPLICATION_JSON).content("{"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.codigo").value("REQUEST_INVALIDO"));

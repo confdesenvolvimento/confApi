@@ -11,6 +11,7 @@ import com.confApi.db.confManager.recebimento.Recebimento;
 import com.confApi.db.confManager.sistema.Sistema;
 import com.confApi.hub.carro.HubCarroClient;
 import com.confApi.model.RecebimentoModel;
+import com.confApi.recebimento.PagamentoRedeEmConferencia;
 import com.confApi.recebimento.RecebimentoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import com.confApi.operacao.DivergenciaOperacao;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -72,6 +74,7 @@ public class CarroReservaService {
     @Transactional(rollbackFor = Exception.class)
     public CarroReservaOperacaoResponseDTO reservar(CarroCompraModel req) {
         Recebimento recebimento = null;
+        String localizadorConfirmado = null;
 
         try {
             if (req == null || req.getReservaCarro() == null) {
@@ -93,12 +96,15 @@ public class CarroReservaService {
              */
             recebimento = recebimentoService.criarRecebimento(req);
 
+            if (recebimento != null && Integer.valueOf(3).equals(recebimento.getStatus())) {
+                throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
+            }
             if (recebimento == null
                     || recebimento.getCodgRecebimento() == null
                     || !Integer.valueOf(1).equals(recebimento.getStatus())) {
 
                 return CarroReservaOperacaoResponseDTO.erro(
-                        "ERRO: Não foi possível efetuar o pagamento, tente novamente mais tarde."
+                        "ERRO: O pagamento não foi confirmado."
                 );
             }
 
@@ -137,7 +143,11 @@ public class CarroReservaService {
             List<EmitirCarroResponseDTO> emissoes =
                     hubCarroClient.reservar(req.getReservaCarro());
 
-            if (emissoes == null || emissoes.isEmpty() || temErroEmissao(emissoes)) {
+            EmitirCarroResponseDTO emissao = obterPrimeiraEmissaoValida(emissoes);
+            if (emissao == null) {
+                if (!recusaFornecedorConfirmada(emissoes)) {
+                    throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
+                }
                 recebimentoService.cancelarRecebimento(recebimento);
 
                 return CarroReservaOperacaoResponseDTO.erro(
@@ -145,15 +155,7 @@ public class CarroReservaService {
                 );
             }
 
-            EmitirCarroResponseDTO emissao = obterPrimeiraEmissaoValida(emissoes);
-
-            if (emissao == null) {
-                recebimentoService.cancelarRecebimento(recebimento);
-
-                return CarroReservaOperacaoResponseDTO.erro(
-                        "ERRO: Pagamento cancelado. A emissão não retornou uma resposta válida."
-                );
-            }
+            localizadorConfirmado = emissao.getLocalizador();
 
             /*
              * 3. Consulta a reserva emitida no fornecedor para recuperar dados completos.
@@ -162,11 +164,7 @@ public class CarroReservaService {
                     consultarReservaEmitida(emissao, req);
 
             if (reservaConsultada == null || reservaConsultada.getReservaCarro() == null) {
-                recebimentoService.cancelarRecebimento(recebimento);
-
-                return CarroReservaOperacaoResponseDTO.erro(
-                        "ERRO: Pagamento cancelado. Não foi possível consultar a reserva emitida para salvar no banco."
-                );
+                return pendenteManager(localizadorConfirmado);
             }
 
             System.out.println("Salva no Manager::");
@@ -178,11 +176,7 @@ public class CarroReservaService {
                     salvarReservaCompletaNoManager(reservaConsultada, req);
 
             if (reservaSalva == null || reservaSalva.getCodgReservaCarro() == null) {
-                recebimentoService.cancelarRecebimento(recebimento);
-
-                return CarroReservaOperacaoResponseDTO.erro(
-                        "ERRO: Pagamento cancelado. Não foi possível salvar a reserva de carro no banco."
-                );
+                return pendenteManager(localizadorConfirmado);
             }
 
             /*
@@ -192,20 +186,21 @@ public class CarroReservaService {
                     buscarReservaDetalheNoManager(reservaSalva.getCodgReservaCarro());
 
             if (detalhe == null || detalhe.getCarroReserva() == null) {
-                return CarroReservaOperacaoResponseDTO.erro(
-                        "ERRO: Reserva salva, mas não foi possível carregar os dados salvos."
-                );
+                return pendenteManager(localizadorConfirmado);
             }
 
             return CarroReservaOperacaoResponseDTO.sucesso(detalhe);
 
+        } catch (PagamentoRedeEmConferencia pendente) {
+            throw pendente;
         } catch (Exception e) {
+            if (localizadorConfirmado != null) return pendenteManager(localizadorConfirmado);
             if (recebimento != null && recebimento.getCodgRecebimento() != null) {
-                recebimentoService.cancelarRecebimento(recebimento);
+                throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
             }
 
             return CarroReservaOperacaoResponseDTO.erro(
-                    "ERRO: Não foi possível concluir a reserva de carro. " + e.getMessage()
+                    "ERRO: Não foi possível concluir a reserva de carro."
             );
         }
     }
@@ -306,10 +301,7 @@ public class CarroReservaService {
                 return erroCancelamento("O fornecedor confirmou o cancelamento, mas não foi possível atualizar "
                         + "a reserva no sistema. Consulte a reserva para sincronizar o status.");
             }
-            return erroCancelamento(
-                    "ERRO: Não foi possível cancelar a reserva de carro. "
-                            + e.getMessage()
-            );
+            return erroCancelamento("O cancelamento do carro não foi confirmado. Consulte a reserva antes de repetir.");
         }
     }
 
@@ -454,8 +446,7 @@ public class CarroReservaService {
 
         } catch (Exception e) {
             return CarroReservaOperacaoResponseDTO.erro(
-                    "ERRO: Não foi possível consultar a reserva de carro. "
-                            + e.getMessage()
+                    "ERRO: Não foi possível consultar a reserva de carro."
             );
         }
     }
@@ -795,11 +786,26 @@ public class CarroReservaService {
         payload.setCarroValor(carroValor);
         payload.setCondutores(condutores);
         payload.setItens(itens);
+        var divergencias = payload.getDivergenciasOperacao();
+        DivergenciaOperacao.comparar(divergencias, "RESERVA", "DATA_RETIRADA",
+                dataCivil(carroCompraModel.getDataRetiradaSolicitada()), dataCivil(reservaCarroHub.getDataRetirada()));
+        DivergenciaOperacao.comparar(divergencias, "RESERVA", "DATA_RETORNO",
+                dataCivil(carroCompraModel.getDataRetornoSolicitada()), dataCivil(reservaCarroHub.getDataRetorno()));
+        String moedaEsperada = moeda(carroCompraModel.getMoedaFornecedorSolicitada());
+        String moedaReal = moeda(reservaCarroHub.getMoeda());
+        DivergenciaOperacao.comparar(divergencias, "RESERVA", "MOEDA", moedaEsperada, moedaReal);
+        if (moedaEsperada != null && moedaEsperada.equals(moedaReal)) {
+            DivergenciaOperacao.comparar(divergencias, "RESERVA", "VALOR_TARIFA",
+                    DivergenciaOperacao.valor(carroCompraModel.getTarifaFornecedorSolicitada()),
+                    DivergenciaOperacao.valor(reservaCarroHub.getValorTarifa()));
+        }
 
 
         ConfAppResp token = confAppService.token();
 
         HttpHeaders headers = defaultHeaders(token.getToken());
+
+        com.confApi.operacao.RastreioReserva.propagar(headers);
 
         HttpEntity<SalvarReservaCarroRequestDTO> entity =
                 new HttpEntity<>(payload, headers);
@@ -865,6 +871,16 @@ public class CarroReservaService {
                 : String.join(" | ", mensagens);
     }
 
+    private static boolean recusaFornecedorConfirmada(List<EmitirCarroResponseDTO> respostas) {
+        return respostas != null && !respostas.isEmpty()
+                && respostas.stream().allMatch(resposta -> {
+                    if (resposta == null || !Boolean.FALSE.equals(resposta.getSuccess())) return false;
+                    if (resposta.getError() != null && !resposta.getError().isEmpty()) return true;
+                    String mensagem = CarroErroMensagem.obter(null, resposta.getReturnMessage(), resposta.getMensagem(), "");
+                    return !mensagem.isBlank() && !"Não foi possível concluir a reserva de carro no fornecedor.".equals(mensagem);
+                });
+    }
+
     private boolean temErroEmissao(List<EmitirCarroResponseDTO> emissoes) {
         for (EmitirCarroResponseDTO emissao : emissoes) {
             if (emissao == null) {
@@ -917,6 +933,32 @@ public class CarroReservaService {
         }
 
         return headers;
+    }
+
+    private static CarroReservaOperacaoResponseDTO pendenteManager(String localizador) {
+        String confirmado = localizador != null && localizador.matches("[A-Za-z0-9_-]{1,85}") ? localizador : null;
+        String referencia = confirmado == null ? "" : " " + confirmado;
+        var pendente = CarroReservaOperacaoResponseDTO.erro(
+                "O fornecedor confirmou a reserva" + referencia + ". Confira a gravação no Manager antes de solicitar outra.");
+        pendente.setLocalizadorConfirmado(confirmado);
+        return pendente;
+    }
+
+    private static String moeda(String codigo) {
+        return codigo != null && codigo.matches("[A-Za-z]{3}") ? codigo.toUpperCase(java.util.Locale.ROOT) : null;
+    }
+
+    private static java.time.LocalDate dataCivil(String data) {
+        if (data == null || data.isBlank()) return null;
+        String texto = data.strip().split("[T ]", 2)[0];
+        for (var formato : List.of(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE,
+                java.time.format.DateTimeFormatter.ofPattern("dd/MM/uuuu"),
+                java.time.format.DateTimeFormatter.ofPattern("dd-MM-uuuu"))) {
+            try {
+                return java.time.LocalDate.parse(texto, formato.withResolverStyle(java.time.format.ResolverStyle.STRICT));
+            } catch (java.time.format.DateTimeParseException ignorar) { }
+        }
+        return null;
     }
 
     private boolean isBlank(String value) {

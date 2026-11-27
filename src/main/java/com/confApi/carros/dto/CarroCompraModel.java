@@ -22,4 +22,8 @@ public class CarroCompraModel {
     private String fonte;
 
     private Integer qtdPortas;
+    private String dataRetiradaSolicitada;
+    private String dataRetornoSolicitada;
+    private Double tarifaFornecedorSolicitada;
+    private String moedaFornecedorSolicitada;
 }

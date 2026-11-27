@@ -19,6 +19,9 @@ import java.util.List;
 
 @Data
 public class SeguroReserva {
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    private java.util.List<com.confApi.operacao.DivergenciaOperacao> divergenciasOperacao = new java.util.ArrayList<>();
+
 
     private Integer codgReservaSeguro;
     private Usuario codgUsuarioCriacao;

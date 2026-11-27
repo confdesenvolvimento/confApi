@@ -3,6 +3,9 @@ import lombok.Data;
 import java.util.*;
 @Data
 public class SalvarReservaRodoviarioRequest {
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    private java.util.List<com.confApi.operacao.DivergenciaOperacao> divergenciasOperacao = new java.util.ArrayList<>();
+
     private String chaveIdempotencia;
     private ReservaRodoviarioDTO reserva;
     private List<TrechoCompleto> trechos = new ArrayList<>();

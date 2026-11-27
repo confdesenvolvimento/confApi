@@ -84,9 +84,11 @@ class SegurosCompraIdentificacaoTest {
         when(recebimentos.criarRecebimento(req)).thenReturn(pago);
         when(service.comprar(req)).thenReturn(reserva);
         when(hub.efetuarReserva(req)).thenReturn(List.of(confirmacao));
+        when(service.atualizarReserva(reserva)).thenReturn(null, reserva);
         assertSame(reserva, controller.comprar(req));
         assertEquals("SEG123", reserva.getLocalizador());
-        verify(service).atualizarReserva(reserva);
+        verify(service, times(2)).atualizarReserva(reserva);
+        verify(hub).efetuarReserva(req);
         verify(recebimentos, never()).cancelarRecebimento(any());
     }
 
@@ -95,9 +97,27 @@ class SegurosCompraIdentificacaoTest {
         Recebimento pago = pagamento();
         when(recebimentos.criarRecebimento(req)).thenReturn(pago);
         when(service.comprar(req)).thenReturn(null);
-        assertTrue(controller.comprar(req).getObservacaoInterna().startsWith("ERRO:"));
+        var pendencia = assertThrows(com.confApi.recebimento.PagamentoRedeEmConferencia.class, () -> controller.comprar(req));
+        assertEquals(30, pendencia.resposta().codgRecebimento());
         verify(recebimentos).cancelarRecebimento(pago);
         verifyNoInteractions(hub);
+    }
+
+    @Test void semRetornoDaEmissaoNaoEstornaNemRepeteSolicitacao() throws Exception {
+        SeguroCompraModel req = requisicaoValida();
+        Recebimento pago = pagamento();
+        SeguroReserva reserva = new SeguroReserva();
+        reserva.setCodgReservaSeguro(90);
+        pago.setCodgTransacao("TID-TESTE");
+        when(recebimentos.criarRecebimento(req)).thenReturn(pago);
+        when(service.comprar(req)).thenReturn(reserva);
+        when(hub.efetuarReserva(req)).thenReturn(null);
+
+        var pendencia = assertThrows(com.confApi.recebimento.PagamentoRedeEmConferencia.class, () -> controller.comprar(req));
+        assertEquals("TID-TESTE", pendencia.resposta().tid());
+        verify(hub).efetuarReserva(req);
+        verify(recebimentos, never()).cancelarRecebimento(any());
+        verify(service, never()).cancelarReserva(any());
     }
 
     @Test void retornoNuloDoPagamentoNaoCausaNullPointerException() throws Exception {

@@ -112,6 +112,16 @@ class CarroReservaErroFornecedorTest {
         server.verify();
     }
 
+    @Test void respostaInconclusivaNaoEstornaRecebimentoConfirmadoNemRepeteReserva() {
+        recebimento.setCodgTransacao("TID123");
+        reservaRespondida("[]");
+        var pendencia = assertThrows(com.confApi.recebimento.PagamentoRedeEmConferencia.class, () -> service.reservar(compra));
+        assertEquals(123, pendencia.resposta().codgRecebimento());
+        assertEquals("TID123", pendencia.resposta().tid());
+        verify(pagamentos, never()).cancelarRecebimento(any());
+        server.verify();
+    }
+
     @Test void reservaValidaContinuaEmitindo() {
         reservaRespondida("[{\"success\":true,\"tokenSession\":\"selecao\",\"reservaCarro\":{\"bookingID\":\"CAR123\"}}]");
         server.expect(requestTo(UrlConfig.URL_CONFIANCA_HUB + "api/carro/emitir"))

@@ -1,14 +1,19 @@
 package com.confApi.db.confManager.hotel.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.confApi.db.confManager.hotelQuartoValor.HotelQuartoValor;
 import com.confApi.db.confManager.reservaHotel.dto.ReservaHotel;
 import com.confApi.hub.hotel.dto.TarifaDiaria;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 public class TarifaHotel implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 8458339063101260972L;
 
     private Double valorMarkupAplicado = 0.0;
     private Double percentualMarkupAplicado = 0.0;
@@ -24,6 +29,8 @@ public class TarifaHotel implements Serializable {
     private Double valorTaxaIss = 0.0;
     private Double valorTaxaServico = 0.0;
     private String moeda;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String referenciaOfertaOmnibees;
     private Double cambio = 1.0;
     private Double valorComissaoExtra = 0.0;
     private Double percentualComissaoExtra = 0.0;
@@ -119,6 +126,14 @@ public class TarifaHotel implements Serializable {
 
     public void setMoeda(String moeda) {
         this.moeda = moeda;
+    }
+
+    public String getReferenciaOfertaOmnibees() {
+        return referenciaOfertaOmnibees;
+    }
+
+    public void setReferenciaOfertaOmnibees(String referenciaOfertaOmnibees) {
+        this.referenciaOfertaOmnibees = referenciaOfertaOmnibees;
     }
 
     public Double getValorMarkupAplicado() {

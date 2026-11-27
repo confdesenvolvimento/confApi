@@ -1,5 +1,6 @@
 package com.confApi.exception;
 
+import com.confApi.recebimento.PagamentoRedeEmConferencia;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,6 +14,11 @@ import java.util.logging.Logger;
 public class GlobalExceptionHandler {
 
     private static final Logger LOG = Logger.getLogger(GlobalExceptionHandler.class.getName());
+
+    @ExceptionHandler(PagamentoRedeEmConferencia.class)
+    public ResponseEntity<PagamentoRedeEmConferencia.Resposta> handlePagamentoRedeEmConferencia(PagamentoRedeEmConferencia ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.resposta());
+    }
 
     @ExceptionHandler(com.confApi.chatgpt.service.OpenAiUnavailableException.class)
     public ResponseEntity<ErroResponse> handleOpenAiUnavailable(com.confApi.chatgpt.service.OpenAiUnavailableException ex) {

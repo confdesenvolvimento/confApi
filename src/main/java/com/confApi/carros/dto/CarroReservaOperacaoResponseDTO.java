@@ -19,6 +19,8 @@ public class CarroReservaOperacaoResponseDTO {
 
     private Boolean mergeExecutado;
     private Boolean statusAtualizado;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private String localizadorConfirmado;
 
     public static CarroReservaOperacaoResponseDTO sucesso(
             CarroReservaDetalheDTO reserva
