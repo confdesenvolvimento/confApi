@@ -65,6 +65,7 @@ public final class HotelReservaMapper {
                 TarifaHotel th = new TarifaHotel();
                 th.setValorTotalEstadiaNet(aFront.getTarifaHotel().getValorTotalEstadiaNet());
                 th.setMoeda(aFront.getTarifaHotel().getMoeda());
+                th.setReferenciaOfertaOmnibees(aFront.getTarifaHotel().getReferenciaOfertaOmnibees());
                 aHub.setTarifaHotel(th);
             } else {
                 aHub.setTarifaHotel(null);
@@ -204,6 +205,7 @@ public final class HotelReservaMapper {
                 TarifaHotel th = new TarifaHotel();
                 th.setValorTotalEstadiaNet(aFront.getTarifaHotel().getValorTotalEstadiaNet());
                 th.setMoeda(aFront.getTarifaHotel().getMoeda());
+                th.setReferenciaOfertaOmnibees(aFront.getTarifaHotel().getReferenciaOfertaOmnibees());
                 aHub.setTarifaHotel(th);
             } else {
                 aHub.setTarifaHotel(null);

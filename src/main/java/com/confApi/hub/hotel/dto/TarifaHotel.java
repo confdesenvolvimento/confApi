@@ -1,5 +1,6 @@
 package com.confApi.hub.hotel.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 
 import java.util.ArrayList;
@@ -23,6 +24,9 @@ public class TarifaHotel {
     private Double valorTaxaIss = 0.0;
     private Double valorTaxaServico = 0.0;
     private String moeda;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @ToString.Exclude
+    private String referenciaOfertaOmnibees;
     private String disponibilidade;
     private List<TarifaDiaria> tarifasDiaria = new ArrayList<>();
 
@@ -39,6 +43,7 @@ public class TarifaHotel {
         this.valorTaxaIss = tarifaHotel.getValorTaxaIss();
         this.valorTaxaServico = tarifaHotel.getValorTaxaServico();
         this.moeda = tarifaHotel.getMoeda();
+        this.referenciaOfertaOmnibees = tarifaHotel.getReferenciaOfertaOmnibees();
         this.disponibilidade = tarifaHotel.getDisponibilidade();
         this.tarifasDiaria = tarifaHotel.getTarifasDiaria();
     }

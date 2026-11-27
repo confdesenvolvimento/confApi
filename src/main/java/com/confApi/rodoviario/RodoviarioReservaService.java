@@ -229,7 +229,7 @@ public class RodoviarioReservaService {
                 resposta.setFornecedor(hub.post(bilhete ? cancelarbilhete : cancelarcompra, cancelar));
                 conferirCompra(resposta);
             }
-            sincronizar(resposta, usuario, req.getMotivo());
+            sincronizar(resposta, usuario, req.getMotivo(), true);
             resposta.setSuccess(true);
             if (mapper.status(resposta.getFornecedor().path("dados")) == 2) {
                 resposta.setMensagem("Cancelamento confirmado no fornecedor e registrado no Manager. Confira os recebimentos.");
@@ -271,6 +271,10 @@ public class RodoviarioReservaService {
     }
 
     private void sincronizar(RodoviarioReservaOperacaoResponse r, String usuario, String motivo) {
+        sincronizar(r, usuario, motivo, false);
+    }
+
+    private void sincronizar(RodoviarioReservaOperacaoResponse r, String usuario, String motivo, boolean cancelamentoSolicitado) {
         conferirCompra(r);
         var detalhe = r.getReserva();
         var compra = r.getFornecedor().path("dados");
@@ -281,15 +285,25 @@ public class RodoviarioReservaService {
             return;
         }
         if (status == 1 && Integer.valueOf(0).equals(atual)) atualizarBilhetes(detalhe, compra, usuario);
-        if (!Integer.valueOf(status).equals(atual)) {
-            exigir(!Integer.valueOf(2).equals(atual), 409, "Reserva cancelada no Manager diverge do fornecedor.");
+        var divergencias = new ArrayList<com.confApi.operacao.DivergenciaOperacao>();
+        var total = compra.path("pagamento").path("total");
+        if (cancelamentoSolicitado && status == 2 && detalhe.getValores() != null
+                && detalhe.getValores().getValorTotalNet() != null && total.isNumber()
+                && detalhe.getValores().getValorTotalNet().compareTo(total.decimalValue()) != 0) {
+            divergencias.add(com.confApi.operacao.DivergenciaOperacao.registrar("CANCELAMENTO", "VALOR_TOTAL_NET",
+                    detalhe.getValores().getValorTotalNet().toPlainString(), total.decimalValue().toPlainString()));
+        }
+        boolean statusMudou = !Integer.valueOf(status).equals(atual);
+        if (statusMudou || !divergencias.isEmpty()) {
+            exigir(!statusMudou || !Integer.valueOf(2).equals(atual), 409, "Reserva cancelada no Manager diverge do fornecedor.");
             var request = new StatusRodoviarioRequest();
             request.setStatus(status);
             request.setMotivo(motivo);
+            request.setDivergenciasOperacao(divergencias);
             manager.trocar("reservaRodoviario/" + detalhe.getReserva().getCodgReservaRodoviario() + "/statusFornecedor",
                     HttpMethod.PUT, request, null, usuario, JsonNode.class, true);
             r.setReserva(manager.detalhe(detalhe.getReserva().getCodgReservaRodoviario(), usuario));
-            r.setStatusAtualizado(true);
+            r.setStatusAtualizado(statusMudou);
         }
         r.setMergeExecutado(true);
     }

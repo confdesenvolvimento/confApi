@@ -74,6 +74,7 @@ public class RodoviarioHttpClient {
         log.info("Rodoviario integracao autenticacao requestId={} servico={}",
                 MDC.get(RodoviarioRequestLoggingFilter.REQUEST_ID), servico);
         headers.setBearerAuth(token(servico));
+        com.confApi.operacao.RastreioReserva.propagar(headers);
         if (servico == Servico.MANAGER && usuario != null && !usuario.isBlank()) headers.set("X-Usuario-Token", usuario);
         for (int tentativa = 1; ; tentativa++) {
             try {

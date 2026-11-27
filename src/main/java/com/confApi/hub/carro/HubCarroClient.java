@@ -282,6 +282,7 @@ public class HubCarroClient {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.setBearerAuth(bearerToken);
+        com.confApi.operacao.RastreioReserva.propagar(headers);
         return headers;
     }
 }

@@ -8,12 +8,14 @@ import com.confApi.db.confManager.seguro.reserva.SeguroReserva;
 import com.confApi.db.confManager.seguro.segurado.SeguroSegurado;
 import com.confApi.hub.seguro.HubSeguroClient;
 import com.confApi.model.RecebimentoModel;
+import com.confApi.recebimento.PagamentoRedeEmConferencia;
 import com.confApi.recebimento.RecebimentoService;
 import com.confApi.seguros.dto.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,29 +54,61 @@ public class  SegurosController {
     public SeguroReserva comprar(@RequestBody SeguroCompraModel req) {
         validarIdentificacao(req);
         Recebimento recebimento = recebimentoService.criarRecebimento(req);
+        if (recebimento != null && Integer.valueOf(3).equals(recebimento.getStatus())) {
+            throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
+        }
         if(recebimento == null || recebimento.getCodgRecebimento() == null || !Integer.valueOf(1).equals(recebimento.getStatus())){
-            return new SeguroReserva("ERRO: Não foi possivel efetuar o pagamento, tente novamente mais tarde.");
+            return new SeguroReserva("ERRO: O pagamento não foi confirmado.");
         }
         req.setRecebimento(new RecebimentoModel(recebimento.getCodgRecebimento()));
-        SeguroReserva seguroReserva = service.comprar(req);
+        SeguroReserva seguroReserva;
+        try {
+            seguroReserva = service.comprar(req);
+        } catch (RuntimeException erro) {
+            throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
+        }
         if(seguroReserva == null || seguroReserva.getCodgReservaSeguro() == null){
-            Recebimento recebimentoErro = recebimentoService.cancelarRecebimento(recebimento);
-            return new SeguroReserva("ERRO: Não foi possivel gravar o seguro no banco de dados, tente novamente mais tarde.");
+            // A emissão ainda não foi enviada ao fornecedor. Preserve a compensação deste caso.
+            recebimentoService.cancelarRecebimento(recebimento);
+            throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
         }
-        List<SeguroReservaDTO> efetuarCompra = hubSeguroClient.efetuarReserva(req);
-
-        if(efetuarCompra == null || efetuarCompra.isEmpty()){
-            Recebimento recebimentoErro = recebimentoService.cancelarRecebimento(recebimento);
-            service.cancelarReserva(new CancelamentoRequestDTO(seguroReserva));
-            return new SeguroReserva("ERRO: Não foi possivel gravar o seguro no banco de dados, tente novamente mais tarde.");
+        List<SeguroReservaDTO> efetuarCompra;
+        try {
+            efetuarCompra = hubSeguroClient.efetuarReserva(req);
+        } catch (RuntimeException erro) {
+            throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
         }
 
-        seguroReserva.setLocalizador(efetuarCompra.get(0).getLocalizador());
+        if(efetuarCompra == null || efetuarCompra.isEmpty() || efetuarCompra.get(0) == null){
+            throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
+        }
+
+        SeguroReservaDTO retorno = efetuarCompra.get(0);
+        seguroReserva.setLocalizador(retorno.getLocalizador());
+        if (seguroReserva.getLocalizador() == null || seguroReserva.getLocalizador().isBlank()) {
+            throw PagamentoRedeEmConferencia.doRecebimento(recebimento);
+        }
+        var divergencias = seguroReserva.getDivergenciasOperacao();
+        com.confApi.operacao.DivergenciaOperacao.comparar(divergencias, "EMISSAO", "DATA_INICIO_COBERTURA",
+                com.confApi.operacao.DivergenciaOperacao.dataUtc(seguroReserva.getDataInicioCobertura()),
+                com.confApi.operacao.DivergenciaOperacao.dataUtc(retorno.getDataInicioCobertura()));
+        com.confApi.operacao.DivergenciaOperacao.comparar(divergencias, "EMISSAO", "DATA_FINAL_COBERTURA",
+                com.confApi.operacao.DivergenciaOperacao.dataUtc(seguroReserva.getDataFinalCobertura()),
+                com.confApi.operacao.DivergenciaOperacao.dataUtc(retorno.getDataFinalCobertura()));
+        com.confApi.operacao.DivergenciaOperacao.comparar(divergencias, "EMISSAO", "VALOR_TOTAL_NET",
+                com.confApi.operacao.DivergenciaOperacao.valor(seguroReserva.getValorTotalReservaNet()),
+                com.confApi.operacao.DivergenciaOperacao.valor(retorno.getValorTotalReservaNet()));
+        if (retorno.getDataInicioCobertura() != null && retorno.getDataFinalCobertura() != null
+                && !retorno.getDataInicioCobertura().after(retorno.getDataFinalCobertura())) {
+            seguroReserva.setDataInicioCobertura(retorno.getDataInicioCobertura());
+            seguroReserva.setDataFinalCobertura(retorno.getDataFinalCobertura());
+        }
+        List<SeguradoDTO> seguradosRetornados = retorno.getSegurados() == null ? List.of() : retorno.getSegurados();
 
         for (SeguroSegurado segurado : seguroReserva.getSeguradosList()) {
-            SeguradoDTO seguradoDTO = efetuarCompra.get(0)
-                    .getSegurados()
+            SeguradoDTO seguradoDTO = seguradosRetornados
                     .stream()
+                    .filter(java.util.Objects::nonNull)
                     .filter(x -> normalizarCpf(x.getCpf()).equals(normalizarCpf(segurado.getCpf())))
                     .findFirst()
                     .orElse(null);
@@ -86,7 +120,9 @@ public class  SegurosController {
                     .orElse(null);
 
             if (seguradoDTO == null) {
-                throw new RuntimeException("Segurado não encontrado no retorno da reserva para CPF: " + segurado.getCpf());
+                divergencias.add(com.confApi.operacao.DivergenciaOperacao.registrar(
+                        "EMISSAO", "SEGURADOS", "Apólice esperada", "Segurado sem apólice correspondente no retorno"));
+                continue;
             }
 
             SeguroApolice seguroApolice = new SeguroApolice(seguradoDTO);
@@ -96,10 +132,24 @@ public class  SegurosController {
             }
         }
 
-        service.atualizarReserva(seguroReserva);
+        seguroReserva.setDivergenciasOperacao(divergencias.stream().distinct().toList());
+        SeguroReserva atualizada = service.atualizarReserva(seguroReserva);
+        if (!gravada(seguroReserva, atualizada)) atualizada = service.atualizarReserva(seguroReserva);
+        if (!gravada(seguroReserva, atualizada)) {
+            String localizador = seguroReserva.getLocalizador();
+            String referencia = localizador.matches("[A-Za-z0-9_-]{1,85}") ? " " + localizador : "";
+            return new SeguroReserva("ERRO: O fornecedor confirmou a apólice" + referencia
+                    + ", mas a gravação no Manager está pendente. Confira a reserva original.");
+        }
+        seguroReserva.setDivergenciasOperacao(List.of());
         return seguroReserva;
 //        return null;
     }
+    private static boolean gravada(SeguroReserva pedido, SeguroReserva resposta) {
+        return resposta != null && pedido.getCodgReservaSeguro().equals(resposta.getCodgReservaSeguro())
+                && pedido.getLocalizador().equals(resposta.getLocalizador());
+    }
+
     private void validarIdentificacao(SeguroCompraModel req) {
         if (req == null || req.getIdentificacaoAgenciaModel() == null
                 || req.getIdentificacaoAgenciaModel().getCodgAgencia() == null
@@ -141,15 +191,26 @@ public class  SegurosController {
 
     @PostMapping("/cancelarReserva")
     public SeguroReservaDTO cancelarReserva(@RequestBody CancelamentoRequestDTO req) {
-
-      //  System.out.println("req:: " + req);
-        List<SeguroReservaDTO> resultado = hubSeguroClient.cancelarReserva(req);
-      //  System.out.println("resultado:: " + resultado);
-        if(resultado != null && !resultado.isEmpty()){
-            service.cancelarReserva(req);
-            return service.carregarReserva(req.getOperacao());
+        List<SeguroReservaDTO> resultado;
+        try {
+            resultado = hubSeguroClient.cancelarReserva(req);
+        } catch (RuntimeException erro) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "O fornecedor não confirmou o cancelamento do seguro. Consulte a reserva original.");
         }
-        return new SeguroReservaDTO();
+        if (resultado == null || resultado.isEmpty() || resultado.stream().anyMatch(item ->
+                item == null || item.getLocalizador() == null || item.getLocalizador().isBlank())) {
+            return new SeguroReservaDTO();
+        }
+        try {
+            service.cancelarReserva(req);
+            SeguroReservaDTO confirmada = service.carregarReserva(req.getOperacao());
+            if (confirmada != null && Integer.valueOf(2).equals(confirmada.getStatus())) return confirmada;
+        } catch (RuntimeException erro) {
+            // A tentativa do fornecedor já foi confirmada, portanto a baixa não deve ser repetida.
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                "O fornecedor confirmou o cancelamento, mas o Manager não confirmou a baixa. Consulte a reserva original.");
     }
 
 

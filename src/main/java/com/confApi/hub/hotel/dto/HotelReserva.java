@@ -1,5 +1,7 @@
 package com.confApi.hub.hotel.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.Date;
 import java.util.List;
@@ -17,6 +19,9 @@ import lombok.ToString;
 @EqualsAndHashCode
 public class HotelReserva implements Serializable {
 
+    @Serial
+    private static final long serialVersionUID = -1657836908530033767L;
+
     private String codgReferencia;
     private String nome;
     private String descricao;
@@ -25,6 +30,18 @@ public class HotelReserva implements Serializable {
     private List<ReservasHotelRs> reservasHotelRsList;
     private Date dataEntrada;
     private Date dataSaida;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    private List<com.confApi.operacao.DivergenciaOperacao> divergenciasOperacao;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String observacaoOmnibees;
+
+    public HotelReserva(String codgReferencia, String nome, String descricao, String codgHotel, String urlImagem,
+                        List<ReservasHotelRs> reservasHotelRsList, Date dataEntrada, Date dataSaida) {
+        this(codgReferencia, nome, descricao, codgHotel, urlImagem);
+        this.reservasHotelRsList = reservasHotelRsList;
+        this.dataEntrada = dataEntrada;
+        this.dataSaida = dataSaida;
+    }
 
     public HotelReserva(String codgReferencia, String nome, String descricao, String codgHotel) {
         this.codgReferencia = codgReferencia;

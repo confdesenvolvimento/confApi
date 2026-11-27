@@ -120,7 +120,11 @@ public class RodoviarioReservaMapper {
                     t.setUrlLogo(logo.asText()); break;
                 }
             }
+            var partida = t.getDataPartida();
+            var chegada = t.getDataChegada();
             preencherDatas(t, viagem);
+            com.confApi.operacao.DivergenciaOperacao.comparar(dados.getDivergenciasOperacao(), "EMISSAO", "DATA_PARTIDA", partida, t.getDataPartida());
+            com.confApi.operacao.DivergenciaOperacao.comparar(dados.getDivergenciasOperacao(), "EMISSAO", "DATA_CHEGADA", chegada, t.getDataChegada());
             var passageiros = viagem.path("passageiros");
             exigirFornecedor(passageiros.isArray() && passageiros.size() == item.getPassageiros().size(), "Quantidade de passageiros divergente.");
             var pessoasUsadas = new HashSet<String>();
@@ -152,6 +156,11 @@ public class RodoviarioReservaMapper {
         exigirFornecedor(pagamento.path("total").isNumber(), "Fornecedor nao retornou o total da compra.");
         BigDecimal total = pagamento.get("total").decimalValue();
         exigirFornecedor(total.signum() >= 0 && total.stripTrailingZeros().scale() <= 2, "Total do fornecedor invalido.");
+        var esperado = dados.getValores().getValorTotalNet();
+        if (esperado != null && esperado.compareTo(total) != 0) {
+            dados.getDivergenciasOperacao().add(com.confApi.operacao.DivergenciaOperacao.registrar(
+                    "EMISSAO", "VALOR_TOTAL_NET", esperado.toPlainString(), total.toPlainString()));
+        }
         dados.getValores().setValorTotalNet(total);
         dados.getValores().setValorTarifaNet(valor(pagamento, "bilhetes"));
         dados.getValores().setValorTaxaEmbarque(valor(pagamento, "taxas"));

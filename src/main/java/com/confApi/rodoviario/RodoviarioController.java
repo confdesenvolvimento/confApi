@@ -23,8 +23,11 @@ public class RodoviarioController {
     private final RodoviarioManagerClient client;
 
     @ExceptionHandler(HttpStatusCodeException.class)
-    public ResponseEntity<String> erroManager(HttpStatusCodeException ex) {
-        return ResponseEntity.status(ex.getRawStatusCode()).contentType(MediaType.APPLICATION_JSON).body(ex.getResponseBodyAsString());
+    public ResponseEntity<JsonNode> erroManager(HttpStatusCodeException ex) {
+        int status = ex.getRawStatusCode();
+        var falha = RodoviarioIntegracaoException.falha(status, "MANAGER", "OPERACAO_MANAGER_NAO_CONFIRMADA",
+                "O Manager não confirmou a operação rodoviária. Confira a situação original antes de repetir.", true);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON).body(falha.getResposta());
     }
 
     @PostMapping("/reservas/salvarCompleta")
